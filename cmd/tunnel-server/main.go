@@ -1,0 +1,99 @@
+package main
+
+import (
+	"flag"
+	"os"
+
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/config"
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/tunnel"
+	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/logger"
+	"github.com/rs/zerolog"
+)
+
+// getEnv gets an environment variable or returns a default value
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func main() {
+	var (
+		port     = flag.Int("port", 8080, "Port to run tunnel server on")
+		env      = flag.String("env", "development", "Environment (development/production)")
+		logLevel = flag.String("log-level", "info", "Log level (debug/info/warn/error)")
+	)
+	flag.Parse()
+
+	// Initialize logger
+	var log zerolog.Logger
+	if *env == "development" {
+		log = logger.NewDebug()
+	} else {
+		log = logger.New()
+	}
+
+	// Set log level
+	switch *logLevel {
+	case "debug":
+		log = log.Level(zerolog.DebugLevel)
+	case "warn":
+		log = log.Level(zerolog.WarnLevel)
+	case "error":
+		log = log.Level(zerolog.ErrorLevel)
+	default:
+		log = log.Level(zerolog.InfoLevel)
+	}
+
+	log.Info().
+		Int("port", *port).
+		Str("environment", *env).
+		Msg("Starting UniRoute Tunnel Server")
+
+	// Load configuration
+	cfg := config.Load()
+
+	// Create tunnel server
+	server := tunnel.NewTunnelServer(*port, log)
+
+	// Phase 5: Set up domain manager if base domain is configured
+	baseDomain := getEnv("TUNNEL_BASE_DOMAIN", "")
+	if baseDomain != "" {
+		domainManager := tunnel.NewDomainManager(baseDomain, log)
+		server.SetDomainManager(domainManager)
+		log.Info().Str("base_domain", baseDomain).Msg("Domain manager configured")
+	}
+
+	// Phase 4: Set up database and Redis if available
+	if cfg.DatabaseURL != "" {
+		postgresClient, err := storage.NewPostgresClient(cfg.DatabaseURL, log)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to connect to PostgreSQL, continuing without database")
+		} else {
+			defer postgresClient.Close()
+			repo := tunnel.NewTunnelRepository(postgresClient.Pool(), log)
+			server.SetRepository(repo)
+			log.Info().Msg("Database connected, request logging enabled")
+		}
+	}
+
+	if cfg.RedisURL != "" {
+		redisClient, err := storage.NewRedisClient(cfg.RedisURL, log)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to connect to Redis, using in-memory rate limiting")
+		} else {
+			defer redisClient.Close()
+			redisRateLimiter := tunnel.NewRedisRateLimiter(redisClient, log)
+			server.SetRateLimiter(redisRateLimiter)
+			log.Info().Msg("Redis connected, distributed rate limiting enabled")
+		}
+	}
+
+	// Start server
+	if err := server.Start(); err != nil {
+		log.Fatal().Err(err).Msg("Failed to start tunnel server")
+		os.Exit(1)
+	}
+}

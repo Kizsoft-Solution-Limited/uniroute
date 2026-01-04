@@ -1,0 +1,199 @@
+package providers
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/rs/zerolog"
+)
+
+// OpenAIProvider implements the Provider interface for OpenAI
+type OpenAIProvider struct {
+	apiKey  string
+	baseURL string
+	client  *http.Client
+	logger  zerolog.Logger
+}
+
+// NewOpenAIProvider creates a new OpenAI provider
+func NewOpenAIProvider(apiKey, baseURL string, logger zerolog.Logger) *OpenAIProvider {
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+	return &OpenAIProvider{
+		apiKey:  apiKey,
+		baseURL: baseURL,
+		client: &http.Client{
+			Timeout: 60 * time.Second,
+		},
+		logger: logger,
+	}
+}
+
+// Name returns the provider name
+func (p *OpenAIProvider) Name() string {
+	return "openai"
+}
+
+// Chat sends a chat request to OpenAI
+func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	if p.apiKey == "" {
+		return nil, fmt.Errorf("OpenAI API key not configured")
+	}
+
+	// Convert to OpenAI format
+	openAIReq := map[string]interface{}{
+		"model":    req.Model,
+		"messages": convertMessagesToOpenAI(req.Messages),
+	}
+
+	if req.Temperature > 0 {
+		openAIReq["temperature"] = req.Temperature
+	}
+	if req.MaxTokens > 0 {
+		openAIReq["max_tokens"] = req.MaxTokens
+	}
+
+	reqBody, err := json.Marshal(openAIReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/chat/completions", p.baseURL)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", p.apiKey))
+
+	p.logger.Debug().
+		Str("provider", "openai").
+		Str("model", req.Model).
+		Msg("sending request to OpenAI")
+
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var errorResp struct {
+			Error struct {
+				Message string `json:"message"`
+				Type    string `json:"type"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(body, &errorResp); err == nil {
+			return nil, fmt.Errorf("OpenAI API error: %s", errorResp.Error.Message)
+		}
+		return nil, fmt.Errorf("OpenAI API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse OpenAI response
+	var openAIResp struct {
+		ID      string `json:"id"`
+		Model   string `json:"model"`
+		Choices []struct {
+			Message struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+
+	if err := json.Unmarshal(body, &openAIResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	// Convert to UniRoute format
+	choices := make([]Choice, 0, len(openAIResp.Choices))
+	for _, choice := range openAIResp.Choices {
+		choices = append(choices, Choice{
+			Message: Message{
+				Role:    choice.Message.Role,
+				Content: choice.Message.Content,
+			},
+		})
+	}
+
+	return &ChatResponse{
+		ID:      openAIResp.ID,
+		Model:   openAIResp.Model,
+		Choices: choices,
+		Usage: Usage{
+			PromptTokens:     openAIResp.Usage.PromptTokens,
+			CompletionTokens: openAIResp.Usage.CompletionTokens,
+			TotalTokens:      openAIResp.Usage.TotalTokens,
+		},
+	}, nil
+}
+
+// HealthCheck verifies OpenAI API is accessible
+func (p *OpenAIProvider) HealthCheck(ctx context.Context) error {
+	if p.apiKey == "" {
+		return fmt.Errorf("OpenAI API key not configured")
+	}
+
+	// Simple health check: list models
+	url := fmt.Sprintf("%s/models", p.baseURL)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create health check request: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", p.apiKey))
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("health check failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("health check returned status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// GetModels returns list of available OpenAI models
+func (p *OpenAIProvider) GetModels() []string {
+	// Common OpenAI models
+	return []string{
+		"gpt-4",
+		"gpt-4-turbo-preview",
+		"gpt-4-0125-preview",
+		"gpt-3.5-turbo",
+		"gpt-3.5-turbo-0125",
+	}
+}
+
+// convertMessagesToOpenAI converts UniRoute messages to OpenAI format
+func convertMessagesToOpenAI(messages []Message) []map[string]string {
+	result := make([]map[string]string, 0, len(messages))
+	for _, msg := range messages {
+		result = append(result, map[string]string{
+			"role":    msg.Role,
+			"content": msg.Content,
+		})
+	}
+	return result
+}

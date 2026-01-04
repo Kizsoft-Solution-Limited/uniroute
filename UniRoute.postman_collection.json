@@ -1,0 +1,396 @@
+{
+	"info": {
+		"_postman_id": "uniroute-phase2",
+		"name": "UniRoute Phase 2",
+		"description": "Postman collection for testing UniRoute Phase 2 features",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has status field\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('status');",
+							"});",
+							"",
+							"pm.test(\"Security headers present\", function () {",
+							"    pm.response.to.have.header(\"X-Frame-Options\");",
+							"    pm.response.to.have.header(\"X-Content-Type-Options\");",
+							"    pm.response.to.have.header(\"X-XSS-Protection\");",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/health",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"health"
+					]
+				},
+				"description": "Health check endpoint - no authentication required"
+			},
+			"response": []
+		},
+		{
+			"name": "Chat Completion",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has required fields\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('id');",
+							"    pm.expect(jsonData).to.have.property('model');",
+							"    pm.expect(jsonData).to.have.property('provider');",
+							"    pm.expect(jsonData).to.have.property('choices');",
+							"});",
+							"",
+							"pm.test(\"Rate limit headers present\", function () {",
+							"    if (pm.response.code === 200 || pm.response.code === 429) {",
+							"        pm.response.to.have.header(\"X-RateLimit-Limit-PerMinute\");",
+							"        pm.response.to.have.header(\"X-RateLimit-Remaining-PerMinute\");",
+							"    }",
+							"});",
+							"",
+							"if (pm.response.code === 429) {",
+							"    pm.test(\"Rate limit error\", function () {",
+							"        var jsonData = pm.response.json();",
+							"        pm.expect(jsonData.error).to.include(\"rate limit\");",
+							"    });",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{api_key}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"model\": \"llama2\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello, how are you?\"\n    }\n  ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/v1/chat",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"v1",
+						"chat"
+					]
+				},
+				"description": "Chat completion endpoint - requires API key authentication"
+			},
+			"response": []
+		},
+		{
+			"name": "Create API Key",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// This endpoint requires JWT authentication",
+							"// For Phase 2, you need to generate a JWT token first"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"if (pm.response.code === 201) {",
+							"    pm.test(\"API key created\", function () {",
+							"        var jsonData = pm.response.json();",
+							"        pm.expect(jsonData).to.have.property('key');",
+							"        pm.expect(jsonData).to.have.property('id');",
+							"        ",
+							"        // Save API key to collection variable",
+							"        pm.collectionVariables.set('api_key', jsonData.key);",
+							"        console.log('API key saved:', jsonData.key);",
+							"    });",
+							"} else if (pm.response.code === 401) {",
+							"    pm.test(\"JWT token required\", function () {",
+							"        console.log('Note: This endpoint requires JWT authentication');",
+							"    });",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"name\": \"My Test Key\",\n  \"rate_limit_per_minute\": 60,\n  \"rate_limit_per_day\": 10000\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/admin/api-keys",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"admin",
+						"api-keys"
+					]
+				},
+				"description": "Create a new API key - requires JWT authentication (Phase 2)"
+			},
+			"response": []
+		},
+		{
+			"name": "List API Keys",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/admin/api-keys",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"admin",
+						"api-keys"
+					]
+				},
+				"description": "List all API keys for the authenticated user - requires JWT (Phase 2)"
+			},
+			"response": []
+		},
+		{
+			"name": "Test Invalid API Key",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 401\", function () {",
+							"    pm.response.to.have.status(401);",
+							"});",
+							"",
+							"pm.test(\"Error message present\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('error');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer invalid_key_12345",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"model\": \"llama2\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"test\"\n    }\n  ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/v1/chat",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"v1",
+						"chat"
+					]
+				},
+				"description": "Test with invalid API key - should return 401"
+			},
+			"response": []
+		},
+		{
+			"name": "Test Rate Limiting",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							"// This request should be made multiple times quickly",
+							"// to test rate limiting",
+							"console.log('Making request to test rate limiting...');"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status is 200 or 429\", function () {",
+							"    pm.expect([200, 429]).to.include(pm.response.code);",
+							"});",
+							"",
+							"if (pm.response.code === 429) {",
+							"    pm.test(\"Rate limit headers present\", function () {",
+							"        pm.response.to.have.header(\"X-RateLimit-Limit-PerMinute\");",
+							"        pm.response.to.have.header(\"X-RateLimit-Remaining-PerMinute\");",
+							"    });",
+							"    ",
+							"    var remaining = pm.response.headers.get(\"X-RateLimit-Remaining-PerMinute\");",
+							"    console.log('Remaining requests:', remaining);",
+							"} else {",
+							"    var remaining = pm.response.headers.get(\"X-RateLimit-Remaining-PerMinute\");",
+							"    console.log('Remaining requests:', remaining);",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{api_key}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"model\": \"llama2\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"test\"\n    }\n  ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{base_url}}/v1/chat",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"v1",
+						"chat"
+					]
+				},
+				"description": "Test rate limiting - make this request multiple times quickly"
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8084",
+			"type": "string"
+		},
+		{
+			"key": "api_key",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "jwt_token",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
+
