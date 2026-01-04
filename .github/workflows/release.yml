@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            binary: uniroute-linux-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            binary: uniroute-linux-arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            binary: uniroute-darwin-amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            binary: uniroute-darwin-arm64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            binary: uniroute-windows-amd64.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build CLI
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -o ${{ matrix.binary }} ./cmd/cli
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            echo "Binary: ${{ matrix.binary }}"
+          else
+            chmod +x ${{ matrix.binary }}
+          fi
+
+      - name: Build Gateway
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            go build -o uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }}.exe ./cmd/gateway
+          else
+            go build -o uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/gateway
+            chmod +x uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }}
+          fi
+
+      - name: Build Tunnel Server
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            go build -o uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }}.exe ./cmd/tunnel-server
+          else
+            go build -o uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/tunnel-server
+            chmod +x uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }}
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}
+          path: |
+            ${{ matrix.binary }}
+            uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }}*
+            uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }}*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
