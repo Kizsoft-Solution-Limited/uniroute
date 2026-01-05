@@ -678,11 +678,11 @@ func HandleSwaggerJSON(c *gin.Context) {
 					},
 				},
 			},
-			"/admin/api-keys": map[string]interface{}{
+			"/auth/api-keys": map[string]interface{}{
 				"post": map[string]interface{}{
-					"tags":        []string{"Admin"},
+					"tags":        []string{"Authentication"},
 					"summary":     "Create API key",
-					"description": "Create a new API key (admin only)",
+					"description": "Create a new API key for the authenticated user",
 					"security": []map[string]interface{}{
 						{"BearerAuth": []string{}},
 					},
@@ -718,15 +718,12 @@ func HandleSwaggerJSON(c *gin.Context) {
 						"401": map[string]interface{}{
 							"description": "Unauthorized",
 						},
-						"403": map[string]interface{}{
-							"description": "Forbidden - Admin access required",
-						},
 					},
 				},
 				"get": map[string]interface{}{
-					"tags":        []string{"Admin"},
+					"tags":        []string{"Authentication"},
 					"summary":     "List API keys",
-					"description": "List all API keys (admin only)",
+					"description": "List all API keys for the authenticated user",
 					"security": []map[string]interface{}{
 						{"BearerAuth": []string{}},
 					},
@@ -737,17 +734,14 @@ func HandleSwaggerJSON(c *gin.Context) {
 						"401": map[string]interface{}{
 							"description": "Unauthorized",
 						},
-						"403": map[string]interface{}{
-							"description": "Forbidden - Admin access required",
-						},
 					},
 				},
 			},
-			"/admin/api-keys/{id}": map[string]interface{}{
+			"/auth/api-keys/{id}": map[string]interface{}{
 				"delete": map[string]interface{}{
-					"tags":        []string{"Admin"},
+					"tags":        []string{"Authentication"},
 					"summary":     "Revoke API key",
-					"description": "Revoke an API key (admin only)",
+					"description": "Revoke an API key belonging to the authenticated user",
 					"security": []map[string]interface{}{
 						{"BearerAuth": []string{}},
 					},
@@ -770,8 +764,177 @@ func HandleSwaggerJSON(c *gin.Context) {
 						"401": map[string]interface{}{
 							"description": "Unauthorized",
 						},
-						"403": map[string]interface{}{
-							"description": "Forbidden - Admin access required",
+						"404": map[string]interface{}{
+							"description": "API key not found",
+						},
+					},
+				},
+			},
+			"/auth/provider-keys": map[string]interface{}{
+				"post": map[string]interface{}{
+					"tags":        []string{"Authentication"},
+					"summary":     "Add provider key",
+					"description": "Add a provider API key for the authenticated user (BYOK)",
+					"security": []map[string]interface{}{
+						{"BearerAuth": []string{}},
+					},
+					"requestBody": map[string]interface{}{
+						"required": true,
+						"content": map[string]interface{}{
+							"application/json": map[string]interface{}{
+								"schema": map[string]interface{}{
+									"type":     "object",
+									"required": []string{"provider", "api_key"},
+									"properties": map[string]interface{}{
+										"provider": map[string]interface{}{
+											"type":    "string",
+											"example": "openai",
+										},
+										"api_key": map[string]interface{}{
+											"type":    "string",
+											"example": "sk-...",
+										},
+									},
+								},
+							},
+						},
+					},
+					"responses": map[string]interface{}{
+						"201": map[string]interface{}{
+							"description": "Provider key added",
+						},
+						"401": map[string]interface{}{
+							"description": "Unauthorized",
+						},
+					},
+				},
+				"get": map[string]interface{}{
+					"tags":        []string{"Authentication"},
+					"summary":     "List provider keys",
+					"description": "List all provider keys for the authenticated user (BYOK)",
+					"security": []map[string]interface{}{
+						{"BearerAuth": []string{}},
+					},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{
+							"description": "List of provider keys",
+						},
+						"401": map[string]interface{}{
+							"description": "Unauthorized",
+						},
+					},
+				},
+			},
+			"/auth/provider-keys/{provider}": map[string]interface{}{
+				"put": map[string]interface{}{
+					"tags":        []string{"Authentication"},
+					"summary":     "Update provider key",
+					"description": "Update a provider API key for the authenticated user (BYOK)",
+					"security": []map[string]interface{}{
+						{"BearerAuth": []string{}},
+					},
+					"parameters": []map[string]interface{}{
+						{
+							"name":        "provider",
+							"in":          "path",
+							"required":    true,
+							"description": "Provider name",
+							"schema": map[string]interface{}{
+								"type":    "string",
+								"example": "openai",
+							},
+						},
+					},
+					"requestBody": map[string]interface{}{
+						"required": true,
+						"content": map[string]interface{}{
+							"application/json": map[string]interface{}{
+								"schema": map[string]interface{}{
+									"type":     "object",
+									"required": []string{"api_key"},
+									"properties": map[string]interface{}{
+										"api_key": map[string]interface{}{
+											"type":    "string",
+											"example": "sk-...",
+										},
+									},
+								},
+							},
+						},
+					},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{
+							"description": "Provider key updated",
+						},
+						"401": map[string]interface{}{
+							"description": "Unauthorized",
+						},
+						"404": map[string]interface{}{
+							"description": "Provider key not found",
+						},
+					},
+				},
+				"delete": map[string]interface{}{
+					"tags":        []string{"Authentication"},
+					"summary":     "Delete provider key",
+					"description": "Delete a provider API key for the authenticated user (BYOK)",
+					"security": []map[string]interface{}{
+						{"BearerAuth": []string{}},
+					},
+					"parameters": []map[string]interface{}{
+						{
+							"name":        "provider",
+							"in":          "path",
+							"required":    true,
+							"description": "Provider name",
+							"schema": map[string]interface{}{
+								"type":    "string",
+								"example": "openai",
+							},
+						},
+					},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{
+							"description": "Provider key deleted",
+						},
+						"401": map[string]interface{}{
+							"description": "Unauthorized",
+						},
+						"404": map[string]interface{}{
+							"description": "Provider key not found",
+						},
+					},
+				},
+			},
+			"/auth/provider-keys/{provider}/test": map[string]interface{}{
+				"post": map[string]interface{}{
+					"tags":        []string{"Authentication"},
+					"summary":     "Test provider key",
+					"description": "Test a provider API key for the authenticated user (BYOK)",
+					"security": []map[string]interface{}{
+						{"BearerAuth": []string{}},
+					},
+					"parameters": []map[string]interface{}{
+						{
+							"name":        "provider",
+							"in":          "path",
+							"required":    true,
+							"description": "Provider name",
+							"schema": map[string]interface{}{
+								"type":    "string",
+								"example": "openai",
+							},
+						},
+					},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{
+							"description": "Provider key test result",
+						},
+						"401": map[string]interface{}{
+							"description": "Unauthorized",
+						},
+						"404": map[string]interface{}{
+							"description": "Provider key not found",
 						},
 					},
 				},
@@ -806,143 +969,6 @@ func HandleSwaggerJSON(c *gin.Context) {
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
 							"description": "Current routing strategy",
-						},
-						"401": map[string]interface{}{
-							"description": "Unauthorized",
-						},
-						"403": map[string]interface{}{
-							"description": "Forbidden - Admin access required",
-						},
-					},
-				},
-			},
-			"/admin/provider-keys": map[string]interface{}{
-				"post": map[string]interface{}{
-					"tags":        []string{"Admin"},
-					"summary":     "Add provider key",
-					"description": "Add a provider API key (admin only)",
-					"security": []map[string]interface{}{
-						{"BearerAuth": []string{}},
-					},
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "Provider key added",
-						},
-						"401": map[string]interface{}{
-							"description": "Unauthorized",
-						},
-						"403": map[string]interface{}{
-							"description": "Forbidden - Admin access required",
-						},
-					},
-				},
-				"get": map[string]interface{}{
-					"tags":        []string{"Admin"},
-					"summary":     "List provider keys",
-					"description": "List all provider keys (admin only)",
-					"security": []map[string]interface{}{
-						{"BearerAuth": []string{}},
-					},
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "List of provider keys",
-						},
-						"401": map[string]interface{}{
-							"description": "Unauthorized",
-						},
-						"403": map[string]interface{}{
-							"description": "Forbidden - Admin access required",
-						},
-					},
-				},
-			},
-			"/admin/provider-keys/{provider}": map[string]interface{}{
-				"put": map[string]interface{}{
-					"tags":        []string{"Admin"},
-					"summary":     "Update provider key",
-					"description": "Update a provider API key (admin only)",
-					"security": []map[string]interface{}{
-						{"BearerAuth": []string{}},
-					},
-					"parameters": []map[string]interface{}{
-						{
-							"name":        "provider",
-							"in":          "path",
-							"required":    true,
-							"description": "Provider name",
-							"schema": map[string]interface{}{
-								"type":    "string",
-								"example": "openai",
-							},
-						},
-					},
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "Provider key updated",
-						},
-						"401": map[string]interface{}{
-							"description": "Unauthorized",
-						},
-						"403": map[string]interface{}{
-							"description": "Forbidden - Admin access required",
-						},
-					},
-				},
-				"delete": map[string]interface{}{
-					"tags":        []string{"Admin"},
-					"summary":     "Delete provider key",
-					"description": "Delete a provider API key (admin only)",
-					"security": []map[string]interface{}{
-						{"BearerAuth": []string{}},
-					},
-					"parameters": []map[string]interface{}{
-						{
-							"name":        "provider",
-							"in":          "path",
-							"required":    true,
-							"description": "Provider name",
-							"schema": map[string]interface{}{
-								"type":    "string",
-								"example": "openai",
-							},
-						},
-					},
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "Provider key deleted",
-						},
-						"401": map[string]interface{}{
-							"description": "Unauthorized",
-						},
-						"403": map[string]interface{}{
-							"description": "Forbidden - Admin access required",
-						},
-					},
-				},
-			},
-			"/admin/provider-keys/{provider}/test": map[string]interface{}{
-				"post": map[string]interface{}{
-					"tags":        []string{"Admin"},
-					"summary":     "Test provider key",
-					"description": "Test a provider API key (admin only)",
-					"security": []map[string]interface{}{
-						{"BearerAuth": []string{}},
-					},
-					"parameters": []map[string]interface{}{
-						{
-							"name":        "provider",
-							"in":          "path",
-							"required":    true,
-							"description": "Provider name",
-							"schema": map[string]interface{}{
-								"type":    "string",
-								"example": "openai",
-							},
-						},
-					},
-					"responses": map[string]interface{}{
-						"200": map[string]interface{}{
-							"description": "Provider key test result",
 						},
 						"401": map[string]interface{}{
 							"description": "Unauthorized",

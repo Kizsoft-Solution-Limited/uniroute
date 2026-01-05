@@ -20,44 +20,44 @@ export interface TestKeyResponse {
 
 export const providerKeysApi = {
   /**
-   * List all provider keys for the current user
+   * List all provider keys for the current user (BYOK)
    */
   async list(): Promise<ProviderKeysResponse> {
-    const response = await apiClient.get<ProviderKeysResponse>('/admin/provider-keys')
+    const response = await apiClient.get<ProviderKeysResponse>('/auth/provider-keys')
     return response.data
   },
 
   /**
-   * Add a new provider key
+   * Add a new provider key (BYOK)
    */
   async add(provider: string, apiKey: string): Promise<void> {
-    await apiClient.post('/admin/provider-keys', {
+    await apiClient.post('/auth/provider-keys', {
       provider,
       api_key: apiKey
     })
   },
 
   /**
-   * Update an existing provider key
+   * Update an existing provider key (BYOK)
    */
   async update(provider: string, apiKey: string): Promise<void> {
-    await apiClient.put(`/admin/provider-keys/${provider}`, {
+    await apiClient.put(`/auth/provider-keys/${provider}`, {
       api_key: apiKey
     })
   },
 
   /**
-   * Delete a provider key
+   * Delete a provider key (BYOK)
    */
   async delete(provider: string): Promise<void> {
-    await apiClient.delete(`/admin/provider-keys/${provider}`)
+    await apiClient.delete(`/auth/provider-keys/${provider}`)
   },
 
   /**
-   * Test a provider key connection
+   * Test a provider key connection (BYOK)
    */
   async test(provider: string): Promise<TestKeyResponse> {
-    const response = await apiClient.post<TestKeyResponse>(`/admin/provider-keys/${provider}/test`)
+    const response = await apiClient.post<TestKeyResponse>(`/auth/provider-keys/${provider}/test`)
     return response.data
   }
 }

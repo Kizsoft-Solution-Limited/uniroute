@@ -301,6 +301,18 @@ frontend/
 - Icons
 ```
 
+#### 8. Pagination Component
+```typescript
+// components/ui/Pagination/Pagination.vue
+- Previous/Next navigation
+- Optional page numbers (for large datasets)
+- Accessible (ARIA labels)
+- Responsive design
+- Dark mode support
+- Configurable page size display
+- Props: limit, offset, total, itemLabel, showPageNumbers
+```
+
 ### Layout Components
 
 #### 1. AppLayout
@@ -672,6 +684,193 @@ const routes = [
 - Focus management
 - Screen reader support
 
+### 6. Pagination for Large Data Sets
+**Always implement pagination for lists that can contain large amounts of data.**
+
+#### When to Use Pagination
+- **User Management** - Lists of users (admin)
+- **API Keys** - User's API keys (if many)
+- **Error Logs** - Application error logs (admin)
+- **Request History** - Analytics/request history
+- **Any list that could exceed 50 items**
+
+#### Pagination Requirements
+
+**Backend API:**
+```typescript
+// API should support pagination parameters
+interface PaginatedResponse<T> {
+  items: T[]
+  limit: number      // Items per page (default: 50, max: 100)
+  offset: number    // Current offset (0-based)
+  count: number     // Number of items in current page
+  total: number     // Total number of items (optional, -1 if not available)
+}
+```
+
+**Frontend Implementation:**
+```typescript
+// State management
+const limit = ref(50)        // Items per page
+const offset = ref(0)         // Current offset
+const total = ref(0)          // Total items
+const items = ref([])         // Current page items
+const loading = ref(false)
+
+// Load data with pagination
+const loadData = async () => {
+  loading.value = true
+  try {
+    const response = await api.list(limit.value, offset.value)
+    items.value = response.items
+    total.value = response.total
+  } finally {
+    loading.value = false
+  }
+}
+
+// Navigation functions
+const nextPage = () => {
+  if (offset.value + limit.value < total.value) {
+    offset.value += limit.value
+    loadData()
+  }
+}
+
+const previousPage = () => {
+  if (offset.value > 0) {
+    offset.value = Math.max(0, offset.value - limit.value)
+    loadData()
+  }
+}
+
+const goToPage = (page: number) => {
+  offset.value = (page - 1) * limit.value
+  loadData()
+}
+```
+
+**UI Components:**
+
+**Reusable Pagination Component:**
+```vue
+<!-- Use the Pagination component -->
+<Pagination
+  :limit="limit"
+  :offset="offset"
+  :total="total"
+  item-label="users"
+  :show-page-numbers="total > limit * 5"
+  @update:offset="offset = $event; loadData()"
+/>
+```
+
+**Manual Implementation (if needed):**
+```vue
+<!-- Pagination Controls -->
+<div class="flex items-center justify-between mt-4 px-4 py-3 border-t">
+  <div class="text-sm text-gray-600 dark:text-gray-400">
+    Showing {{ offset + 1 }} to {{ Math.min(offset + count, total) }} of {{ total }} items
+  </div>
+  <div class="flex space-x-2">
+    <button
+      @click="previousPage"
+      :disabled="offset === 0"
+      class="px-3 py-1 text-sm rounded-lg border disabled:opacity-50 disabled:cursor-not-allowed"
+      aria-label="Previous page"
+    >
+      Previous
+    </button>
+    <button
+      @click="nextPage"
+      :disabled="offset + count >= total"
+      class="px-3 py-1 text-sm rounded-lg border disabled:opacity-50 disabled:cursor-not-allowed"
+      aria-label="Next page"
+    >
+      Next
+    </button>
+  </div>
+</div>
+```
+
+**Best Practices:**
+1. **Default Page Size**: 50 items per page (configurable: 10, 25, 50, 100)
+2. **Show Count**: Display "Showing X to Y of Z items"
+3. **Navigation**: Previous/Next buttons with disabled states
+4. **Page Numbers**: For large datasets, show page numbers (1, 2, 3...)
+5. **URL State**: Consider storing page in URL query params for shareable links
+6. **Loading States**: Show loading indicator during pagination
+7. **Accessibility**: Use ARIA labels for pagination controls
+8. **Mobile**: Stack pagination controls vertically on mobile
+
+**Reusable Component:**
+- `components/ui/Pagination.vue` - Reusable pagination component with:
+  - Previous/Next buttons
+  - Optional page numbers (for large datasets)
+  - Accessible (ARIA labels)
+  - Responsive design
+  - Dark mode support
+
+**Example Implementation:**
+- ✅ User Management (`/dashboard/admin/users`) - Has pagination
+- ⚠️ API Keys - Should add pagination if user has many keys (>50)
+- ⚠️ Error Logs - Should add pagination (currently only has limit selector)
+- ⚠️ Request History (Analytics) - Should add pagination
+- ⚠️ Tunnels List - Should add pagination if many tunnels
+
+**Usage Example:**
+```vue
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import Pagination from '@/components/ui/Pagination.vue'
+import { usersApi } from '@/services/api/users'
+
+const limit = ref(50)
+const offset = ref(0)
+const total = ref(0)
+const users = ref([])
+const loading = ref(false)
+
+const loadUsers = async () => {
+  loading.value = true
+  try {
+    const response = await usersApi.list(limit.value, offset.value)
+    users.value = response.users
+    total.value = response.total
+  } finally {
+    loading.value = false
+  }
+}
+
+const handlePageChange = () => {
+  loadUsers()
+}
+
+onMounted(() => {
+  loadUsers()
+})
+</script>
+
+<template>
+  <div>
+    <!-- User list -->
+    <table>
+      <!-- ... -->
+    </table>
+    
+    <!-- Pagination -->
+    <Pagination
+      :limit="limit"
+      :offset="offset"
+      :total="total"
+      item-label="users"
+      :show-page-numbers="total > limit * 5"
+      @update:offset="offset = $event; handlePageChange()"
+    />
+  </div>
+</template>
+```
+
 ---
 
 ## 🧪 Testing Strategy
@@ -791,50 +990,51 @@ const routes = [
 
 ## 📦 Implementation Phases
 
-### Phase 1: Foundation & Security (Week 1-2)
-- [ ] Project setup (Vue 3 + TypeScript + Vite)
-- [ ] Security configuration (CSP, headers, DOMPurify)
-- [ ] Design system setup (Tailwind CSS + custom theme)
-- [ ] Base UI components (Button, Input, Card, etc.)
-- [ ] Router setup with security guards
-- [ ] API client setup with security interceptors
-- [ ] Authentication flow (login/register) with security
-- [ ] Auth store (Pinia) with secure token handling
-- [ ] Input validation setup (VeeValidate + Yup)
-- [ ] Error handling infrastructure
+### Phase 1: Foundation & Security (Week 1-2) ✅ **COMPLETE**
+- [x] Project setup (Vue 3 + TypeScript + Vite)
+- [x] Security configuration (CSP, headers, DOMPurify)
+- [x] Design system setup (Tailwind CSS + custom theme)
+- [x] Base UI components (Button, Input, Card, Toast, etc.)
+- [x] Router setup with security guards
+- [x] API client setup with security interceptors
+- [x] Authentication flow (login/register/forgot-password/verify-email) with security
+- [x] Auth store (Pinia) with secure token handling
+- [x] Input validation setup (VeeValidate + Yup)
+- [x] Error handling infrastructure
 - [ ] Security testing setup
 
-### Phase 2: Landing Page & Core Features (Week 3-4)
-- [ ] **World-class landing page** (hero, features, social proof, CTA)
-- [ ] Dashboard layout with modern design
-- [ ] Dashboard overview page with animations
-- [ ] API keys management (CRUD) with security
-- [ ] Tunnels list view
-- [ ] User profile page
-- [ ] Route guards with permission checks
-- [ ] Permission system implementation
-- [ ] Responsive design implementation
+### Phase 2: Landing Page & Core Features (Week 3-4) ✅ **COMPLETE**
+- [x] **World-class landing page** (hero, features, social proof, CTA)
+- [x] Dashboard layout with modern design
+- [x] Dashboard overview page with animations
+- [x] API keys management (CRUD) with security
+- [x] Tunnels list view
+- [x] User profile page
+- [x] Route guards with permission checks
+- [x] Permission system implementation
+- [x] Responsive design implementation
 
-### Phase 3: Advanced Features & Polish (Week 5-6)
-- [ ] Analytics dashboard with modern charts
-- [ ] Charts and visualizations (Chart.js or similar)
-- [ ] Tunnel detail view
-- [ ] Settings page
-- [ ] Admin panel (if needed)
-- [ ] Real-time updates (WebSocket)
-- [ ] Performance optimizations
-- [ ] Accessibility improvements
+### Phase 3: Advanced Features & Polish (Week 5-6) ✅ **COMPLETE**
+- [x] Analytics dashboard with charts and visualizations
+- [x] Tunnel detail view
+- [x] Settings page (Profile, Provider Keys)
+- [x] Admin panel (User Management, Email Config, Routing Strategy, Error Logs, Provider Keys Management)
+- [x] Webhook Testing feature
+- [x] Performance optimizations (lazy loading routes)
+- [x] Accessibility improvements (ARIA labels, keyboard navigation)
+- [ ] Real-time updates (WebSocket) - **Optional: Can be added later if needed**
 
-### Phase 4: Testing & Security Hardening (Week 7-8)
-- [ ] Comprehensive unit tests (>80% coverage)
-- [ ] Integration tests
-- [ ] E2E tests (Playwright)
-- [ ] Security testing (XSS, CSRF, auth)
-- [ ] Performance testing (Lighthouse)
-- [ ] Visual regression testing
-- [ ] Cross-browser testing
-- [ ] Documentation
-- [ ] Deployment setup with security headers
+### Phase 4: Testing & Security Hardening (Week 7-8) 🟡 **IN PROGRESS**
+- [x] Test structure created (tests/unit, tests/integration, tests/e2e, tests/testutil, tests/fixtures)
+- [ ] Comprehensive unit tests (>80% coverage) - **TODO: Write unit tests**
+- [ ] Integration tests - **TODO: Write integration tests**
+- [ ] E2E tests (Playwright) - **TODO: Write E2E tests**
+- [ ] Security testing (XSS, CSRF, auth) - **TODO: Security test suite**
+- [ ] Performance testing (Lighthouse) - **TODO: Performance audit**
+- [ ] Visual regression testing - **TODO: Visual testing setup**
+- [ ] Cross-browser testing - **TODO: Browser compatibility testing**
+- [ ] Documentation - **TODO: Component docs, API docs**
+- [ ] Deployment setup with security headers - **TODO: Production deployment config**
 
 ---
 

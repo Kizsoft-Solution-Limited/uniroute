@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950">
+  <div class="dark min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950">
     <!-- Mobile Menu Button -->
     <button
       @click="mobileMenuOpen = !mobileMenuOpen"
@@ -122,7 +122,10 @@ import {
   Menu,
   X,
   Webhook,
-  AlertTriangle
+  AlertTriangle,
+  Mail,
+  Route,
+  Users
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -157,6 +160,10 @@ const pageTitle = computed(() => {
     'webhook-testing': 'Webhook Testing',
     'settings-profile': 'Profile Settings',
     'settings-provider-keys': 'Provider Keys',
+    'admin-users': 'User Management',
+    'admin-email': 'Email Configuration',
+    'admin-provider-keys': 'Provider Keys Management',
+    'admin-routing': 'Routing Strategy',
     'admin-errors': 'Error Logs'
   }
   return titles[route.name as string] || 'Dashboard'
@@ -169,6 +176,10 @@ const pageDescription = computed(() => {
     tunnels: 'View and manage your active tunnels',
     analytics: 'Track usage, costs, and performance metrics',
     'webhook-testing': 'Inspect, replay, and test webhook requests',
+    'admin-users': 'Manage users and their roles',
+    'admin-email': 'View SMTP configuration and test email delivery',
+    'admin-provider-keys': 'Manage system-wide provider API keys',
+    'admin-routing': 'Configure how UniRoute selects AI providers',
     'admin-errors': 'Monitor and manage application errors'
   }
   return descriptions[route.name as string] || ''
@@ -210,18 +221,44 @@ const navItems = computed(() => {
 
   // Add admin routes only if user is admin
   if (isAdmin.value) {
-    items.push({
-      path: '/dashboard/errors',
-      label: 'Error Logs',
-      icon: AlertTriangle
-    })
+    items.push(
+      {
+        path: '/dashboard/admin/users',
+        label: 'User Management',
+        icon: Users
+      },
+      {
+        path: '/dashboard/admin/email',
+        label: 'Email Config',
+        icon: Mail
+      },
+      {
+        path: '/dashboard/admin/routing',
+        label: 'Routing Strategy',
+        icon: Route
+      },
+      {
+        path: '/dashboard/errors',
+        label: 'Error Logs',
+        icon: AlertTriangle
+      }
+    )
   }
 
   return items
 })
 
 const isActive = (path: string) => {
-  return route.path === path || route.path.startsWith(path + '/')
+  // Exact match
+  if (route.path === path) return true
+  
+  // For dashboard root, only match exact path (not child routes)
+  if (path === '/dashboard') {
+    return route.path === '/dashboard' || route.path === '/dashboard/'
+  }
+  
+  // For other paths, match if route starts with the path
+  return route.path.startsWith(path + '/')
 }
 
 const handleLogout = async () => {

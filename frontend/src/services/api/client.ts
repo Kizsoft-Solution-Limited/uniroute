@@ -111,12 +111,18 @@ apiClient.interceptors.response.use(
       // Handle specific error codes
       switch (status) {
         case 401:
-          // Unauthorized - clear token and redirect to login
+          // Unauthorized - clear token
           localStorage.removeItem('auth_token')
           localStorage.removeItem('auth_token_expires')
           sessionStorage.removeItem('auth_token')
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname)
+          
+          // Only redirect if not already on login page and not during auth check
+          // The router guard will handle the redirect, so we don't need to do it here
+          // This prevents double redirects and redirect loops
+          const isAuthCheck = error.config?.url?.includes('/auth/profile') || error.config?.url?.includes('/auth/refresh')
+          if (window.location.pathname !== '/login' && !isAuthCheck) {
+            // Let the router guard handle the redirect for better UX
+            // window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname)
           }
           break
         case 403:

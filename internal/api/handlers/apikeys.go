@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
 	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/errors"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // APIKeyHandler handles API key management
@@ -24,18 +24,18 @@ func NewAPIKeyHandler(apiKeyService *security.APIKeyServiceV2) *APIKeyHandler {
 
 // CreateAPIKeyRequest represents a request to create an API key
 type CreateAPIKeyRequest struct {
-	Name              string     `json:"name" binding:"required"`
+	Name               string     `json:"name" binding:"required"`
 	RateLimitPerMinute int        `json:"rate_limit_per_minute"`
 	RateLimitPerDay    int        `json:"rate_limit_per_day"`
-	ExpiresAt         *time.Time  `json:"expires_at,omitempty"`
+	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
 }
 
-// CreateAPIKey handles POST /admin/api-keys
+// CreateAPIKey handles POST /auth/api-keys (user route - users manage their own keys)
 func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	var req CreateAPIKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": errors.ErrInvalidRequest.Error(),
+			"error":   errors.ErrInvalidRequest.Error(),
 			"details": err.Error(),
 		})
 		return
@@ -83,16 +83,16 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"id":        apiKey.ID,
-		"key":       key, // Only returned once!
-		"name":      apiKey.Name,
+		"id":         apiKey.ID,
+		"key":        key, // Only returned once!
+		"name":       apiKey.Name,
 		"created_at": apiKey.CreatedAt,
 		"expires_at": apiKey.ExpiresAt,
-		"message":   "Save this key - it will not be shown again",
+		"message":    "Save this key - it will not be shown again",
 	})
 }
 
-// ListAPIKeys handles GET /admin/api-keys
+// ListAPIKeys handles GET /auth/api-keys (user route - users manage their own keys)
 func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
 	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
@@ -124,13 +124,13 @@ func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
 	keyList := make([]map[string]interface{}, len(keys))
 	for i, key := range keys {
 		keyList[i] = map[string]interface{}{
-			"id":                  key.ID.String(),
-			"name":                key.Name,
+			"id":                    key.ID.String(),
+			"name":                  key.Name,
 			"rate_limit_per_minute": key.RateLimitPerMinute,
 			"rate_limit_per_day":    key.RateLimitPerDay,
-			"created_at":          key.CreatedAt.Format(time.RFC3339),
-			"expires_at":          nil,
-			"is_active":            key.IsActive,
+			"created_at":            key.CreatedAt.Format(time.RFC3339),
+			"expires_at":            nil,
+			"is_active":             key.IsActive,
 		}
 		if key.ExpiresAt != nil {
 			keyList[i]["expires_at"] = key.ExpiresAt.Format(time.RFC3339)
@@ -142,7 +142,7 @@ func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
 	})
 }
 
-// RevokeAPIKey handles DELETE /admin/api-keys/:id
+// RevokeAPIKey handles DELETE /auth/api-keys/:id (user route - users manage their own keys)
 func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
@@ -208,4 +208,3 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 		"message": "API key revoked successfully",
 	})
 }
-

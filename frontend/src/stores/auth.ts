@@ -19,12 +19,28 @@ export const useAuthStore = defineStore('auth', () => {
       return true
     }
     
-    // Check user-specific permissions
-    // TODO: Fetch from API or include in user object
+    // Default permissions for authenticated users
+    // All authenticated users have access to basic features
+    const defaultPermissions = [
+      'api-keys:read',
+      'api-keys:create',
+      'api-keys:update',
+      'api-keys:delete',
+      'tunnels:read',
+      'tunnels:create',
+      'tunnels:delete',
+      'analytics:read',
+      'provider-keys:manage'
+    ]
+    
+    // Check user-specific permissions (if provided by backend)
     const userPermissions = user.value.permissions || []
     
+    // Combine default and user-specific permissions
+    const allPermissions = [...defaultPermissions, ...userPermissions]
+    
     // Support wildcard permissions (e.g., 'api-keys:*' matches 'api-keys:read')
-    return userPermissions.some((p: string) => {
+    return allPermissions.some((p: string) => {
       if (p === permission) return true
       if (p.endsWith(':*')) {
         const prefix = p.slice(0, -2)
@@ -126,18 +142,39 @@ export const useAuthStore = defineStore('auth', () => {
       return false
     }
 
+    // Set token in store first
     token.value = storedToken
     try {
       const profile = await authApi.getProfile()
       user.value = profile
       
+      // Ensure token is stored in the same place we found it and in the store
+      token.value = storedToken
+      if (localStorage.getItem('auth_token')) {
+        localStorage.setItem('auth_token', storedToken)
+      } else if (sessionStorage.getItem('auth_token')) {
+        sessionStorage.setItem('auth_token', storedToken)
+      }
+      
+      // Double-check that both token and user are set
+      if (!token.value || !user.value) {
+        console.warn('Auth check completed but token or user is missing')
+        return false
+      }
+      
       return true
-    } catch (err) {
-      // Token invalid, clear it
+    } catch (err: any) {
+      // Token invalid or expired, clear it
       token.value = null
+      user.value = null
       localStorage.removeItem('auth_token')
       localStorage.removeItem('auth_token_expires')
       sessionStorage.removeItem('auth_token')
+      
+      // Log error for debugging (only in development)
+      if (import.meta.env.DEV) {
+        console.warn('Auth check failed:', err.response?.status, err.response?.data?.error || err.message)
+      }
       
       return false
     }

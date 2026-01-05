@@ -77,6 +77,12 @@ const routes: RouteRecordRaw[] = [
         meta: { permission: 'tunnels:read' }
       },
       {
+        path: 'tunnels/:id',
+        name: 'tunnel-detail',
+        component: () => import('@/views/tunnels/TunnelDetail.vue'),
+        meta: { permission: 'tunnels:read' }
+      },
+      {
         path: 'analytics',
         name: 'analytics',
         component: () => import('@/views/Analytics.vue'),
@@ -103,6 +109,35 @@ const routes: RouteRecordRaw[] = [
             name: 'settings-provider-keys',
             component: () => import('@/views/settings/ProviderKeys.vue'),
             meta: { permission: 'provider-keys:manage' }
+          }
+        ]
+      },
+      {
+        path: 'admin',
+        children: [
+          {
+            path: 'users',
+            name: 'admin-users',
+            component: () => import('@/views/admin/UserManagement.vue'),
+            meta: { permission: 'admin:users' }
+          },
+          {
+            path: 'email',
+            name: 'admin-email',
+            component: () => import('@/views/admin/EmailConfig.vue'),
+            meta: { permission: 'admin:email' }
+          },
+          {
+            path: 'provider-keys',
+            name: 'admin-provider-keys',
+            component: () => import('@/views/admin/AdminProviderKeys.vue'),
+            meta: { permission: 'admin:provider-keys' }
+          },
+          {
+            path: 'routing',
+            name: 'admin-routing',
+            component: () => import('@/views/admin/RoutingStrategy.vue'),
+            meta: { permission: 'admin:routing' }
           }
         ]
       },
@@ -143,8 +178,40 @@ const router = createRouter({
 })
 
 // Navigation guards
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
+  
+  // Skip auth check for login/register pages to avoid redirect loops
+  if (to.name === 'login' || to.name === 'register' || to.name === 'forgot-password' || to.name === 'verify-email') {
+    next()
+    return
+  }
+  
+  // Check if we have a token but no user - need to verify auth
+  const hasToken = authStore.token || localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')
+  const hasUser = !!authStore.user
+  
+  // If we have a token but no user, try to check auth
+  if (hasToken && !hasUser) {
+    try {
+      const authResult = await authStore.checkAuth()
+      // If checkAuth failed, it will clear the token
+      if (!authResult) {
+        // Auth check failed, redirect to login if route requires auth
+        if (to.meta.requiresAuth) {
+          next({ name: 'login', query: { redirect: to.fullPath } })
+          return
+        }
+      }
+    } catch (err) {
+      // Auth check failed, redirect to login if route requires auth
+      if (to.meta.requiresAuth) {
+        next({ name: 'login', query: { redirect: to.fullPath } })
+        return
+      }
+    }
+  }
+  
   const isAuthenticated = authStore.isAuthenticated
 
   // Check if route requires authentication
