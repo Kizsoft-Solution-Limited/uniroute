@@ -40,7 +40,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24.0'
+          go-version: '1.23'
 
       - name: Build CLI
         shell: bash
@@ -49,11 +49,14 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-          go build -o ${{ matrix.binary }} ./cmd/cli
+          echo "Building CLI for ${{ matrix.goos }}/${{ matrix.goarch }}"
+          echo "Go version: $(go version)"
+          go build -v -o ${{ matrix.binary }} ./cmd/cli || exit 1
           if [ "${{ matrix.goos }}" != "windows" ]; then
             chmod +x ${{ matrix.binary }}
           fi
-          echo "Built: ${{ matrix.binary }}"
+          ls -lh ${{ matrix.binary }} || dir ${{ matrix.binary }}
+          echo "✅ Built: ${{ matrix.binary }}"
 
       - name: Build Gateway
         shell: bash
@@ -62,12 +65,14 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
+          echo "Building Gateway for ${{ matrix.goos }}/${{ matrix.goarch }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            go build -o uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }}.exe ./cmd/gateway
+            go build -v -o uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }}.exe ./cmd/gateway || exit 1
           else
-            go build -o uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/gateway
+            go build -v -o uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/gateway || exit 1
             chmod +x uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }}
           fi
+          echo "✅ Built Gateway"
 
       - name: Build Tunnel Server
         shell: bash
@@ -76,12 +81,25 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
+          echo "Building Tunnel Server for ${{ matrix.goos }}/${{ matrix.goarch }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            go build -o uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }}.exe ./cmd/tunnel-server
+            go build -v -o uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }}.exe ./cmd/tunnel-server || exit 1
           else
-            go build -o uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/tunnel-server
+            go build -v -o uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/tunnel-server || exit 1
             chmod +x uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }}
           fi
+          echo "✅ Built Tunnel Server"
+
+      - name: List built files
+        shell: bash
+        run: |
+          echo "Built files:"
+          ls -lh || dir
+          echo ""
+          echo "Looking for binaries:"
+          ls -lh ${{ matrix.binary }}* || dir ${{ matrix.binary }}* || echo "CLI binary not found"
+          ls -lh uniroute-gateway-* || dir uniroute-gateway-* || echo "Gateway binary not found"
+          ls -lh uniroute-tunnel-server-* || dir uniroute-tunnel-server-* || echo "Tunnel server binary not found"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -91,6 +109,7 @@ jobs:
             ${{ matrix.binary }}
             uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }}*
             uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }}*
+          if-no-files-found: error
 
   release:
     needs: build
