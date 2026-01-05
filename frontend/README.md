@@ -1,24 +1,48 @@
 # UniRoute Frontend
 
-Modern, secure, and world-class frontend for UniRoute built with Vue 3 + TypeScript.
+Vue 3 + TypeScript frontend for UniRoute AI Gateway.
 
-## 🎯 Project Status
+## Environment Variables
 
-**Phase 1: Foundation & Security** - In Progress
+Environment variables are configured in `.env` files. Vite automatically loads these files:
 
-## 🏗️ Architecture
+- `.env` - Default environment file (not committed to git)
+- `.env.local` - Local overrides (not committed to git)
+- `.env.[mode]` - Mode-specific (e.g., `.env.production`)
+- `.env.[mode].local` - Mode-specific local overrides
 
-- **Framework**: Vue 3 (Composition API)
-- **Language**: TypeScript
-- **Build Tool**: Vite
-- **Styling**: Tailwind CSS 3.4+
-- **State Management**: Pinia
-- **Routing**: Vue Router 4
-- **Forms**: VeeValidate + Yup
-- **HTTP Client**: Axios
-- **Security**: DOMPurify, CSP, Secure Headers
+### Setup
 
-## 🚀 Quick Start
+1. Copy the example file:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Update `.env` with your values:
+   ```env
+   # API Configuration
+   VITE_API_BASE_URL=http://localhost:8084
+   
+   # Tunnel Server Configuration
+   VITE_TUNNEL_SERVER_URL=http://localhost:8080
+   ```
+
+### Available Variables
+
+- `VITE_API_BASE_URL` - Backend API base URL (default: `http://localhost:8084` in dev, `https://api.uniroute.dev` in prod)
+- `VITE_TUNNEL_SERVER_URL` - Tunnel server URL (default: `http://localhost:8080` in dev)
+- `VITE_API_URL` - Legacy API URL (optional, kept for compatibility)
+
+**Note:** All Vite environment variables must be prefixed with `VITE_` to be exposed to the client-side code.
+
+### Development vs Production
+
+- **Development** (`npm run dev`): Uses `http://localhost:8084` by default
+- **Production** (`npm run build`): Uses `https://api.uniroute.dev` by default
+
+You can override these by setting the environment variables in your `.env` file.
+
+## Development
 
 ```bash
 # Install dependencies
@@ -30,32 +54,52 @@ npm run dev
 # Build for production
 npm run build
 
-# Run tests
-npm run test
+# Preview production build
+npm run preview
 ```
 
-## 📁 Project Structure
+## Testing
 
-See [FRONTEND_ARCHITECTURE.md](../FRONTEND_ARCHITECTURE.md) for complete structure.
+```bash
+# Run unit tests
+npm run test:unit
 
-## 🔐 Security
+# Run E2E tests
+npm run test:e2e
 
-- XSS prevention (DOMPurify)
-- CSRF protection
-- Content Security Policy (CSP)
-- Secure headers
-- Input validation
-- Output sanitization
+# Run all tests
+npm test
+```
 
-## 🧪 Testing
+## Project Structure
 
-- Unit tests: Vitest
-- E2E tests: Playwright
-- Coverage target: >80%
+```
+frontend/
+├── src/
+│   ├── assets/          # Static assets
+│   ├── components/      # Reusable Vue components
+│   ├── composables/     # Vue composables
+│   ├── layouts/         # Layout components
+│   ├── router/          # Vue Router configuration
+│   ├── services/        # API services
+│   ├── stores/          # Pinia stores
+│   ├── types/           # TypeScript types
+│   ├── utils/           # Utility functions
+│   └── views/           # Page components
+├── .env                 # Environment variables (not in git)
+├── .env.example         # Example environment file
+└── vite.config.ts       # Vite configuration
+```
 
-## 📚 Documentation
+## Tech Stack
 
-- [Frontend Architecture](../FRONTEND_ARCHITECTURE.md)
-- [Security Overview](../SECURITY_OVERVIEW.md)
-- [API Keys Explained](../docs/API_KEYS_EXPLAINED.md)
-
+- **Vue 3** - Progressive JavaScript framework
+- **TypeScript** - Type safety
+- **Vite** - Build tool and dev server
+- **Tailwind CSS** - Utility-first CSS framework
+- **Pinia** - State management
+- **Vue Router** - Routing
+- **Axios** - HTTP client
+- **VeeValidate + Yup** - Form validation
+- **Vitest** - Unit testing
+- **Playwright** - E2E testing

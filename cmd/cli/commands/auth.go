@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var authCmd = &cobra.Command{
@@ -151,13 +152,24 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 	if authEmail == "" {
 		fmt.Print("Email: ")
 		fmt.Scanln(&authEmail)
+		if authEmail == "" {
+			return fmt.Errorf("email is required")
+		}
 	}
 
 	// Get password if not provided
 	if authPassword == "" {
 		fmt.Print("Password: ")
-		// Note: In production, use a library to hide password input
-		fmt.Scanln(&authPassword)
+		// Read password without echoing to terminal (cross-platform)
+		passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+		if err != nil {
+			return fmt.Errorf("failed to read password: %w", err)
+		}
+		fmt.Println() // Print newline after password input
+		authPassword = string(passwordBytes)
+		if authPassword == "" {
+			return fmt.Errorf("password is required")
+		}
 	}
 
 	client := &http.Client{

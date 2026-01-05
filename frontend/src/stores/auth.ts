@@ -15,7 +15,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!user.value) return false
     
     // Admin has all permissions
-    if (user.value.role === 'admin') {
+    if (user.value.roles?.includes('admin')) {
       return true
     }
     
@@ -36,7 +36,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const hasRole = (role: string): boolean => {
     if (!user.value) return false
-    return user.value.role === role
+    return user.value.roles?.includes(role) || false
   }
 
   const login = async (credentials: LoginCredentials) => {
@@ -47,10 +47,8 @@ export const useAuthStore = defineStore('auth', () => {
       token.value = response.token
       user.value = response.user
       
-      // Store token securely (httpOnly cookie preferred, localStorage as fallback)
-      if (response.token) {
-        localStorage.setItem('auth_token', response.token)
-      }
+      // Token storage is handled by the component based on rememberMe
+      // This allows for sessionStorage vs localStorage choice
       
       return response
     } catch (err: any) {
@@ -66,11 +64,15 @@ export const useAuthStore = defineStore('auth', () => {
     error.value = null
     try {
       const response = await authApi.register(data)
-      token.value = response.token
-      user.value = response.user
-      
+      // Registration now returns message instead of token (email verification required)
+      // If token is present, store it; otherwise, user needs to verify email
       if (response.token) {
+        token.value = response.token
+        user.value = response.user
         localStorage.setItem('auth_token', response.token)
+      } else if (response.user) {
+        // Store user info even without token (for verification flow)
+        user.value = response.user
       }
       
       return response
@@ -92,12 +94,34 @@ export const useAuthStore = defineStore('auth', () => {
       token.value = null
       user.value = null
       localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_token_expires')
+      localStorage.removeItem('remembered_email')
+      sessionStorage.removeItem('auth_token')
+      
       loading.value = false
     }
   }
 
   const checkAuth = async () => {
-    const storedToken = localStorage.getItem('auth_token')
+    // Check localStorage first (remember me), then sessionStorage
+    let storedToken = localStorage.getItem('auth_token')
+    
+    // Check if token has expired (if expiration is set)
+    if (storedToken) {
+      const expires = localStorage.getItem('auth_token_expires')
+      if (expires && Date.now() > parseInt(expires)) {
+        // Token expired, clear it
+        localStorage.removeItem('auth_token')
+        localStorage.removeItem('auth_token_expires')
+        storedToken = null
+      }
+    }
+    
+    // Fall back to sessionStorage if no localStorage token
+    if (!storedToken) {
+      storedToken = sessionStorage.getItem('auth_token')
+    }
+    
     if (!storedToken) {
       return false
     }
@@ -106,11 +130,15 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const profile = await authApi.getProfile()
       user.value = profile
+      
       return true
     } catch (err) {
       // Token invalid, clear it
       token.value = null
       localStorage.removeItem('auth_token')
+      localStorage.removeItem('auth_token_expires')
+      sessionStorage.removeItem('auth_token')
+      
       return false
     }
   }
@@ -130,6 +158,22 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  const resendVerificationEmail = async (email: string) => {
+    loading.value = true
+    error.value = null
+    try {
+      await authApi.resendVerification(email)
+      return { message: 'Verification email sent successfully' }
+    } catch (err: any) {
+      // Extract error message from response
+      const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to resend verification email'
+      error.value = errorMessage
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     user,
     token,
@@ -142,7 +186,8 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     logout,
     checkAuth,
-    refreshToken
+    refreshToken,
+    resendVerificationEmail
   }
 })
 

@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/api/handlers"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/api/middleware"
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/email"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/gateway"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
@@ -17,14 +18,21 @@ func SetupRouter(
 	apiKeyServiceV2 *security.APIKeyServiceV2, // Phase 2 (database)
 	jwtService *security.JWTService,
 	rateLimiter *security.RateLimiter,
+	authRateLimiter *security.AuthRateLimiter, // Progressive rate limiter for auth endpoints
 	ipWhitelist []string,
 	requestRepo *storage.RequestRepository, // Phase 5 (analytics)
 	providerKeyService *security.ProviderKeyService, // BYOK: Provider key service
+	postgresClient *storage.PostgresClient, // For user repository
+	emailService interface{}, // Email service (can be nil)
+	frontendURL string, // Frontend URL for email links
 ) *gin.Engine {
 	// Set Gin mode
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.Default()
+
+	// Apply CORS middleware first (before other middleware)
+	r.Use(middleware.CORSMiddleware())
 
 	// Apply security headers globally
 	r.Use(middleware.SecurityHeadersMiddleware())
@@ -38,8 +46,69 @@ func SetupRouter(
 	healthHandler := handlers.NewHealthHandler()
 	r.GET("/health", healthHandler.HandleHealth)
 
+	// Swagger UI documentation (no auth required)
+	r.GET("/swagger", handlers.HandleSwaggerUI)
+	r.GET("/swagger.json", handlers.HandleSwaggerJSON)
+
 	// Phase 5: Prometheus metrics endpoint (no auth required)
 	r.GET("/metrics", handlers.HandleMetrics)
+
+	// Error logging endpoint (no auth required, but rate limited)
+	if postgresClient != nil {
+		errorLogRepo := storage.NewErrorLogRepository(postgresClient.Pool())
+		errorLogHandler := handlers.NewErrorLogHandler(errorLogRepo)
+		r.POST("/api/errors/log", errorLogHandler.HandleLogError)
+	}
+
+	// Auth routes (no auth required for register/login)
+	if postgresClient != nil && jwtService != nil {
+		userRepo := storage.NewUserRepository(postgresClient, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+
+		// Convert emailService to *email.EmailService if not nil
+		var emailSvc *email.EmailService
+		if emailService != nil {
+			if svc, ok := emailService.(*email.EmailService); ok {
+				emailSvc = svc
+			}
+		}
+
+		authHandler := handlers.NewAuthHandler(userRepo, jwtService, emailSvc, authRateLimiter, frontendURL, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+
+		auth := r.Group("/auth")
+		auth.POST("/register", authHandler.HandleRegister)
+
+		// Login with progressive rate limiting (max 5 attempts before 15min block)
+		loginGroup := auth.Group("")
+		if authRateLimiter != nil {
+			loginGroup.Use(middleware.AuthRateLimitMiddleware(authRateLimiter, 5))
+		}
+		loginGroup.POST("/login", authHandler.HandleLogin)
+
+		auth.POST("/logout", authHandler.HandleLogout)
+
+		// Password reset with progressive rate limiting (max 5 attempts before 15min block)
+		passwordResetGroup := auth.Group("")
+		if authRateLimiter != nil {
+			passwordResetGroup.Use(middleware.AuthRateLimitMiddleware(authRateLimiter, 5))
+		}
+		passwordResetGroup.POST("/password-reset", authHandler.HandlePasswordResetRequest)
+		passwordResetGroup.POST("/password-reset/confirm", authHandler.HandlePasswordResetConfirm)
+
+		// Email verification with progressive rate limiting (max 5 attempts before 15min block)
+		verifyGroup := auth.Group("")
+		if authRateLimiter != nil {
+			verifyGroup.Use(middleware.AuthRateLimitMiddleware(authRateLimiter, 5))
+		}
+		verifyGroup.POST("/verify-email", authHandler.HandleVerifyEmail)
+		verifyGroup.POST("/resend-verification", authHandler.HandleResendVerification)
+
+		// Protected auth routes (require JWT)
+		authProtected := auth.Group("")
+		authProtected.Use(middleware.JWTAuthMiddleware(jwtService))
+		authProtected.GET("/profile", authHandler.HandleProfile)
+		authProtected.PUT("/profile", handlers.NewUserHandler(userRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger()).HandleUpdateProfile)
+		authProtected.POST("/refresh", authHandler.HandleRefresh)
+	}
 
 	// API routes (require API key authentication)
 	api := r.Group("/v1")
@@ -79,10 +148,11 @@ func SetupRouter(
 	api.POST("/routing/estimate-cost", routingHandler.GetCostEstimate)
 	api.GET("/routing/latency", routingHandler.GetLatencyStats)
 
-	// Admin routes (require JWT authentication)
+	// Admin routes (require JWT authentication and admin role)
 	if jwtService != nil {
 		admin := r.Group("/admin")
 		admin.Use(middleware.JWTAuthMiddleware(jwtService))
+		admin.Use(middleware.AdminMiddleware()) // Require admin role
 
 		apiKeyHandler := handlers.NewAPIKeyHandler(apiKeyServiceV2)
 		admin.POST("/api-keys", apiKeyHandler.CreateAPIKey)
@@ -101,6 +171,30 @@ func SetupRouter(
 			admin.PUT("/provider-keys/:provider", providerKeyHandler.UpdateProviderKey)
 			admin.DELETE("/provider-keys/:provider", providerKeyHandler.DeleteProviderKey)
 			admin.POST("/provider-keys/:provider/test", providerKeyHandler.TestProviderKey)
+		}
+
+		// Error logs management (admin only)
+		if postgresClient != nil {
+			errorLogRepo := storage.NewErrorLogRepository(postgresClient.Pool())
+			errorLogHandler := handlers.NewErrorLogHandler(errorLogRepo)
+			admin.GET("/errors", errorLogHandler.HandleGetErrorLogs)
+			admin.PATCH("/errors/:id/resolve", errorLogHandler.HandleMarkResolved)
+		}
+
+		// Email testing (admin only)
+		if emailService != nil {
+			if svc, ok := emailService.(*email.EmailService); ok {
+				emailTestHandler := handlers.NewEmailTestHandler(svc, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+				admin.GET("/email/config", emailTestHandler.HandleGetEmailConfig)
+				admin.POST("/email/test", emailTestHandler.HandleTestEmail)
+			}
+		}
+
+		// User management (admin only)
+		if postgresClient != nil {
+			adminUserRepo := storage.NewUserRepository(postgresClient, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+			userHandler := handlers.NewUserHandler(adminUserRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+			admin.PUT("/users/:id/roles", userHandler.HandleUpdateUserRoles)
 		}
 	}
 

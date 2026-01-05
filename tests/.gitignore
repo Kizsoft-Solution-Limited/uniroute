@@ -1,0 +1,13 @@
+# Test artifacts
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Test databases
+*.db
+*.sqlite
+
+# Test logs
+*.log
+

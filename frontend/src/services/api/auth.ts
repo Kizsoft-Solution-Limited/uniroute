@@ -53,6 +53,29 @@ export const authApi = {
    */
   async resetPassword(token: string, password: string): Promise<void> {
     await apiClient.post('/auth/password-reset/confirm', { token, password })
+  },
+
+  /**
+   * Verify email with token
+   */
+  async verifyEmail(token: string): Promise<AuthResponse> {
+    const response = await apiClient.post<AuthResponse>('/auth/verify-email', { token })
+    return response.data
+  },
+
+  /**
+   * Resend verification email
+   */
+  async resendVerification(email: string): Promise<void> {
+    await apiClient.post('/auth/resend-verification', { email })
+  },
+
+  /**
+   * Update user profile (name only - roles cannot be changed)
+   */
+  async updateProfile(data: { name: string }): Promise<User> {
+    const response = await apiClient.put<User>('/auth/profile', data)
+    return response.data
   }
 }
 

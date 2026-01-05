@@ -22,6 +22,39 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresGuest: true }
   },
   {
+    path: '/forgot-password',
+    name: 'forgot-password',
+    component: () => import('@/views/auth/ForgotPassword.vue'),
+    meta: { requiresGuest: true }
+  },
+  {
+    path: '/verify-email',
+    name: 'verify-email',
+    component: () => import('@/views/auth/VerifyEmail.vue'),
+    meta: { requiresGuest: true }
+  },
+  {
+    path: '/download',
+    name: 'download',
+    component: () => import('@/views/Download.vue'),
+    meta: { requiresGuest: true }
+  },
+  {
+    path: '/security',
+    name: 'security',
+    component: () => import('@/views/Security.vue')
+  },
+  {
+    path: '/terms',
+    name: 'terms',
+    component: () => import('@/views/Terms.vue')
+  },
+  {
+    path: '/privacy',
+    name: 'privacy',
+    component: () => import('@/views/Privacy.vue')
+  },
+  {
     path: '/dashboard',
     component: () => import('@/layouts/DashboardLayout.vue'),
     meta: { requiresAuth: true },
@@ -50,6 +83,12 @@ const routes: RouteRecordRaw[] = [
         meta: { permission: 'analytics:read' }
       },
       {
+        path: 'webhook-testing',
+        name: 'webhook-testing',
+        component: () => import('@/views/WebhookTesting.vue'),
+        meta: { permission: 'tunnels:read' }
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('@/views/settings/Settings.vue'),
@@ -66,6 +105,12 @@ const routes: RouteRecordRaw[] = [
             meta: { permission: 'provider-keys:manage' }
           }
         ]
+      },
+      {
+        path: 'errors',
+        name: 'admin-errors',
+        component: () => import('@/views/admin/ErrorLogs.vue'),
+        meta: { permission: 'admin:errors' }
       }
     ]
   },
@@ -80,11 +125,20 @@ const router = createRouter({
   history: createWebHistory(),
   routes,
   scrollBehavior(to, from, savedPosition) {
+    // If there's a saved position (e.g., browser back/forward), use it
     if (savedPosition) {
       return savedPosition
-    } else {
-      return { top: 0 }
     }
+    // If there's a hash in the URL, scroll to that element
+    if (to.hash) {
+      return {
+        el: to.hash,
+        behavior: 'smooth',
+        top: 80 // Offset for fixed header
+      }
+    }
+    // Otherwise, scroll to top
+    return { top: 0, behavior: 'instant' }
   }
 })
 

@@ -2,7 +2,7 @@
   <div :class="cardClasses">
     <div v-if="$slots.header || title" class="card-header">
       <slot name="header">
-        <h3 v-if="title" class="text-lg font-semibold text-gray-900 dark:text-white">
+        <h3 v-if="title" class="text-lg font-semibold text-white">
           {{ title }}
         </h3>
       </slot>
@@ -34,9 +34,9 @@ const cardClasses = computed(() => {
   const base = 'rounded-lg transition-smooth'
   
   const variants = {
-    default: 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700',
-    elevated: 'bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700',
-    outlined: 'bg-transparent border-2 border-gray-300 dark:border-gray-600'
+    default: 'bg-slate-800/60 border border-slate-700/50',
+    elevated: 'bg-slate-800/60 shadow-lg border border-slate-700/50',
+    outlined: 'bg-transparent border-2 border-slate-700/50'
   }
   
   const paddings = {
@@ -52,7 +52,7 @@ const cardClasses = computed(() => {
 
 <style scoped>
 .card-header {
-  @apply mb-4 pb-4 border-b border-gray-200 dark:border-gray-700;
+  @apply mb-4 pb-4 border-b border-slate-700/50;
 }
 
 .card-body {
@@ -60,7 +60,7 @@ const cardClasses = computed(() => {
 }
 
 .card-footer {
-  @apply mt-4 pt-4 border-t border-gray-200 dark:border-gray-700;
+  @apply mt-4 pt-4 border-t border-slate-700/50;
 }
 </style>
 

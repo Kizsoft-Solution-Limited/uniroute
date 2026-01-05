@@ -6,7 +6,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8.svg)](https://golang.org/)
 [![Status](https://img.shields.io/badge/Status-In%20Development-orange)](https://github.com/Kizsoft-Solution-Limited/uniroute)
 
-**100% FREE • Open Source • Self-Hostable**
+**Open Source • Self-Hostable • Managed Service Available**
 
 ---
 
@@ -16,9 +16,9 @@ UniRoute is a unified gateway platform that routes, secures, and manages traffic
 
 ### Why UniRoute?
 
-- ✅ **100% Free** - No pricing, no limits for users
 - ✅ **Open Source** - Full transparency, community-driven
-- ✅ **Self-Hostable** - Deploy anywhere, full control
+- ✅ **Self-Hostable** - Deploy anywhere, full control (100% free)
+- ✅ **Managed Service** - UniRoute handles provider keys, unified billing (pay-as-you-go)
 - ✅ **Local LLM First** - Priority support for local models (Ollama, vLLM) - Free & Private
 - ✅ **Multi-Provider** - Support for OpenAI, Anthropic, Google, Local LLMs, and more
 - ✅ **Shareable** - Host and share your gateway with others (ngrok-like tunneling)
@@ -34,6 +34,7 @@ UniRoute is a unified gateway platform that routes, secures, and manages traffic
 - Go 1.21+
 - PostgreSQL 15+ (or [Supabase](https://supabase.com) free tier)
 - Redis 7+ (or [Upstash](https://upstash.com) free tier)
+- SMTP Server (for email verification and password reset) - [Mailtrap](https://mailtrap.io) (free tier) recommended for development
 - Docker (optional, for containerized deployment)
 
 ### Installation
@@ -72,7 +73,7 @@ make build
 
 # Set up environment
 cp .env.example .env
-# Edit .env with your configuration
+# Edit .env with your configuration (see Environment Variables below)
 
 # Run database migrations
 make migrate
@@ -80,6 +81,63 @@ make migrate
 # Start the server
 make dev
 ```
+
+### Environment Variables
+
+Create a `.env` file in the root directory with the following variables:
+
+```bash
+# Server Configuration
+PORT=8084
+ENV=development
+FRONTEND_URL=http://localhost:3000
+
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/uniroute?sslmode=disable
+
+# Redis (for rate limiting)
+REDIS_URL=redis://localhost:6379
+
+# Security
+API_KEY_SECRET=your-secret-key-min-32-chars
+JWT_SECRET=your-jwt-secret-min-32-chars
+PROVIDER_KEY_ENCRYPTION_KEY=your-encryption-key-32-chars
+
+# SMTP Configuration (for email verification and password reset)
+SMTP_HOST=sandbox.smtp.mailtrap.io
+SMTP_PORT=2525
+SMTP_USERNAME=your-mailtrap-username
+SMTP_PASSWORD=your-mailtrap-password
+SMTP_FROM=noreply@uniroute.dev
+
+# Optional: Cloud Provider API Keys (for Phase 3)
+OPENAI_API_KEY=your-openai-key
+ANTHROPIC_API_KEY=your-anthropic-key
+GOOGLE_API_KEY=your-google-key
+
+# Optional: IP Whitelist (comma-separated)
+IP_WHITELIST=127.0.0.1,::1
+```
+
+#### SMTP Configuration
+
+UniRoute requires SMTP configuration for email verification and password reset functionality. For development, we recommend using [Mailtrap](https://mailtrap.io) (free tier):
+
+1. **Sign up for Mailtrap** (free tier available)
+2. **Get your SMTP credentials** from the Mailtrap dashboard
+3. **Add to `.env` file**:
+   ```bash
+   SMTP_HOST=sandbox.smtp.mailtrap.io
+   SMTP_PORT=2525
+   SMTP_USERNAME=your-mailtrap-username
+   SMTP_PASSWORD=your-mailtrap-password
+   SMTP_FROM=noreply@uniroute.dev
+   ```
+
+**For Production:**
+- Use a production SMTP service (SendGrid, AWS SES, Mailgun, etc.)
+- Update `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, and `SMTP_PASSWORD` accordingly
+- Common ports: `587` (STARTTLS) or `465` (TLS)
 
 See [CLI_INSTALLATION.md](./CLI_INSTALLATION.md) for detailed installation instructions.
 
@@ -142,6 +200,8 @@ uniroute tunnel --port 8084
 - **Load Balancing** - Distribute traffic across multiple instances
 - **Automatic Failover** - Seamless switching when providers fail
 - **Security & Access Control** - API keys, JWT, rate limiting
+- **User Authentication** - Registration, login, email verification, password reset
+- **Email Service** - SMTP integration for verification and password reset emails
 - **Monitoring & Analytics** - Usage tracking, cost tracking, performance metrics
 - **Multi-Provider Support** - OpenAI, Anthropic, Google, Cohere, Local LLMs
 - **Developer Experience** - CLI tool, SDKs, OpenAPI docs
@@ -189,6 +249,7 @@ uniroute tunnel --port 8084
 - **API Framework**: Gin
 - **Database**: PostgreSQL + Redis
 - **Authentication**: JWT + API Keys
+- **Email Service**: SMTP (Mailtrap, SendGrid, AWS SES, etc.)
 - **Monitoring**: Prometheus + Grafana
 - **Logging**: Structured logging (zerolog)
 
@@ -197,17 +258,8 @@ uniroute tunnel --port 8084
 ## 📚 Documentation
 
 - **[SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md)** - 🔐 Complete security documentation and measures
-
-For complete documentation, see **[START_HERE.md](./START_HERE.md)** which includes:
-
-- 📋 Complete project overview
-- 🏗️ Detailed architecture
-- 🔐 Security requirements
-- 🚀 Implementation plan
-- 💰 Cost analysis
-- 🆚 Competitive analysis
-- 📖 API design
-- 🐳 Deployment guides
+- **API Documentation**: Interactive Swagger UI available at `http://localhost:8084/swagger` when the server is running
+- **Postman Collection**: Import `UniRoute.postman_collection.json` for ready-to-use API requests
 
 ---
 
@@ -226,7 +278,7 @@ UniRoute implements enterprise-grade security:
 - ✅ Parameterized queries (SQL injection prevention)
 - ✅ Encrypted secrets at rest
 
-See [START_HERE.md](./START_HERE.md#security-requirements) for the complete security checklist.
+See [SECURITY_OVERVIEW.md](./SECURITY_OVERVIEW.md) for the complete security checklist.
 
 ---
 
@@ -245,7 +297,7 @@ docker-compose up -d
 3. Set environment variables
 4. Deploy automatically
 
-See [START_HERE.md](./START_HERE.md#deployment) for detailed deployment instructions.
+For detailed deployment instructions, see the [Deployment Guide](./docs/PRODUCTION_SETUP.md).
 
 ---
 
@@ -806,29 +858,38 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🔗 Links
 
+## 💝 Donate
+
+UniRoute is an open-source project built with ❤️ by the community. If you find it useful, please consider supporting the project:
+
+- ⭐ **Star the repository** on GitHub
+- 🐛 **Report bugs** and suggest features
+- 💻 **Contribute code** via pull requests
+- ☕ **Buy us a coffee** - [Coming soon]
+
+Your support helps us continue developing and maintaining UniRoute!
+
+---
+
+## 🔗 Links
+
 - **GitHub**: https://github.com/Kizsoft-Solution-Limited/uniroute
-- **Documentation**: See [START_HERE.md](./START_HERE.md)
+- **API Documentation**: `http://localhost:8084/swagger` (when server is running)
 - **Issues**: https://github.com/Kizsoft-Solution-Limited/uniroute/issues
 
 ---
 
-## 🎯 Roadmap
+## ✨ Current Features
 
-**Current Focus: Phase 1 - Local LLM Support** 🏠
-
-- **Phase 1**: Local LLM provider + Shareable server ✅
-- **Phase 2**: Security & Rate Limiting ✅
-- **Phase 3**: Cloud providers (OpenAI, Anthropic, Google) ✅
-- **Phase 4**: Advanced Routing
-- **Phase 5**: Monitoring & Analytics
-- **Phase 6**: Developer Experience (CLI, SDKs, Built-in tunneling)
-
-**Development Approach:**
-- ✅ Complete, test, and verify each phase before moving forward
-- ✅ Iterative development with testing checkpoints
-- ✅ Each phase is production-ready before proceeding
-
-See [START_HERE.md](./START_HERE.md#implementation-plan) for detailed implementation plan.
+- ✅ **Unified API** - Single endpoint for all LLM providers
+- ✅ **Multi-Provider Support** - OpenAI, Anthropic, Google, Local LLMs (Ollama, vLLM)
+- ✅ **User Authentication** - Registration, login, email verification, password reset
+- ✅ **Email Service** - SMTP integration for verification and password reset emails
+- ✅ **Security & Rate Limiting** - API keys, JWT, progressive rate limiting
+- ✅ **Intelligent Routing** - Cost-based, latency-based, and failover routing
+- ✅ **Monitoring & Analytics** - Usage tracking, cost tracking, performance metrics
+- ✅ **Developer Experience** - CLI tool, SDKs, built-in tunneling
+- ✅ **Error Logging** - Admin dashboard for error management
 
 ---
 

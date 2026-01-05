@@ -2,7 +2,7 @@
 
 **One unified gateway for every AI model. Route, secure, and manage traffic to any LLM—cloud or local—with one unified platform.**
 
-**100% FREE • Open Source • Self-Hostable**
+**Open Source • Self-Hostable • Flexible Pricing**
 
 ---
 
@@ -16,19 +16,20 @@
 6. [Security Requirements](#security-requirements)
 7. [Implementation Plan](#implementation-plan)
 8. [Cost Analysis](#cost-analysis)
-9. [Competitive Analysis](#competitive-analysis)
-10. [Features & Roadmap](#features--roadmap)
-11. [Database Schema](#database-schema)
-12. [Deployment](#deployment)
-13. [API Design](#api-design)
-14. [Testing](#testing)
-15. [Documentation](#documentation)
-16. [Pre-Launch Checklist](#pre-launch-checklist)
-17. [Success Metrics](#success-metrics)
-18. [Contributing](#contributing)
-19. [Support & Resources](#support--resources)
-20. [Next Steps](#next-steps)
-21. [Quick Reference](#quick-reference)
+9. [Pricing Model](#pricing-model)
+10. [Competitive Analysis](#competitive-analysis)
+11. [Features & Roadmap](#features--roadmap)
+12. [Database Schema](#database-schema)
+13. [Deployment](#deployment)
+14. [API Design](#api-design)
+15. [Testing](#testing)
+16. [Documentation](#documentation)
+17. [Pre-Launch Checklist](#pre-launch-checklist)
+18. [Success Metrics](#success-metrics)
+19. [Contributing](#contributing)
+20. [Support & Resources](#support--resources)
+21. [Next Steps](#next-steps)
+22. [Quick Reference](#quick-reference)
 
 ---
 
@@ -47,7 +48,7 @@
 - **Documentation**: `uniroute.pages.dev`
 - **Status**: `status.uniroute.pages.dev`
 - **License**: MIT (Open Source)
-- **Pricing**: **100% FREE** - No pricing, no limits for users
+- **Pricing**: Flexible - Free with BYOK/self-hosted, pay-as-you-go for managed service
 
 ### Our Mission
 
@@ -1369,6 +1370,97 @@ Total:                      $5-10/month
 - ✅ DDoS protection (Cloudflare free tier)
 
 **The only "cost" is your time**, which is an investment in learning and building.
+
+---
+
+## 💰 Pricing Model
+
+### Overview
+
+UniRoute offers flexible pricing options:
+
+1. **Managed Service (Pay-as-You-Go)**: UniRoute provides and manages provider keys. Users pay UniRoute for AI model usage only (UniRoute pays providers on your behalf).
+2. **BYOK (Bring Your Own Keys)**: Users provide their own provider keys. UniRoute service is completely free - users pay providers directly.
+3. **Self-Hosted**: Users deploy UniRoute on their infrastructure. Completely free and open source.
+
+### Key Principle
+
+**UniRoute charges users only for AI model usage when using the managed service** (because UniRoute pays providers on your behalf). All other features are completely free:
+- ✅ Tunneling - Free
+- ✅ Webhook Testing - Free
+- ✅ Analytics & Monitoring - Free
+- ✅ Routing & Load Balancing - Free
+- ✅ Security Features - Free
+- ✅ API Management - Free
+
+### Pricing Structure
+
+**Current Model: Pay-as-You-Go**
+- Pricing = Provider Cost × (1 + Margin) × (1 + Overhead)
+- Margin: 10-20% (profit)
+- Overhead: 5-10% (operational costs)
+- No monthly minimums, no setup fees
+- Billed per request based on actual token usage
+
+**Example:**
+```
+GPT-4 Request:
+- Provider Cost: $0.03 per 1M input tokens
+- Margin: 15%
+- Overhead: 5%
+- User Price: $0.03 × 1.15 × 1.05 = $0.0362 per 1M input tokens
+```
+
+### Provider Pricing Reference
+
+| Provider | Model | Input (per 1M) | Output (per 1M) | UniRoute Price (15% margin) |
+|----------|-------|----------------|-----------------|----------------------------|
+| OpenAI | GPT-4 | $30.00 | $60.00 | $36.23 / $72.45 |
+| OpenAI | GPT-4 Turbo | $10.00 | $30.00 | $12.08 / $36.23 |
+| OpenAI | GPT-3.5 Turbo | $0.50 | $1.50 | $0.60 / $1.81 |
+| Anthropic | Claude 3.5 Sonnet | $3.00 | $15.00 | $3.62 / $18.11 |
+| Anthropic | Claude 3 Haiku | $0.25 | $1.25 | $0.30 / $1.51 |
+| Google | Gemini 1.5 Pro | $1.25 | $5.00 | $1.51 / $6.04 |
+| Local | All Models | $0.00 | $0.00 | **FREE** |
+
+### Future: Subscription Plans
+
+**Planned Plans:**
+1. **Free Tier** (BYOK/Self-Hosted): Unlimited requests, all features free
+2. **Starter Plan** (Managed): Pay-as-you-go, no minimum
+3. **Professional Plan** (Managed): 10-15% discount, $100+/month minimum
+4. **Enterprise Plan** (Managed): Custom pricing, $1000+/month minimum
+
+**Subscription Benefits:**
+- Volume discounts (5-25% based on usage)
+- Priority support
+- Advanced analytics
+- SLA guarantees (Professional/Enterprise)
+- Custom features (Enterprise)
+
+### Implementation Status
+
+- ✅ Pay-as-you-go pricing implemented
+- ✅ Cost calculation (`internal/gateway/cost_calculator.go`)
+- ✅ Real-time cost tracking
+- ✅ Analytics for usage and costs
+- ⏳ Subscription plans (planned)
+- ⏳ Volume discounts (planned)
+- ⏳ Billing system (planned)
+
+### Cost Optimization
+
+**For Users:**
+1. Use local models when possible (always free)
+2. Choose the right model (GPT-3.5 for simple tasks)
+3. Optimize token usage (shorter prompts)
+4. Monitor usage with analytics
+5. Consider BYOK for existing provider accounts
+
+### Detailed Documentation
+
+For complete pricing details, examples, and future plans, see:
+- **[PRICING_MODEL.md](./PRICING_MODEL.md)** - Complete pricing model documentation
 
 ---
 

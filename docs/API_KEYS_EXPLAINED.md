@@ -38,8 +38,11 @@ const response = await fetch('https://api.uniroute.dev/v1/chat', {
 - Manage access control
 
 ### Cost
-- **FREE** - UniRoute API keys are free
-- No cost to create or use UniRoute API keys
+- **FREE** - UniRoute API keys are free to create
+- **Usage charges apply** - You pay UniRoute for AI model usage (ONLY when using managed service)
+- **FREE with BYOK** - No charges when you provide your own provider keys
+- **FREE when self-hosting** - No charges when self-hosting UniRoute
+- No cost to create or manage UniRoute API keys
 
 ---
 
@@ -94,12 +97,18 @@ GOOGLE_API_KEY=AIza-your-google-key-here
 - **On your behalf** - UniRoute acts as a proxy
 - You're still the one paying the providers
 
-### Cost
+### Cost (BYOK Model)
 - **You pay the providers directly**
 - OpenAI bills you for OpenAI usage
 - Anthropic bills you for Anthropic usage
 - Google bills you for Google usage
 - **UniRoute doesn't charge for using your provider keys**
+
+### Cost (Managed Service Model)
+- **UniRoute bills you** (includes provider costs)
+- UniRoute pays the providers on your behalf
+- Unified billing through UniRoute
+- Pay-as-you-go pricing
 
 ---
 
@@ -149,17 +158,29 @@ Your Application
 
 ## 💰 Billing & Costs
 
-### UniRoute Costs
-- ✅ **FREE** - UniRoute is 100% free and open source
+### UniRoute Costs (Managed Service)
+- 💳 **Pay-as-you-go** - You pay UniRoute for AI model usage
+- 💳 UniRoute pays providers on your behalf
+- 💳 Unified billing through UniRoute
+- 💳 No setup fees, no monthly minimums
+- **Note**: UniRoute charges you because UniRoute pays the providers
+
+### UniRoute Costs (BYOK - Optional)
+- ✅ **FREE** - UniRoute does NOT charge you when you provide your own keys
 - ✅ No charges for using UniRoute
-- ✅ No markup on provider costs
+- ✅ You pay providers directly
+- **Note**: UniRoute is completely free when using BYOK
+
+### UniRoute Costs (Self-Hosted)
+- ✅ **FREE** - UniRoute is completely free when self-hosting
+- ✅ No charges for using UniRoute
+- ✅ You pay providers directly
+- ✅ Open source, no licensing fees
 
 ### Provider Costs
-- 💳 **You pay providers directly**
-- 💳 OpenAI charges you for OpenAI usage
-- 💳 Anthropic charges you for Anthropic usage
-- 💳 Google charges you for Google usage
-- 💳 UniRoute just routes requests - doesn't add costs
+- 💳 **Managed Service**: Billed through UniRoute
+- 💳 **BYOK**: You pay providers directly
+- 💳 OpenAI, Anthropic, Google usage costs apply
 
 ### Local Models
 - ✅ **100% FREE** - No API keys, no costs
@@ -171,7 +192,10 @@ Your Application
 ## 🎯 Common Questions
 
 ### Q: Do I need to pay UniRoute?
-**A**: No! UniRoute is 100% free and open source. You only pay the AI providers (OpenAI, Anthropic, Google) for their usage.
+**A**: 
+- **Managed Service**: Yes, you pay UniRoute for AI model usage (UniRoute pays providers on your behalf)
+- **BYOK (Bring Your Own Keys)**: No, UniRoute does NOT charge you - you pay providers directly
+- **Self-Hosted**: No, UniRoute is completely free - no charges at all
 
 ### Q: Can I use UniRoute without provider API keys?
 **A**: Yes! You can use UniRoute with only local models (Ollama, vLLM) which require no API keys and are completely free.
@@ -229,5 +253,8 @@ Your Application
 
 ---
 
-**Summary**: You provide the AI provider API keys (OpenAI, Anthropic, Google), and UniRoute provides the UniRoute API key. You pay the providers directly, and UniRoute is free! 🎉
+**Summary**: 
+- **Managed Service**: UniRoute provides both API keys. You pay UniRoute for usage (UniRoute pays providers).
+- **BYOK**: You provide the AI provider API keys, and UniRoute provides the UniRoute API key. You pay the providers directly, and UniRoute is free.
+- **Self-Hosted**: You provide the AI provider API keys, and UniRoute is 100% free and open source.
 
