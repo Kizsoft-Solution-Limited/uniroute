@@ -52,9 +52,12 @@ jobs:
       - name: Download dependencies
         shell: bash
         run: |
+          set -e
           echo "Downloading Go dependencies..."
-          go mod download || exit 1
-          go mod verify || exit 1
+          echo "Go version: $(go version)"
+          echo "GOTOOLCHAIN: $GOTOOLCHAIN"
+          go mod download
+          go mod verify
           echo "✅ Dependencies downloaded"
 
       - name: Build CLI
@@ -69,7 +72,16 @@ jobs:
           echo "Go version: $(go version)"
           echo "GOOS: $GOOS"
           echo "GOARCH: $GOARCH"
-          go build -v -o ${{ matrix.binary }} ./cmd/cli
+          echo "Working directory: $(pwd)"
+          echo "Listing cmd/cli directory:"
+          ls -la ./cmd/cli/ || echo "Failed to list cmd/cli"
+          echo ""
+          echo "Attempting build..."
+          go build -v -x -o ${{ matrix.binary }} ./cmd/cli 2>&1 || {
+            echo "❌ Build failed with exit code: $?"
+            echo "Error details above"
+            exit 1
+          }
           if [ "${{ matrix.goos }}" != "windows" ]; then
             chmod +x ${{ matrix.binary }}
           fi
