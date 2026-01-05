@@ -326,19 +326,22 @@ If you **self-host UniRoute**, you need to:
 3. **UniRoute uses your keys** to make requests to providers
 4. **You pay the providers directly** (OpenAI, Anthropic, Google bill you)
 
-### Hosted Setup (UniRoute May Provide Keys)
+### Hosted Setup (UniRoute Managed Service)
 
-If you use **UniRoute's hosted service** (if available):
+If you use **UniRoute's hosted service**:
 
-- **Option A**: You provide your own provider keys (bring your own keys)
+- **Primary Model**: UniRoute provides provider keys (managed service)
+  - UniRoute has pre-configured provider accounts
+  - You pay UniRoute (who pays the providers)
+  - Easier setup, unified billing
+  - Pay-as-you-go pricing
+  - **Note**: UniRoute charges you because UniRoute pays the providers
+
+- **Optional**: You provide your own provider keys (bring your own keys)
   - You configure your OpenAI/Anthropic/Google keys in your UniRoute account
   - You pay providers directly
   - More control, you manage your own billing
-
-- **Option B**: UniRoute provides provider keys (managed service)
-  - UniRoute has pre-configured provider accounts
-  - You pay UniRoute (who pays the providers)
-  - Easier setup, but may have markup
+  - **UniRoute does NOT charge you** - completely free when using BYOK
 
 ### Local Models (No API Keys Needed)
 

@@ -17,7 +17,27 @@ func SecurityHeadersMiddleware() gin.HandlerFunc {
 		c.Header("X-XSS-Protection", "1; mode=block")
 
 		// Content-Security-Policy: Restrict resource loading
-		c.Header("Content-Security-Policy", "default-src 'self'")
+		// Note: CSP is set more permissively in development to allow CORS
+		// In production, this should be more restrictive
+		// Swagger UI needs relaxed CSP to load external resources
+		if gin.Mode() == gin.ReleaseMode {
+			// Check if this is the Swagger UI route (handle with or without trailing slash)
+			path := c.Request.URL.Path
+			if path == "/swagger" || path == "/swagger/" || path == "/swagger.json" {
+				// Relaxed CSP for Swagger UI to allow CDN resources and inline scripts
+				// This allows Swagger UI to load from unpkg.com CDN and execute inline scripts
+				// connect-src includes unpkg.com for source map loading
+				c.Header("Content-Security-Policy", 
+					"default-src 'self'; "+
+					"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; "+
+					"style-src 'self' 'unsafe-inline' https://unpkg.com; "+
+					"font-src 'self' data: https://unpkg.com; "+
+					"img-src 'self' data: https:; "+
+					"connect-src 'self' https://unpkg.com")
+			} else {
+				c.Header("Content-Security-Policy", "default-src 'self'")
+			}
+		}
 
 		// Strict-Transport-Security: Force HTTPS (if using HTTPS)
 		// Only set if request is HTTPS
@@ -31,4 +51,3 @@ func SecurityHeadersMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
-

@@ -13,17 +13,45 @@ build:
 	@CGO_ENABLED=0 go build -o bin/uniroute cmd/cli/main.go
 	@CGO_ENABLED=0 go build -o bin/uniroute-tunnel-server cmd/tunnel-server/main.go
 
-# Test
+# Test - Run all tests (unit + integration + e2e)
 test:
-	@echo "Running tests..."
-	@CGO_ENABLED=0 go test -v ./...
+	@echo "Running all tests..."
+	@CGO_ENABLED=0 go test -v ./... ./tests/...
+
+# Test Unit - Fast, isolated unit tests
+test-unit:
+	@echo "Running unit tests..."
+	@CGO_ENABLED=0 go test -v -short ./tests/unit/...
+
+# Test Integration - Tests requiring external services
+test-integration:
+	@echo "Running integration tests..."
+	@echo "Note: Requires PostgreSQL and Redis to be running"
+	@CGO_ENABLED=0 go test -v ./tests/integration/...
+
+# Test E2E - End-to-end tests
+test-e2e:
+	@echo "Running end-to-end tests..."
+	@echo "Note: Requires full environment setup"
+	@CGO_ENABLED=0 go test -v -timeout 10m ./tests/e2e/...
 
 # Test with coverage
 test-coverage:
 	@echo "Running tests with coverage..."
-	@go test -v -coverprofile=coverage.out ./...
+	@go test -v -coverprofile=coverage.out ./... ./tests/...
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
+
+# Test with race detector
+test-race:
+	@echo "Running tests with race detector..."
+	@go test -race -v ./... ./tests/...
+
+# Test specific package
+test-pkg:
+	@echo "Usage: make test-pkg PKG=./internal/security"
+	@if [ -z "$(PKG)" ]; then echo "Error: PKG not set"; exit 1; fi
+	@go test -v $(PKG)
 
 # Format code
 fmt:

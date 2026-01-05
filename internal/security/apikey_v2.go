@@ -93,6 +93,16 @@ func (s *APIKeyServiceV2) ValidateAPIKey(ctx context.Context, key string) (*stor
 	return apiKey, nil
 }
 
+// ListAPIKeysByUser lists all API keys for a user
+func (s *APIKeyServiceV2) ListAPIKeysByUser(ctx context.Context, userID uuid.UUID) ([]*storage.APIKey, error) {
+	return s.repo.ListByUserID(ctx, userID)
+}
+
+// DeleteAPIKey deletes (revokes) an API key
+func (s *APIKeyServiceV2) DeleteAPIKey(ctx context.Context, keyID uuid.UUID) error {
+	return s.repo.Delete(ctx, keyID)
+}
+
 // hashForLookup creates a SHA256 hash for database lookup
 func (s *APIKeyServiceV2) hashForLookup(key string) string {
 	hash := sha256.Sum256([]byte(key))

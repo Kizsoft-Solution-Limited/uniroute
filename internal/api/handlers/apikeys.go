@@ -111,18 +111,59 @@ func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
 		return
 	}
 
-	// For now, return empty list (we'll implement repository method later)
-	_ = userID
+	// List API keys for user
+	keys, err := h.apiKeyService.ListAPIKeysByUser(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	// Format response (don't expose sensitive data)
+	keyList := make([]map[string]interface{}, len(keys))
+	for i, key := range keys {
+		keyList[i] = map[string]interface{}{
+			"id":                  key.ID.String(),
+			"name":                key.Name,
+			"rate_limit_per_minute": key.RateLimitPerMinute,
+			"rate_limit_per_day":    key.RateLimitPerDay,
+			"created_at":          key.CreatedAt.Format(time.RFC3339),
+			"expires_at":          nil,
+			"is_active":            key.IsActive,
+		}
+		if key.ExpiresAt != nil {
+			keyList[i]["expires_at"] = key.ExpiresAt.Format(time.RFC3339)
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"keys": []interface{}{},
-		"message": "API key listing will be implemented",
+		"keys": keyList,
 	})
 }
 
 // RevokeAPIKey handles DELETE /admin/api-keys/:id
 func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
+	// Get user ID from context
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "user not authenticated",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid user ID",
+		})
+		return
+	}
+
+	// Parse API key ID
 	idStr := c.Param("id")
-	id, err := uuid.Parse(idStr)
+	keyID, err := uuid.Parse(idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid API key ID",
@@ -130,10 +171,41 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 		return
 	}
 
-	// For now, return success (we'll implement repository method later)
-	_ = id
+	// Verify the key belongs to the user
+	keys, err := h.apiKeyService.ListAPIKeysByUser(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	// Check if key exists and belongs to user
+	found := false
+	for _, key := range keys {
+		if key.ID == keyID {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "API key not found",
+		})
+		return
+	}
+
+	// Delete the API key
+	if err := h.apiKeyService.DeleteAPIKey(c.Request.Context(), keyID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"message": "API key revoked",
+		"message": "API key revoked successfully",
 	})
 }
 

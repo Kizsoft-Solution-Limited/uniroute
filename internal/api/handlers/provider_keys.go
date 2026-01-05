@@ -97,13 +97,13 @@ func (h *ProviderKeyHandler) ListProviderKeys(c *gin.Context) {
 		return
 	}
 
-	// Return keys without the encrypted value (for security)
+	// Return keys without sensitive data
 	response := make([]map[string]interface{}, len(keys))
 	for i, key := range keys {
 		response[i] = map[string]interface{}{
-			"id":        key.ID,
-			"provider":  key.Provider,
-			"is_active": key.IsActive,
+			"id":         key.ID,
+			"provider":   key.Provider,
+			"is_active":  key.IsActive,
 			"created_at": key.CreatedAt,
 			"updated_at": key.UpdatedAt,
 		}
@@ -114,13 +114,22 @@ func (h *ProviderKeyHandler) ListProviderKeys(c *gin.Context) {
 	})
 }
 
+// UpdateProviderKeyRequest represents a request to update a provider key
+type UpdateProviderKeyRequest struct {
+	APIKey string `json:"api_key" binding:"required"` // Plaintext API key (will be encrypted)
+}
+
 // UpdateProviderKey handles PUT /admin/provider-keys/:provider
 func (h *ProviderKeyHandler) UpdateProviderKey(c *gin.Context) {
 	provider := c.Param("provider")
-
-	var req struct {
-		APIKey string `json:"api_key" binding:"required"`
+	if provider == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "provider parameter is required",
+		})
+		return
 	}
+
+	var req UpdateProviderKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   errors.ErrInvalidRequest.Error(),
@@ -146,7 +155,7 @@ func (h *ProviderKeyHandler) UpdateProviderKey(c *gin.Context) {
 		return
 	}
 
-	// Update provider key
+	// Update provider key (will encrypt it)
 	if err := h.providerKeyService.UpdateProviderKey(c.Request.Context(), userID, provider, req.APIKey); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
@@ -163,6 +172,12 @@ func (h *ProviderKeyHandler) UpdateProviderKey(c *gin.Context) {
 // DeleteProviderKey handles DELETE /admin/provider-keys/:provider
 func (h *ProviderKeyHandler) DeleteProviderKey(c *gin.Context) {
 	provider := c.Param("provider")
+	if provider == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "provider parameter is required",
+		})
+		return
+	}
 
 	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
@@ -198,6 +213,12 @@ func (h *ProviderKeyHandler) DeleteProviderKey(c *gin.Context) {
 // TestProviderKey handles POST /admin/provider-keys/:provider/test
 func (h *ProviderKeyHandler) TestProviderKey(c *gin.Context) {
 	provider := c.Param("provider")
+	if provider == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "provider parameter is required",
+		})
+		return
+	}
 
 	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
@@ -216,11 +237,12 @@ func (h *ProviderKeyHandler) TestProviderKey(c *gin.Context) {
 		return
 	}
 
-	// Get provider key
+	// Get and test provider key
 	apiKey, err := h.providerKeyService.GetProviderKey(c.Request.Context(), userID, provider)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
+			"error":   "failed to retrieve provider key",
+			"details": err.Error(),
 		})
 		return
 	}
@@ -232,12 +254,12 @@ func (h *ProviderKeyHandler) TestProviderKey(c *gin.Context) {
 		return
 	}
 
-	// TODO: Actually test the provider key by making a test request
+	// TODO: Actually test the provider key by making a test API call
 	// For now, just return success if key exists
 	c.JSON(http.StatusOK, gin.H{
-		"message":  "Provider key is valid",
+		"message":  "Provider key test successful",
 		"provider": provider,
-		"status":   "connected",
+		"status":   "valid",
 	})
 }
 

@@ -24,6 +24,13 @@ type Config struct {
 	GoogleAPIKey    string
 	// BYOK: Encryption key for user provider keys
 	ProviderKeyEncryptionKey string
+	// Email/SMTP configuration
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string
+	FrontendURL  string
 }
 
 // Load loads configuration from environment variables
@@ -59,6 +66,12 @@ func Load() *Config {
 		AnthropicAPIKey:            getEnv("ANTHROPIC_API_KEY", ""),
 		GoogleAPIKey:               getEnv("GOOGLE_API_KEY", ""),
 		ProviderKeyEncryptionKey:   getEnv("PROVIDER_KEY_ENCRYPTION_KEY", ""),
+		SMTPHost:                   getEnv("SMTP_HOST", ""),
+		SMTPPort:                   getEnvAsInt("SMTP_PORT", 587),
+		SMTPUsername:               getEnv("SMTP_USERNAME", ""),
+		SMTPPassword:               getEnv("SMTP_PASSWORD", ""),
+		SMTPFrom:                   getEnv("SMTP_FROM", ""),
+		FrontendURL:                getEnv("FRONTEND_URL", "http://localhost:3000"),
 	}
 }
 

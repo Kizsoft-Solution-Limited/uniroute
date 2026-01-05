@@ -111,7 +111,21 @@ func (ts *TunnelServer) Start() error {
 	
 	// Phase 3: API endpoints
 	mux.HandleFunc("/api/tunnels", ts.handleListTunnels)
-	mux.HandleFunc("/api/tunnels/", ts.handleTunnelStats)
+	mux.HandleFunc("/api/tunnels/", func(w http.ResponseWriter, r *http.Request) {
+		// Route based on path pattern
+		path := r.URL.Path
+		if strings.HasSuffix(path, "/stats") {
+			ts.handleTunnelStats(w, r)
+		} else if strings.Contains(path, "/requests/") && strings.HasSuffix(path, "/replay") {
+			ts.handleReplayTunnelRequest(w, r)
+		} else if strings.Contains(path, "/requests/") {
+			ts.handleGetTunnelRequest(w, r)
+		} else if strings.HasSuffix(path, "/requests") {
+			ts.handleListTunnelRequests(w, r)
+		} else {
+			ts.handleTunnelStats(w, r)
+		}
+	})
 
 	ts.httpServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", ts.port),
@@ -500,15 +514,22 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 	// Phase 3: Log request to database
 	if ts.requestLogger != nil {
 		reqLog := &TunnelRequestLog{
-			TunnelID:     tunnel.ID,
-			RequestID:    requestID,
-			Method:       r.Method,
-			Path:         r.URL.Path,
-			StatusCode:   response.Status,
-			LatencyMs:    int(latency.Milliseconds()),
-			RequestSize:  len(reqData.Body),
-			ResponseSize: len(response.Body),
-			CreatedAt:    time.Now(),
+			TunnelID:        tunnel.ID,
+			RequestID:       requestID,
+			Method:          r.Method,
+			Path:            r.URL.Path,
+			QueryString:     r.URL.RawQuery,
+			RequestHeaders:  reqData.Headers,
+			RequestBody:     reqData.Body,
+			StatusCode:      response.Status,
+			ResponseHeaders: response.Headers,
+			ResponseBody:    response.Body,
+			LatencyMs:       int(latency.Milliseconds()),
+			RequestSize:     len(reqData.Body),
+			ResponseSize:    len(response.Body),
+			RemoteAddr:      r.RemoteAddr,
+			UserAgent:       r.UserAgent(),
+			CreatedAt:       time.Now(),
 		}
 		ts.requestLogger.LogRequest(r.Context(), reqLog)
 	}

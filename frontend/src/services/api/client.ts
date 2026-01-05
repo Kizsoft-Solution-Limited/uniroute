@@ -2,8 +2,25 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosR
 import DOMPurify from 'dompurify'
 
 // Create axios instance with base configuration
+// For local development, use http://localhost:8084 (gateway port)
+// For production, use https://api.uniroute.dev
+const getBaseURL = () => {
+  // Check environment variable first
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL
+  }
+  
+  // For local development, default to localhost
+  if (import.meta.env.DEV) {
+    return 'http://localhost:8084'
+  }
+  
+  // Production default
+  return 'https://api.uniroute.dev'
+}
+
 export const apiClient: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://api.uniroute.dev',
+  baseURL: getBaseURL(),
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
@@ -14,8 +31,12 @@ export const apiClient: AxiosInstance = axios.create({
 // Request interceptor - Add auth token and sanitize
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Get token from localStorage (httpOnly cookies preferred in production)
-    const token = localStorage.getItem('auth_token')
+    // Get token from localStorage (remember me) or sessionStorage (session only)
+    let token = localStorage.getItem('auth_token')
+    if (!token) {
+      token = sessionStorage.getItem('auth_token')
+    }
+    
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -50,6 +71,40 @@ apiClient.interceptors.response.use(
     return response
   },
   async (error) => {
+    // Handle network errors (EOF, connection refused, etc.)
+    if (error.code === 'ECONNABORTED' || error.message === 'Network Error' || error.message?.includes('EOF')) {
+      const networkError = {
+        ...error,
+        response: {
+          ...error.response,
+          data: {
+            message: 'Unable to connect to server. Please check if the backend is running.',
+            code: 'CONNECTION_ERROR',
+            details: 'The server may be down or unreachable. Please try again later.'
+          },
+          status: 0
+        }
+      }
+      return Promise.reject(networkError)
+    }
+
+    // Handle connection refused errors
+    if (error.code === 'ERR_NETWORK' || error.code === 'ECONNREFUSED') {
+      const connectionError = {
+        ...error,
+        response: {
+          ...error.response,
+          data: {
+            message: 'Connection refused. Please ensure the backend server is running on port 8084.',
+            code: 'CONNECTION_REFUSED',
+            details: `Cannot connect to ${getBaseURL()}. Is the server running?`
+          },
+          status: 0
+        }
+      }
+      return Promise.reject(connectionError)
+    }
+
     if (error.response) {
       const status = error.response.status
       
@@ -58,6 +113,8 @@ apiClient.interceptors.response.use(
         case 401:
           // Unauthorized - clear token and redirect to login
           localStorage.removeItem('auth_token')
+          localStorage.removeItem('auth_token_expires')
+          sessionStorage.removeItem('auth_token')
           if (window.location.pathname !== '/login') {
             window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname)
           }
@@ -77,7 +134,20 @@ apiClient.interceptors.response.use(
         case 500:
         case 502:
         case 503:
-          // Server errors
+          // Server errors - log to backend
+          import('@/utils/errorLogger').then(({ logServerError }) => {
+            logServerError(
+              `Server error ${status}: ${error.response.data?.error || error.response.data?.message || 'Unknown error'}`,
+              status,
+              {
+                url: error.config?.url,
+                method: error.config?.method,
+                responseData: error.response.data,
+              }
+            )
+          }).catch(() => {
+            // Error logger not available - silently fail
+          })
           console.error('Server error')
           break
       }
@@ -86,6 +156,30 @@ apiClient.interceptors.response.use(
       if (error.response.data?.message) {
         error.response.data.message = DOMPurify.sanitize(error.response.data.message, { ALLOWED_TAGS: [] })
       }
+    } else if (error.request && !error.response) {
+      // Network errors - log to backend
+      import('@/utils/errorLogger').then(({ logNetworkError }) => {
+        logNetworkError(`Network error: ${error.message || 'Unknown network error'}`, {
+          code: error.code,
+          message: error.message,
+        })
+      }).catch(() => {
+        // Error logger not available - silently fail
+      })
+      
+      // Request was made but no response received (network error)
+      const networkError = {
+        ...error,
+        response: {
+          data: {
+            message: 'Network error. Please check your connection and ensure the backend server is running.',
+            code: 'NETWORK_ERROR',
+            details: `Unable to reach ${getBaseURL()}`
+          },
+          status: 0
+        }
+      }
+      return Promise.reject(networkError)
     }
     
     return Promise.reject(error)

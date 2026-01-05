@@ -8,6 +8,7 @@ import (
 
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/api"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/config"
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/email"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/gateway"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/providers"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
@@ -36,6 +37,7 @@ func main() {
 	var apiKeyServiceV2 *security.APIKeyServiceV2
 	var jwtService *security.JWTService
 	var rateLimiter *security.RateLimiter
+	var authRateLimiter *security.AuthRateLimiter
 	var postgresClient *storage.PostgresClient
 
 	// Try to initialize Phase 2 services if configured
@@ -48,6 +50,7 @@ func main() {
 			log.Warn().Err(err).Msg("Failed to connect to Redis, continuing without rate limiting")
 		} else {
 			rateLimiter = security.NewRateLimiter(redisClient)
+			authRateLimiter = security.NewAuthRateLimiter(redisClient)
 			log.Info().Msg("Redis connected - rate limiting enabled")
 			// Note: redisClient will be closed when the process exits
 		}
@@ -163,6 +166,24 @@ func main() {
 		Google:    cfg.GoogleAPIKey,
 	})
 
+	// Initialize email service (reads config from environment variables)
+	emailService := email.NewEmailService(log)
+	
+	// Log SMTP configuration status
+	smtpConfig := emailService.GetConfig()
+	if configured, ok := smtpConfig["configured"].(bool); ok && configured {
+		if host, ok := smtpConfig["host"].(string); ok {
+			if port, ok := smtpConfig["port"].(int); ok {
+				log.Info().
+					Str("host", host).
+					Int("port", port).
+					Msg("Email service initialized")
+			}
+		}
+	} else {
+		log.Warn().Msg("SMTP not configured - set SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD environment variables")
+	}
+
 	// Setup API routes (with Phase 2 & 5 services if available)
 	httpRouter := api.SetupRouter(
 		router,
@@ -170,9 +191,13 @@ func main() {
 		apiKeyServiceV2, // Phase 2 (database)
 		jwtService,      // Phase 2 (JWT)
 		rateLimiter,     // Phase 2 (rate limiting)
+		authRateLimiter, // Progressive rate limiting for auth
 		cfg.IPWhitelist, // Phase 2 (IP whitelist)
 		requestRepo,     // Phase 5 (analytics)
 		providerKeyService, // BYOK: Provider key service
+		postgresClient,  // For user repository (auth)
+		emailService,   // Email service
+		cfg.FrontendURL, // Frontend URL
 	)
 
 	// Start server

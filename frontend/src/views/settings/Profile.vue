@@ -39,13 +39,16 @@
 
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Role
+            Roles
           </label>
           <Input
-            v-model="profile.role"
+            :value="profile.roles?.join(', ') || 'user'"
             disabled
             class="bg-gray-50 dark:bg-gray-800"
           />
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Roles cannot be changed from profile settings
+          </p>
         </div>
 
         <div class="flex items-center space-x-4 pt-4">
@@ -115,6 +118,7 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
+import { authApi } from '@/services/api/auth'
 
 const authStore = useAuthStore()
 const { showToast } = useToast()
@@ -125,7 +129,7 @@ const changingPassword = ref(false)
 const profile = ref({
   email: '',
   name: '',
-  role: ''
+  roles: [] as string[]
 })
 
 const passwordForm = ref({
@@ -145,7 +149,7 @@ const loadProfile = () => {
     profile.value = {
       email: authStore.user.email || '',
       name: authStore.user.name || '',
-      role: authStore.user.role || 'user'
+      roles: authStore.user.roles || ['user']
     }
     originalProfile.value = { ...profile.value }
   }
@@ -154,8 +158,14 @@ const loadProfile = () => {
 const updateProfile = async () => {
   saving.value = true
   try {
-    // TODO: Update via API
-    // await authApi.updateProfile(profile.value)
+    // Only send name - roles are explicitly excluded for security
+    const updatedUser = await authApi.updateProfile({
+      name: profile.value.name
+    })
+    
+    // Update auth store with new user data
+    authStore.user = updatedUser
+    
     showToast('Profile updated successfully', 'success')
     originalProfile.value = { ...profile.value }
   } catch (error: any) {

@@ -52,6 +52,7 @@ func JWTAuthMiddleware(jwtService *security.JWTService) gin.HandlerFunc {
 		// Store user info in context
 		c.Set("user_id", claims.UserID)
 		c.Set("user_email", claims.Email)
+		c.Set("user_roles", claims.Roles)
 
 		c.Next()
 	}

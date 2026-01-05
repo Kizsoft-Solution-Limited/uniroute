@@ -47,6 +47,7 @@ frontend/.playwright/
 frontend/*.local
 frontend/.env.local
 frontend/.env.*.local
+frontend/.env
 frontend/dist-ssr/
 frontend/.output/
 frontend/.nuxt/

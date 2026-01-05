@@ -3,6 +3,8 @@ package tunnel
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -267,10 +269,12 @@ type TunnelSession struct {
 func (r *TunnelRepository) CreateTunnelRequest(ctx context.Context, req *TunnelRequestLog) error {
 	query := `
 		INSERT INTO tunnel_requests (
-			id, tunnel_id, request_id, method, path, status_code,
-			latency_ms, request_size, response_size, created_at
+			id, tunnel_id, request_id, method, path, query_string,
+			request_headers, request_body, status_code, response_headers,
+			response_body, latency_ms, request_size, response_size,
+			remote_addr, user_agent, created_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 	`
 
 	requestID := uuid.New()
@@ -283,32 +287,189 @@ func (r *TunnelRepository) CreateTunnelRequest(ctx context.Context, req *TunnelR
 		return err
 	}
 
+	// Convert headers to JSONB
+	var requestHeadersJSON []byte
+	if req.RequestHeaders != nil {
+		requestHeadersJSON, _ = json.Marshal(req.RequestHeaders)
+	}
+	var responseHeadersJSON []byte
+	if req.ResponseHeaders != nil {
+		responseHeadersJSON, _ = json.Marshal(req.ResponseHeaders)
+	}
+
 	_, err = r.pool.Exec(ctx, query,
 		requestID,
 		tunnelUUID,
 		req.RequestID,
 		req.Method,
 		req.Path,
+		req.QueryString,
+		requestHeadersJSON,
+		req.RequestBody,
 		req.StatusCode,
+		responseHeadersJSON,
+		req.ResponseBody,
 		req.LatencyMs,
 		req.RequestSize,
 		req.ResponseSize,
+		req.RemoteAddr,
+		req.UserAgent,
 		req.CreatedAt,
 	)
 
 	return err
 }
 
+// GetTunnelRequest retrieves a tunnel request by ID
+func (r *TunnelRepository) GetTunnelRequest(ctx context.Context, requestID string) (*TunnelRequestLog, error) {
+	query := `
+		SELECT id, tunnel_id, request_id, method, path, query_string,
+		       request_headers, request_body, status_code, response_headers,
+		       response_body, latency_ms, request_size, response_size,
+		       remote_addr, user_agent, created_at
+		FROM tunnel_requests
+		WHERE request_id = $1
+		LIMIT 1
+	`
+
+	var req TunnelRequestLog
+	var tunnelUUID uuid.UUID
+	var requestHeadersJSON, responseHeadersJSON []byte
+
+	err := r.pool.QueryRow(ctx, query, requestID).Scan(
+		&req.ID,
+		&tunnelUUID,
+		&req.RequestID,
+		&req.Method,
+		&req.Path,
+		&req.QueryString,
+		&requestHeadersJSON,
+		&req.RequestBody,
+		&req.StatusCode,
+		&responseHeadersJSON,
+		&req.ResponseBody,
+		&req.LatencyMs,
+		&req.RequestSize,
+		&req.ResponseSize,
+		&req.RemoteAddr,
+		&req.UserAgent,
+		&req.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	req.TunnelID = tunnelUUID.String()
+
+	// Parse headers JSON
+	if len(requestHeadersJSON) > 0 {
+		json.Unmarshal(requestHeadersJSON, &req.RequestHeaders)
+	}
+	if len(responseHeadersJSON) > 0 {
+		json.Unmarshal(responseHeadersJSON, &req.ResponseHeaders)
+	}
+
+	return &req, nil
+}
+
+// ListTunnelRequests retrieves tunnel requests with filtering
+func (r *TunnelRepository) ListTunnelRequests(ctx context.Context, tunnelID string, limit, offset int, method, pathFilter string) ([]*TunnelRequestLog, error) {
+	query := `
+		SELECT id, tunnel_id, request_id, method, path, query_string,
+		       request_headers, request_body, status_code, response_headers,
+		       response_body, latency_ms, request_size, response_size,
+		       remote_addr, user_agent, created_at
+		FROM tunnel_requests
+		WHERE tunnel_id = $1
+	`
+
+	args := []interface{}{tunnelID}
+	argIndex := 2
+
+	if method != "" {
+		query += fmt.Sprintf(" AND method = $%d", argIndex)
+		args = append(args, method)
+		argIndex++
+	}
+
+	if pathFilter != "" {
+		query += fmt.Sprintf(" AND path LIKE $%d", argIndex)
+		args = append(args, "%"+pathFilter+"%")
+		argIndex++
+	}
+
+	query += " ORDER BY created_at DESC"
+	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
+	args = append(args, limit, offset)
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var requests []*TunnelRequestLog
+	for rows.Next() {
+		var req TunnelRequestLog
+		var tunnelUUID uuid.UUID
+		var requestHeadersJSON, responseHeadersJSON []byte
+
+		err := rows.Scan(
+			&req.ID,
+			&tunnelUUID,
+			&req.RequestID,
+			&req.Method,
+			&req.Path,
+			&req.QueryString,
+			&requestHeadersJSON,
+			&req.RequestBody,
+			&req.StatusCode,
+			&responseHeadersJSON,
+			&req.ResponseBody,
+			&req.LatencyMs,
+			&req.RequestSize,
+			&req.ResponseSize,
+			&req.RemoteAddr,
+			&req.UserAgent,
+			&req.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		req.TunnelID = tunnelUUID.String()
+
+		// Parse headers JSON
+		if len(requestHeadersJSON) > 0 {
+			json.Unmarshal(requestHeadersJSON, &req.RequestHeaders)
+		}
+		if len(responseHeadersJSON) > 0 {
+			json.Unmarshal(responseHeadersJSON, &req.ResponseHeaders)
+		}
+
+		requests = append(requests, &req)
+	}
+
+	return requests, rows.Err()
+}
+
 // TunnelRequestLog represents a logged tunnel request
 type TunnelRequestLog struct {
-	ID           uuid.UUID
-	TunnelID     string
-	RequestID    string
-	Method       string
-	Path         string
-	StatusCode   int
-	LatencyMs    int
-	RequestSize  int
-	ResponseSize int
-	CreatedAt    time.Time
+	ID              uuid.UUID
+	TunnelID        string
+	RequestID       string
+	Method          string
+	Path            string
+	QueryString     string
+	RequestHeaders  map[string]string
+	RequestBody     []byte
+	StatusCode      int
+	ResponseHeaders map[string]string
+	ResponseBody    []byte
+	LatencyMs       int
+	RequestSize     int
+	ResponseSize    int
+	RemoteAddr      string
+	UserAgent       string
+	CreatedAt       time.Time
 }

@@ -22,11 +22,34 @@ type APIKey struct {
 
 // User represents a user in the database
 type User struct {
-	ID           uuid.UUID `db:"id"`
-	Email        string    `db:"email"`
-	PasswordHash string    `db:"password_hash"`
-	CreatedAt    time.Time `db:"created_at"`
-	UpdatedAt    time.Time `db:"updated_at"`
+	ID            uuid.UUID `db:"id"`
+	Email         string    `db:"email"`
+	Name          string    `db:"name"`
+	PasswordHash  string    `db:"password_hash"`
+	EmailVerified bool      `db:"email_verified"`
+	Roles         []string  `db:"roles"` // Array of roles: ['user'], ['admin'], or ['user', 'admin']
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
+}
+
+// PasswordResetToken represents a password reset token
+type PasswordResetToken struct {
+	ID        uuid.UUID  `db:"id"`
+	UserID    uuid.UUID  `db:"user_id"`
+	Token     string     `db:"token"`
+	ExpiresAt time.Time  `db:"expires_at"`
+	Used      bool       `db:"used"`
+	CreatedAt time.Time  `db:"created_at"`
+}
+
+// EmailVerificationToken represents an email verification token
+type EmailVerificationToken struct {
+	ID        uuid.UUID  `db:"id"`
+	UserID    uuid.UUID  `db:"user_id"`
+	Token     string     `db:"token"`
+	ExpiresAt time.Time  `db:"expires_at"`
+	Used      bool       `db:"used"`
+	CreatedAt time.Time  `db:"created_at"`
 }
 
 // UserProviderKey represents a user's provider API key (BYOK)
@@ -38,4 +61,20 @@ type UserProviderKey struct {
 	IsActive        bool       `db:"is_active"`
 	CreatedAt       time.Time  `db:"created_at"`
 	UpdatedAt       time.Time  `db:"updated_at"`
+}
+
+// ErrorLog represents a frontend error log
+type ErrorLog struct {
+	ID         uuid.UUID              `db:"id"`
+	UserID     *uuid.UUID             `db:"user_id"` // Nullable
+	ErrorType  string                 `db:"error_type"` // 'exception', 'message', 'network', 'server'
+	Message    string                 `db:"message"`
+	StackTrace *string                `db:"stack_trace"` // Nullable
+	URL        *string                `db:"url"` // Nullable
+	UserAgent  *string                `db:"user_agent"` // Nullable
+	IPAddress  *string                `db:"ip_address"` // Nullable
+	Context    map[string]interface{} `db:"context"` // JSONB
+	Severity   string                 `db:"severity"` // 'error', 'warning', 'info'
+	Resolved   bool                   `db:"resolved"`
+	CreatedAt  time.Time              `db:"created_at"`
 }

@@ -26,17 +26,25 @@ func NewJWTService(secret string) *JWTService {
 
 // Claims represents JWT claims
 type Claims struct {
-	UserID string `json:"user_id"`
-	Email  string `json:"email"`
+	UserID string   `json:"user_id"`
+	Email  string   `json:"email"`
+	Roles  []string `json:"roles"` // Array of roles: ['user'], ['admin'], or ['user', 'admin']
 	jwt.RegisteredClaims
 }
 
 // GenerateToken generates a new JWT token
-func (j *JWTService) GenerateToken(userID, email string, expirationTime time.Duration) (string, error) {
+func (j *JWTService) GenerateToken(userID, email string, roles []string, expirationTime time.Duration) (string, error) {
 	expiration := time.Now().Add(expirationTime)
+	
+	// Ensure roles is not nil and has at least 'user' role
+	if roles == nil || len(roles) == 0 {
+		roles = []string{"user"}
+	}
+	
 	claims := &Claims{
 		UserID: userID,
 		Email:  email,
+		Roles:  roles,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiration),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
