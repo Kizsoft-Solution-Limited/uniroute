@@ -40,22 +40,23 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.24.0'
 
       - name: Build CLI
+        shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
           go build -o ${{ matrix.binary }} ./cmd/cli
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            echo "Binary: ${{ matrix.binary }}"
-          else
+          if [ "${{ matrix.goos }}" != "windows" ]; then
             chmod +x ${{ matrix.binary }}
           fi
+          echo "Built: ${{ matrix.binary }}"
 
       - name: Build Gateway
+        shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
@@ -69,6 +70,7 @@ jobs:
           fi
 
       - name: Build Tunnel Server
+        shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
