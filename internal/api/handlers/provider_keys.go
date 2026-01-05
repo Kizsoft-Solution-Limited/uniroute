@@ -27,7 +27,7 @@ type AddProviderKeyRequest struct {
 	APIKey   string `json:"api_key" binding:"required"`  // Plaintext API key (will be encrypted)
 }
 
-// AddProviderKey handles POST /admin/provider-keys
+// AddProviderKey handles POST /auth/provider-keys (user route - users manage their own provider keys BYOK)
 func (h *ProviderKeyHandler) AddProviderKey(c *gin.Context) {
 	var req AddProviderKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -69,7 +69,7 @@ func (h *ProviderKeyHandler) AddProviderKey(c *gin.Context) {
 	})
 }
 
-// ListProviderKeys handles GET /admin/provider-keys
+// ListProviderKeys handles GET /auth/provider-keys (user route - users manage their own provider keys BYOK)
 func (h *ProviderKeyHandler) ListProviderKeys(c *gin.Context) {
 	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
@@ -119,7 +119,7 @@ type UpdateProviderKeyRequest struct {
 	APIKey string `json:"api_key" binding:"required"` // Plaintext API key (will be encrypted)
 }
 
-// UpdateProviderKey handles PUT /admin/provider-keys/:provider
+// UpdateProviderKey handles PUT /auth/provider-keys/:provider (user route - users manage their own provider keys BYOK)
 func (h *ProviderKeyHandler) UpdateProviderKey(c *gin.Context) {
 	provider := c.Param("provider")
 	if provider == "" {
@@ -169,7 +169,7 @@ func (h *ProviderKeyHandler) UpdateProviderKey(c *gin.Context) {
 	})
 }
 
-// DeleteProviderKey handles DELETE /admin/provider-keys/:provider
+// DeleteProviderKey handles DELETE /auth/provider-keys/:provider (user route - users manage their own provider keys BYOK)
 func (h *ProviderKeyHandler) DeleteProviderKey(c *gin.Context) {
 	provider := c.Param("provider")
 	if provider == "" {
@@ -210,7 +210,7 @@ func (h *ProviderKeyHandler) DeleteProviderKey(c *gin.Context) {
 	})
 }
 
-// TestProviderKey handles POST /admin/provider-keys/:provider/test
+// TestProviderKey handles POST /auth/provider-keys/:provider/test (user route - users manage their own provider keys BYOK)
 func (h *ProviderKeyHandler) TestProviderKey(c *gin.Context) {
 	provider := c.Param("provider")
 	if provider == "" {

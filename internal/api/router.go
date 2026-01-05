@@ -108,6 +108,24 @@ func SetupRouter(
 		authProtected.GET("/profile", authHandler.HandleProfile)
 		authProtected.PUT("/profile", handlers.NewUserHandler(userRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger()).HandleUpdateProfile)
 		authProtected.POST("/refresh", authHandler.HandleRefresh)
+
+		// API key management (user routes - users manage their own keys)
+		if apiKeyServiceV2 != nil {
+			apiKeyHandler := handlers.NewAPIKeyHandler(apiKeyServiceV2)
+			authProtected.POST("/api-keys", apiKeyHandler.CreateAPIKey)
+			authProtected.GET("/api-keys", apiKeyHandler.ListAPIKeys)
+			authProtected.DELETE("/api-keys/:id", apiKeyHandler.RevokeAPIKey)
+		}
+
+		// Provider key management (user routes - users manage their own provider keys BYOK)
+		if providerKeyService != nil {
+			providerKeyHandler := handlers.NewProviderKeyHandler(providerKeyService)
+			authProtected.POST("/provider-keys", providerKeyHandler.AddProviderKey)
+			authProtected.GET("/provider-keys", providerKeyHandler.ListProviderKeys)
+			authProtected.PUT("/provider-keys/:provider", providerKeyHandler.UpdateProviderKey)
+			authProtected.DELETE("/provider-keys/:provider", providerKeyHandler.DeleteProviderKey)
+			authProtected.POST("/provider-keys/:provider/test", providerKeyHandler.TestProviderKey)
+		}
 	}
 
 	// API routes (require API key authentication)
@@ -154,24 +172,9 @@ func SetupRouter(
 		admin.Use(middleware.JWTAuthMiddleware(jwtService))
 		admin.Use(middleware.AdminMiddleware()) // Require admin role
 
-		apiKeyHandler := handlers.NewAPIKeyHandler(apiKeyServiceV2)
-		admin.POST("/api-keys", apiKeyHandler.CreateAPIKey)
-		admin.GET("/api-keys", apiKeyHandler.ListAPIKeys)
-		admin.DELETE("/api-keys/:id", apiKeyHandler.RevokeAPIKey)
-
 		// Phase 4: Admin routing endpoints
 		admin.POST("/routing/strategy", routingHandler.SetRoutingStrategy)
 		admin.GET("/routing/strategy", routingHandler.GetRoutingStrategy)
-
-		// BYOK: Provider key management endpoints
-		if providerKeyService != nil {
-			providerKeyHandler := handlers.NewProviderKeyHandler(providerKeyService)
-			admin.POST("/provider-keys", providerKeyHandler.AddProviderKey)
-			admin.GET("/provider-keys", providerKeyHandler.ListProviderKeys)
-			admin.PUT("/provider-keys/:provider", providerKeyHandler.UpdateProviderKey)
-			admin.DELETE("/provider-keys/:provider", providerKeyHandler.DeleteProviderKey)
-			admin.POST("/provider-keys/:provider/test", providerKeyHandler.TestProviderKey)
-		}
 
 		// Error logs management (admin only)
 		if postgresClient != nil {
@@ -194,6 +197,7 @@ func SetupRouter(
 		if postgresClient != nil {
 			adminUserRepo := storage.NewUserRepository(postgresClient, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 			userHandler := handlers.NewUserHandler(adminUserRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+			admin.GET("/users", userHandler.HandleListUsers)
 			admin.PUT("/users/:id/roles", userHandler.HandleUpdateUserRoles)
 		}
 	}

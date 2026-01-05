@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
 	"github.com/gin-gonic/gin"
@@ -161,5 +162,63 @@ func (h *UserHandler) HandleUpdateUserRoles(c *gin.Context) {
 			Roles:         roles,
 			CreatedAt:     user.CreatedAt,
 		},
+	})
+}
+
+// HandleListUsers handles listing all users (admin only)
+func (h *UserHandler) HandleListUsers(c *gin.Context) {
+	// Parse pagination
+	limit := 50 // default
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	offset := 0
+	if offsetStr := c.Query("offset"); offsetStr != "" {
+		if parsed, err := strconv.Atoi(offsetStr); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	users, err := h.userRepo.ListUsers(c.Request.Context(), limit, offset)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to list users")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list users"})
+		return
+	}
+
+	// Get total count
+	total, err := h.userRepo.CountUsers(c.Request.Context())
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to count users")
+		// Continue without total count
+		total = -1
+	}
+
+	// Convert to response format (exclude password hash)
+	response := make([]UserResponse, 0, len(users))
+	for _, user := range users {
+		roles := user.Roles
+		if len(roles) == 0 {
+			roles = []string{"user"}
+		}
+		response = append(response, UserResponse{
+			ID:            user.ID.String(),
+			Email:         user.Email,
+			Name:          user.Name,
+			EmailVerified: user.EmailVerified,
+			Roles:         roles,
+			CreatedAt:     user.CreatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"users": response,
+		"limit": limit,
+		"offset": offset,
+		"count": len(response),
+		"total": total,
 	})
 }

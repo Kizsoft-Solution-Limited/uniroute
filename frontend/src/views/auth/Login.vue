@@ -245,7 +245,12 @@ const handleLogin = async () => {
 
     // Redirect to dashboard or intended route
     const redirect = route.query.redirect as string
-    router.push(redirect || '/dashboard')
+    // Validate redirect is an internal route (security: prevent open redirect)
+    if (redirect && (redirect.startsWith('/dashboard') || redirect.startsWith('/'))) {
+      router.push(redirect)
+    } else {
+      router.push('/dashboard')
+    }
   } catch (err: any) {
     const appError = ErrorHandler.handleApiError(err)
     

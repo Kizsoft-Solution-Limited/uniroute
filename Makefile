@@ -75,6 +75,11 @@ security:
 	@which gosec > /dev/null || (echo "Installing gosec..." && go install github.com/securego/gosec/v2/cmd/gosec@latest)
 	@gosec ./...
 
+# Migrate - Run database migrations
+migrate:
+	@echo "Running database migrations..."
+	@./scripts/run_migrations.sh
+
 # Clean
 clean:
 	@echo "Cleaning..."

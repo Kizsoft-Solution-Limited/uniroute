@@ -346,3 +346,58 @@ func (r *UserRepository) UpdateUserRoles(ctx context.Context, userID uuid.UUID, 
 
 	return nil
 }
+
+// ListUsers retrieves all users (admin only)
+func (r *UserRepository) ListUsers(ctx context.Context, limit, offset int) ([]*User, error) {
+	query := `
+		SELECT id, email, name, password_hash, COALESCE(email_verified, false) as email_verified, 
+		       COALESCE(roles, ARRAY['user']::TEXT[]) as roles, created_at, updated_at
+		FROM users
+		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2
+	`
+
+	rows, err := r.client.pool.Query(ctx, query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*User
+	for rows.Next() {
+		var user User
+		err := rows.Scan(
+			&user.ID,
+			&user.Email,
+			&user.Name,
+			&user.PasswordHash,
+			&user.EmailVerified,
+			&user.Roles,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+		users = append(users, &user)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating users: %w", err)
+	}
+
+	return users, nil
+}
+
+// CountUsers returns the total number of users
+func (r *UserRepository) CountUsers(ctx context.Context) (int, error) {
+	query := `SELECT COUNT(*) FROM users`
+
+	var count int
+	err := r.client.pool.QueryRow(ctx, query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count users: %w", err)
+	}
+
+	return count, nil
+}

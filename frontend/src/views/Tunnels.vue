@@ -159,8 +159,8 @@ const loadTunnels = async () => {
 }
 
 const viewTunnelStats = (id: string) => {
-  // TODO: Navigate to tunnel stats page or show modal
-  showToast('Tunnel stats coming soon', 'info')
+  // Navigate to tunnel detail page
+  window.location.href = `/dashboard/tunnels/${id}`
 }
 
 const disconnectTunnel = async (id: string) => {
