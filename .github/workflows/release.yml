@@ -41,6 +41,21 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
+      
+      - name: Configure Go toolchain
+        shell: bash
+        run: |
+          export GOTOOLCHAIN=local
+          echo "GOTOOLCHAIN=local" >> $GITHUB_ENV
+          echo "Using toolchain from go.mod (go1.24.11)"
+
+      - name: Download dependencies
+        shell: bash
+        run: |
+          echo "Downloading Go dependencies..."
+          go mod download || exit 1
+          go mod verify || exit 1
+          echo "✅ Dependencies downloaded"
 
       - name: Build CLI
         shell: bash
@@ -49,9 +64,12 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
+          set -e
           echo "Building CLI for ${{ matrix.goos }}/${{ matrix.goarch }}"
           echo "Go version: $(go version)"
-          go build -v -o ${{ matrix.binary }} ./cmd/cli || exit 1
+          echo "GOOS: $GOOS"
+          echo "GOARCH: $GOARCH"
+          go build -v -o ${{ matrix.binary }} ./cmd/cli
           if [ "${{ matrix.goos }}" != "windows" ]; then
             chmod +x ${{ matrix.binary }}
           fi
@@ -65,11 +83,12 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
+          set -e
           echo "Building Gateway for ${{ matrix.goos }}/${{ matrix.goarch }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            go build -v -o uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }}.exe ./cmd/gateway || exit 1
+            go build -v -o uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }}.exe ./cmd/gateway
           else
-            go build -v -o uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/gateway || exit 1
+            go build -v -o uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/gateway
             chmod +x uniroute-gateway-${{ matrix.goos }}-${{ matrix.goarch }}
           fi
           echo "✅ Built Gateway"
@@ -81,11 +100,12 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
+          set -e
           echo "Building Tunnel Server for ${{ matrix.goos }}/${{ matrix.goarch }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            go build -v -o uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }}.exe ./cmd/tunnel-server || exit 1
+            go build -v -o uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }}.exe ./cmd/tunnel-server
           else
-            go build -v -o uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/tunnel-server || exit 1
+            go build -v -o uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/tunnel-server
             chmod +x uniroute-tunnel-server-${{ matrix.goos }}-${{ matrix.goarch }}
           fi
           echo "✅ Built Tunnel Server"
