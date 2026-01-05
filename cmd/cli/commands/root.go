@@ -34,6 +34,7 @@ func init() {
 	rootCmd.AddCommand(keysCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(logsCmd)
+	rootCmd.AddCommand(upgradeCmd)
 }
 
 // SetVersion sets the version for the CLI

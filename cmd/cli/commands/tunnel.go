@@ -12,10 +12,14 @@ import (
 	"syscall"
 	"time"
 
+	"os/exec"
+
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/tunnel"
 	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/color"
 	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/logger"
+	versioncheck "github.com/Kizsoft-Solution-Limited/uniroute/pkg/version"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var tunnelCmd = &cobra.Command{
@@ -160,7 +164,28 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Session Status                %s %s\n", color.Green("●"), color.Green("online"))
 
 	fmt.Printf("Account                       %s\n", color.Gray(accountDisplay))
-	fmt.Printf("Version                       %s\n", color.Gray("1.0.0"))
+	currentVersion := GetVersion()
+	fmt.Printf("Version                       %s", color.Gray(currentVersion))
+
+	// Check for updates in background (non-blocking)
+	var updateInfo *versioncheck.VersionInfo
+	var updateInfoMu sync.Mutex
+	go func() {
+		versionURL := os.Getenv("UNIROUTE_VERSION_URL")
+		if versionURL == "" {
+			versionURL = "https://api.github.com/repos/Kizsoft-Solution-Limited/uniroute/releases/latest"
+		}
+		checker := versioncheck.NewChecker(versionURL)
+		info, _ := checker.CheckForUpdate(currentVersion)
+		if info != nil && info.UpdateAvailable {
+			updateInfoMu.Lock()
+			updateInfo = info
+			updateInfoMu.Unlock()
+			// Display update notification (will be shown after version line)
+		}
+	}()
+
+	fmt.Println()
 	fmt.Printf("Region                        %s\n", color.Gray("Local"))
 	fmt.Printf("Latency                       %s\n", color.Gray(latencyStr))
 	fmt.Printf("Web Interface                 %s\n", color.Cyan("http://127.0.0.1:4040"))
@@ -196,6 +221,12 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 	fmt.Println(color.Yellow(fmt.Sprintf("💬 %s", funnyQuote)))
 	fmt.Println()
 	fmt.Println(color.Gray("Press Ctrl+C to stop"))
+	updateInfoMu.Lock()
+	hasUpdate := updateInfo != nil && updateInfo.UpdateAvailable
+	updateInfoMu.Unlock()
+	if hasUpdate {
+		fmt.Println(color.Gray("Press Ctrl+U to upgrade"))
+	}
 	fmt.Println()
 
 	// Create context for graceful shutdown
@@ -354,12 +385,101 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	// Wait for interrupt signal
+	// Set up terminal for raw input (to detect Ctrl+U)
+	// Only enable if stdin is a terminal
+	var oldState *term.State
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		var err error
+		oldState, err = term.MakeRaw(int(os.Stdin.Fd()))
+		if err == nil {
+			defer term.Restore(int(os.Stdin.Fd()), oldState)
+		}
+	}
+
+	// Channel for keyboard input (Ctrl+U)
+	keyChan := make(chan bool, 1)
+
+	// Read keyboard input in background (only if terminal)
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		go func() {
+			b := make([]byte, 1)
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					n, err := os.Stdin.Read(b)
+					if err != nil || n == 0 {
+						return
+					}
+					// Ctrl+U is byte 21 (0x15)
+					if b[0] == 21 {
+						select {
+						case keyChan <- true:
+						default:
+						}
+					}
+				}
+			}
+		}()
+	}
+
+	// Wait for interrupt signal or Ctrl+U
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// Wait for signal
-	<-sigChan
+	select {
+	case <-sigChan:
+		// Normal shutdown
+	case <-keyChan:
+		// Ctrl+U pressed - trigger upgrade
+		updateInfoMu.Lock()
+		hasUpdate := updateInfo != nil && updateInfo.UpdateAvailable
+		currentUpdateInfo := updateInfo
+		updateInfoMu.Unlock()
+
+		if hasUpdate && currentUpdateInfo != nil {
+			// Restore terminal before running upgrade
+			if oldState != nil {
+				term.Restore(int(os.Stdin.Fd()), oldState)
+			}
+
+			fmt.Println()
+			fmt.Println()
+			fmt.Println(color.Cyan("Upgrading UniRoute CLI..."))
+			fmt.Println()
+
+			// Run upgrade command
+			upgradeCmd := exec.Command(os.Args[0], "upgrade")
+			upgradeCmd.Stdout = os.Stdout
+			upgradeCmd.Stderr = os.Stderr
+			upgradeCmd.Stdin = os.Stdin
+			if err := upgradeCmd.Run(); err != nil {
+				fmt.Println(color.Red(fmt.Sprintf("Upgrade failed: %v", err)))
+				fmt.Println()
+				fmt.Println(color.Yellow("You can manually upgrade by running: uniroute upgrade"))
+			}
+
+			// Close tunnel after upgrade
+			fmt.Println()
+			fmt.Println(color.Yellow("Closing tunnel..."))
+			stopMu.Lock()
+			stopUpdates = true
+			stopMu.Unlock()
+			cancel()
+			if err := client.Close(); err != nil {
+				return err
+			}
+			return nil
+		} else {
+			// No update available
+			fmt.Println()
+			fmt.Println(color.Green("✓ You're already using the latest version"))
+			fmt.Println()
+			// Continue running tunnel - wait for Ctrl+C
+			<-sigChan
+		}
+	}
 
 	// Mark that we should stop updates immediately
 	stopMu.Lock()
