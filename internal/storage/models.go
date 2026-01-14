@@ -22,14 +22,15 @@ type APIKey struct {
 
 // User represents a user in the database
 type User struct {
-	ID            uuid.UUID `db:"id"`
-	Email         string    `db:"email"`
-	Name          string    `db:"name"`
-	PasswordHash  string    `db:"password_hash"`
-	EmailVerified bool      `db:"email_verified"`
-	Roles         []string  `db:"roles"` // Array of roles: ['user'], ['admin'], or ['user', 'admin']
-	CreatedAt     time.Time `db:"created_at"`
-	UpdatedAt     time.Time `db:"updated_at"`
+	ID              uuid.UUID  `db:"id"`
+	Email           string     `db:"email"`
+	Name            string     `db:"name"`
+	PasswordHash    string     `db:"password_hash"`
+	EmailVerified   bool       `db:"email_verified"`
+	Roles           []string   `db:"roles"` // Array of roles: ['user'], ['admin'], or ['user', 'admin']
+	RoutingStrategy *string    `db:"routing_strategy"` // User-specific routing strategy (NULL = use default)
+	CreatedAt       time.Time  `db:"created_at"`
+	UpdatedAt       time.Time  `db:"updated_at"`
 }
 
 // PasswordResetToken represents a password reset token

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -86,6 +87,71 @@ func main() {
 	// Initialize router
 	router := gateway.NewRouter()
 
+	// Load default routing strategy from database if available
+	if postgresClient != nil {
+		settingsRepo := storage.NewSystemSettingsRepository(postgresClient.Pool())
+		ctx := context.Background()
+		strategy, err := settingsRepo.GetDefaultRoutingStrategy(ctx)
+		if err == nil && strategy != "" {
+			strategyType := gateway.StrategyType(strategy)
+			router.SetStrategyType(strategyType)
+			log.Info().
+				Str("strategy", strategy).
+				Msg("Loaded default routing strategy from database")
+
+			// If custom strategy, load custom rules
+			if strategyType == gateway.StrategyCustom {
+				customRulesRepo := storage.NewCustomRoutingRulesRepository(postgresClient.Pool())
+				rules, err := customRulesRepo.GetActiveRules(ctx)
+				if err == nil && len(rules) > 0 {
+					// Convert database rules to gateway routing rules
+					routingRules := make([]gateway.RoutingRule, 0, len(rules))
+					for _, rule := range rules {
+						// Build condition function
+						condition := func(rule *storage.CustomRoutingRule) func(providers.ChatRequest) bool {
+							return func(req providers.ChatRequest) bool {
+								switch rule.ConditionType {
+								case "model":
+									if model, ok := rule.ConditionValue["model"].(string); ok {
+										return req.Model == model
+									}
+								case "cost_threshold":
+									// TODO: Implement cost-based condition
+									return false
+								case "latency_threshold":
+									// TODO: Implement latency-based condition
+									return false
+								}
+								return false
+							}
+						}(rule)
+
+						routingRule := gateway.RoutingRule{
+							Provider:  rule.ProviderName,
+							Priority:  rule.Priority,
+							Condition: condition,
+						}
+						routingRules = append(routingRules, routingRule)
+					}
+
+					customStrategy := gateway.NewCustomStrategy(routingRules)
+					router.SetCustomStrategy(customStrategy)
+					log.Info().
+						Int("rules_count", len(rules)).
+						Msg("Loaded custom routing rules from database")
+				} else {
+					log.Debug().
+						Err(err).
+						Msg("No custom routing rules found, using fallback")
+				}
+			}
+		} else {
+			log.Debug().
+				Err(err).
+				Msg("Using default routing strategy (model-based)")
+		}
+	}
+
 	// Register local LLM provider (always available)
 	localProvider := providers.NewLocalProvider(cfg.OllamaBaseURL, log)
 	router.RegisterProvider(localProvider)
@@ -141,14 +207,14 @@ func main() {
 	if postgresClient != nil && cfg.ProviderKeyEncryptionKey != "" {
 		// Create provider key repository
 		providerKeyRepo := storage.NewProviderKeyRepository(postgresClient.Pool())
-		
+
 		// Create provider key service with encryption
 		// Use JWT secret as encryption key if provider key encryption key not set
 		encryptionKey := cfg.ProviderKeyEncryptionKey
 		if encryptionKey == "" {
 			encryptionKey = cfg.JWTSecret // Fallback to JWT secret
 		}
-		
+
 		service, err := security.NewProviderKeyService(providerKeyRepo, encryptionKey)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to initialize provider key service, BYOK disabled")
@@ -168,7 +234,7 @@ func main() {
 
 	// Initialize email service (reads config from environment variables)
 	emailService := email.NewEmailService(log)
-	
+
 	// Log SMTP configuration status
 	smtpConfig := emailService.GetConfig()
 	if configured, ok := smtpConfig["configured"].(bool); ok && configured {
@@ -187,17 +253,17 @@ func main() {
 	// Setup API routes (with Phase 2 & 5 services if available)
 	httpRouter := api.SetupRouter(
 		router,
-		apiKeyService,   // Phase 1 fallback
-		apiKeyServiceV2, // Phase 2 (database)
-		jwtService,      // Phase 2 (JWT)
-		rateLimiter,     // Phase 2 (rate limiting)
-		authRateLimiter, // Progressive rate limiting for auth
-		cfg.IPWhitelist, // Phase 2 (IP whitelist)
-		requestRepo,     // Phase 5 (analytics)
+		apiKeyService,      // Phase 1 fallback
+		apiKeyServiceV2,    // Phase 2 (database)
+		jwtService,         // Phase 2 (JWT)
+		rateLimiter,        // Phase 2 (rate limiting)
+		authRateLimiter,    // Progressive rate limiting for auth
+		cfg.IPWhitelist,    // Phase 2 (IP whitelist)
+		requestRepo,        // Phase 5 (analytics)
 		providerKeyService, // BYOK: Provider key service
-		postgresClient,  // For user repository (auth)
-		emailService,   // Email service
-		cfg.FrontendURL, // Frontend URL
+		postgresClient,     // For user repository (auth)
+		emailService,       // Email service
+		cfg.FrontendURL,    // Frontend URL
 	)
 
 	// Start server

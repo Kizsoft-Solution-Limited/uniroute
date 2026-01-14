@@ -103,7 +103,7 @@
               <BarChart3 class="w-5 h-5" />
             </button>
             <button
-              @click="disconnectTunnel(tunnel.id)"
+              @click="openDisconnectDialog(tunnel.id)"
               class="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
               title="Disconnect"
             >
@@ -113,14 +113,30 @@
         </div>
       </Card>
     </div>
+
+    <!-- Disconnect Confirmation Dialog -->
+    <ConfirmationDialog
+      :show="showDisconnectDialog"
+      title="Disconnect Tunnel"
+      message="Are you sure you want to disconnect this tunnel? The tunnel will stop forwarding requests immediately."
+      variant="warning"
+      confirm-text="Disconnect"
+      cancel-text="Cancel"
+      :loading="disconnecting"
+      @confirm="disconnectTunnel"
+      @cancel="cancelDisconnect"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import Card from '@/components/ui/Card.vue'
 import { Network, Globe, Server, Copy, BarChart3, X } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
+import { tunnelsApi } from '@/services/api/tunnels'
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog.vue'
 
 interface Tunnel {
   id: string
@@ -134,9 +150,13 @@ interface Tunnel {
 }
 
 const { showToast } = useToast()
+const router = useRouter()
 
 const loading = ref(false)
 const tunnels = ref<Tunnel[]>([])
+const showDisconnectDialog = ref(false)
+const tunnelToDisconnect = ref<string | null>(null)
+const disconnecting = ref(false)
 
 onMounted(() => {
   loadTunnels()
@@ -145,14 +165,19 @@ onMounted(() => {
 const loadTunnels = async () => {
   loading.value = true
   try {
-    // TODO: Fetch from API
-    // const response = await tunnelsApi.list()
-    // tunnels.value = response.data
-    
-    // Mock data for now
-    tunnels.value = []
+    const response = await tunnelsApi.list()
+    tunnels.value = response.tunnels.map(t => ({
+      id: t.id,
+      subdomain: t.subdomain,
+      publicUrl: t.public_url,
+      localUrl: t.local_url,
+      status: t.status as 'active' | 'inactive',
+      requestCount: t.request_count,
+      createdAt: t.created_at,
+      lastActive: t.last_active || undefined
+    }))
   } catch (error: any) {
-    showToast('Failed to load tunnels', 'error')
+    showToast(error.response?.data?.error || 'Failed to load tunnels', 'error')
   } finally {
     loading.value = false
   }
@@ -160,22 +185,34 @@ const loadTunnels = async () => {
 
 const viewTunnelStats = (id: string) => {
   // Navigate to tunnel detail page
-  window.location.href = `/dashboard/tunnels/${id}`
+  router.push({ name: 'tunnel-detail', params: { id } })
 }
 
-const disconnectTunnel = async (id: string) => {
-  if (!confirm('Are you sure you want to disconnect this tunnel?')) {
-    return
-  }
+const openDisconnectDialog = (id: string) => {
+  tunnelToDisconnect.value = id
+  showDisconnectDialog.value = true
+}
+
+const disconnectTunnel = async () => {
+  if (!tunnelToDisconnect.value) return
   
+  disconnecting.value = true
   try {
-    // TODO: Disconnect via API
-    // await tunnelsApi.disconnect(id)
+    await tunnelsApi.disconnect(tunnelToDisconnect.value)
     showToast('Tunnel disconnected successfully', 'success')
+    showDisconnectDialog.value = false
+    tunnelToDisconnect.value = null
     await loadTunnels()
   } catch (error: any) {
-    showToast(error.message || 'Failed to disconnect tunnel', 'error')
+    showToast(error.response?.data?.error || error.message || 'Failed to disconnect tunnel', 'error')
+  } finally {
+    disconnecting.value = false
   }
+}
+
+const cancelDisconnect = () => {
+  showDisconnectDialog.value = false
+  tunnelToDisconnect.value = null
 }
 
 const copyToClipboard = async (text: string) => {

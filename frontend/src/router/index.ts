@@ -83,6 +83,12 @@ const routes: RouteRecordRaw[] = [
         meta: { permission: 'tunnels:read' }
       },
       {
+        path: 'chat',
+        name: 'chat',
+        component: () => import('@/views/Chat.vue'),
+        meta: { permission: 'chat:use' }
+      },
+      {
         path: 'analytics',
         name: 'analytics',
         component: () => import('@/views/Analytics.vue'),
@@ -109,6 +115,11 @@ const routes: RouteRecordRaw[] = [
             name: 'settings-provider-keys',
             component: () => import('@/views/settings/ProviderKeys.vue'),
             meta: { permission: 'provider-keys:manage' }
+          },
+          {
+            path: 'routing-strategy',
+            name: 'settings-routing-strategy',
+            component: () => import('@/views/settings/RoutingStrategy.vue')
           }
         ]
       },
@@ -138,14 +149,14 @@ const routes: RouteRecordRaw[] = [
             name: 'admin-routing',
             component: () => import('@/views/admin/RoutingStrategy.vue'),
             meta: { permission: 'admin:routing' }
+          },
+          {
+            path: 'errors',
+            name: 'admin-errors',
+            component: () => import('@/views/admin/ErrorLogs.vue'),
+            meta: { permission: 'admin:errors' }
           }
         ]
-      },
-      {
-        path: 'errors',
-        name: 'admin-errors',
-        component: () => import('@/views/admin/ErrorLogs.vue'),
-        meta: { permission: 'admin:errors' }
       }
     ]
   },

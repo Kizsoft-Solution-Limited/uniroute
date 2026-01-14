@@ -6,21 +6,35 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/rs/zerolog"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/providers"
 	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/errors"
+	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 )
+
+// RoutingStrategyServiceInterface defines interface for getting routing strategy
+type RoutingStrategyServiceInterface interface {
+	GetDefaultRoutingStrategy(ctx context.Context) (string, error)
+	IsRoutingStrategyLocked(ctx context.Context) (bool, error)
+}
+
+// UserRoutingStrategyServiceInterface defines interface for getting user routing strategy
+type UserRoutingStrategyServiceInterface interface {
+	GetUserRoutingStrategy(ctx context.Context, userID uuid.UUID) (string, error)
+}
 
 // Router routes requests to appropriate providers with failover support
 type Router struct {
-	providers            map[string]providers.Provider
-	defaultProvider      providers.Provider
-	strategy             RoutingStrategy
-	costCalculator       *CostCalculator
-	latencyTracker       *LatencyTracker
-	providerKeyService   ProviderKeyServiceInterface // BYOK: For user-specific provider keys
-	serverProviderKeys   ServerProviderKeys          // Server-level keys (fallback)
+	providers                  map[string]providers.Provider
+	defaultProvider            providers.Provider
+	strategy                   RoutingStrategy
+	currentStrategyType        StrategyType // Track current strategy type explicitly (default)
+	costCalculator             *CostCalculator
+	latencyTracker             *LatencyTracker
+	providerKeyService         ProviderKeyServiceInterface // BYOK: For user-specific provider keys
+	serverProviderKeys         ServerProviderKeys          // Server-level keys (fallback)
+	routingStrategyService     RoutingStrategyServiceInterface
+	userRoutingStrategyService UserRoutingStrategyServiceInterface
 }
 
 // ProviderKeyServiceInterface defines interface for getting user provider keys
@@ -38,18 +52,29 @@ type ServerProviderKeys struct {
 // NewRouter creates a new router
 func NewRouter() *Router {
 	return &Router{
-		providers:          make(map[string]providers.Provider),
-		strategy:           &ModelBasedStrategy{}, // Default strategy
-		costCalculator:     NewCostCalculator(),
-		latencyTracker:     NewLatencyTracker(100),
-		providerKeyService: nil, // Will be set if BYOK is enabled
-		serverProviderKeys: ServerProviderKeys{}, // Will be set from config
+		providers:           make(map[string]providers.Provider),
+		strategy:            &ModelBasedStrategy{}, // Default strategy
+		currentStrategyType: StrategyModelBased,    // Default strategy type
+		costCalculator:      NewCostCalculator(),
+		latencyTracker:      NewLatencyTracker(100),
+		providerKeyService:  nil,                  // Will be set if BYOK is enabled
+		serverProviderKeys:  ServerProviderKeys{}, // Will be set from config
 	}
 }
 
 // SetProviderKeyService sets the provider key service for BYOK
 func (r *Router) SetProviderKeyService(service ProviderKeyServiceInterface) {
 	r.providerKeyService = service
+}
+
+// SetRoutingStrategyService sets the routing strategy service (for getting default strategy)
+func (r *Router) SetRoutingStrategyService(service RoutingStrategyServiceInterface) {
+	r.routingStrategyService = service
+}
+
+// SetUserRoutingStrategyService sets the user routing strategy service (for getting user preferences)
+func (r *Router) SetUserRoutingStrategyService(service UserRoutingStrategyServiceInterface) {
+	r.userRoutingStrategyService = service
 }
 
 // SetServerProviderKeys sets server-level provider keys (fallback)
@@ -62,19 +87,117 @@ func (r *Router) SetStrategy(strategy RoutingStrategy) {
 	r.strategy = strategy
 }
 
+// SetCustomStrategy sets a custom routing strategy with rules
+func (r *Router) SetCustomStrategy(customStrategy *CustomStrategy) {
+	r.strategy = customStrategy
+	r.currentStrategyType = StrategyCustom
+}
+
 // SetStrategyType sets the routing strategy by type
 func (r *Router) SetStrategyType(strategyType StrategyType) {
+	var newStrategy RoutingStrategy
 	switch strategyType {
 	case StrategyCostBased:
-		r.strategy = NewCostBasedStrategy(r.costCalculator)
+		newStrategy = NewCostBasedStrategy(r.costCalculator)
 	case StrategyLatencyBased:
-		r.strategy = NewLatencyBasedStrategy(r.latencyTracker)
+		newStrategy = NewLatencyBasedStrategy(r.latencyTracker)
 	case StrategyLoadBalanced:
-		r.strategy = NewLoadBalancedStrategy()
+		newStrategy = NewLoadBalancedStrategy()
 	case StrategyModelBased:
-		r.strategy = &ModelBasedStrategy{}
+		newStrategy = &ModelBasedStrategy{}
+	case StrategyCustom:
+		// Custom strategy with empty rules falls back to model-based
+		// Admin can configure custom rules via API in the future
+		newStrategy = NewCustomStrategy(nil) // nil rules = fallback to model-based
 	default:
-		r.strategy = &ModelBasedStrategy{}
+		newStrategy = &ModelBasedStrategy{}
+		strategyType = StrategyModelBased
+	}
+
+	// Set both the strategy and the type
+	r.strategy = newStrategy
+	r.currentStrategyType = strategyType
+}
+
+// GetStrategyType returns the current routing strategy type (default)
+func (r *Router) GetStrategyType() StrategyType {
+	// Use explicit field first (more reliable)
+	if r.currentStrategyType != "" {
+		return r.currentStrategyType
+	}
+
+	// Fallback to type assertion if field is not set
+	if r.strategy == nil {
+		return StrategyModelBased
+	}
+
+	switch r.strategy.(type) {
+	case *CostBasedStrategy:
+		return StrategyCostBased
+	case *LatencyBasedStrategy:
+		return StrategyLatencyBased
+	case *LoadBalancedStrategy:
+		return StrategyLoadBalanced
+	case *ModelBasedStrategy:
+		return StrategyModelBased
+	case *CustomStrategy:
+		return StrategyCustom
+	default:
+		return StrategyModelBased
+	}
+}
+
+// GetStrategyForUser returns the routing strategy for a specific user
+// Checks: user preference → default → fallback
+func (r *Router) GetStrategyForUser(ctx context.Context, userID *uuid.UUID) StrategyType {
+	// 1. Check if strategy is locked (admin override)
+	if r.routingStrategyService != nil {
+		locked, err := r.routingStrategyService.IsRoutingStrategyLocked(ctx)
+		if err == nil && locked {
+			// Strategy is locked, use default
+			return r.GetStrategyType()
+		}
+	}
+
+	// 2. If user ID provided, check user preference
+	if userID != nil && r.userRoutingStrategyService != nil {
+		userStrategy, err := r.userRoutingStrategyService.GetUserRoutingStrategy(ctx, *userID)
+		if err == nil && userStrategy != "" {
+			// User has a preference, use it
+			strategyType := StrategyType(userStrategy)
+			// Validate strategy type
+			switch strategyType {
+			case StrategyModelBased, StrategyCostBased, StrategyLatencyBased, StrategyLoadBalanced, StrategyCustom:
+				return strategyType
+			}
+		}
+	}
+
+	// 3. Fall back to default
+	return r.GetStrategyType()
+}
+
+// GetStrategyInstanceForUser returns the routing strategy instance for a specific user
+// This is used by Route() to get the actual strategy object
+func (r *Router) GetStrategyInstanceForUser(ctx context.Context, userID *uuid.UUID) RoutingStrategy {
+	strategyType := r.GetStrategyForUser(ctx, userID)
+
+	// Create strategy instance based on type
+	switch strategyType {
+	case StrategyCostBased:
+		return NewCostBasedStrategy(r.costCalculator)
+	case StrategyLatencyBased:
+		return NewLatencyBasedStrategy(r.latencyTracker)
+	case StrategyLoadBalanced:
+		return NewLoadBalancedStrategy()
+	case StrategyCustom:
+		// Custom strategy - rules should be loaded from database via SetCustomStrategy
+		// For now, return empty rules (will fallback to model-based)
+		return NewCustomStrategy(nil) // nil rules = fallback to model-based
+	case StrategyModelBased:
+		fallthrough
+	default:
+		return &ModelBasedStrategy{}
 	}
 }
 
@@ -101,8 +224,9 @@ func (r *Router) Route(ctx context.Context, req providers.ChatRequest, userID *u
 		return nil, fmt.Errorf("no healthy providers available")
 	}
 
-	// Phase 4: Use routing strategy to select provider
-	selectedProvider, err := r.strategy.SelectProvider(ctx, req, availableProviders)
+	// Phase 4: Use routing strategy to select provider (user-specific if available)
+	strategy := r.GetStrategyInstanceForUser(ctx, userID)
+	selectedProvider, err := strategy.SelectProvider(ctx, req, availableProviders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to select provider: %w", err)
 	}
@@ -153,7 +277,7 @@ func (r *Router) Route(ctx context.Context, req providers.ChatRequest, userID *u
 // If userID is provided, uses user's provider keys (BYOK), otherwise uses server-level keys
 func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) []providers.Provider {
 	available := make([]providers.Provider, 0)
-	
+
 	// BYOK: If user has provider keys, create providers with user's keys
 	if userID != nil && r.providerKeyService != nil {
 		userProviders := r.getUserProviders(ctx, *userID)
@@ -167,7 +291,7 @@ func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) [
 			return available
 		}
 	}
-	
+
 	// Fallback to server-level providers
 	for _, provider := range r.providers {
 		if err := provider.HealthCheck(ctx); err == nil {
@@ -180,16 +304,16 @@ func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) [
 // getUserProviders creates providers using user's API keys (BYOK)
 func (r *Router) getUserProviders(ctx context.Context, userID uuid.UUID) []providers.Provider {
 	userProviders := make([]providers.Provider, 0)
-	
+
 	// Try to get user's keys for each provider
 	providersToCheck := []string{"openai", "anthropic", "google"}
-	
+
 	for _, providerName := range providersToCheck {
 		apiKey, err := r.providerKeyService.GetProviderKey(ctx, userID, providerName)
 		if err != nil || apiKey == "" {
 			continue // User doesn't have key for this provider
 		}
-		
+
 		// Create provider with user's key (using zerolog.Nop() for now)
 		var provider providers.Provider
 		switch providerName {
@@ -200,12 +324,12 @@ func (r *Router) getUserProviders(ctx context.Context, userID uuid.UUID) []provi
 		case "google":
 			provider = providers.NewGoogleProvider(apiKey, "", zerolog.Nop())
 		}
-		
+
 		if provider != nil {
 			userProviders = append(userProviders, provider)
 		}
 	}
-	
+
 	return userProviders
 }
 

@@ -33,6 +33,46 @@
             </div>
           </div>
 
+          <!-- Lock Status -->
+          <div 
+            class="rounded-lg p-4 border-2"
+            :class="strategy.is_locked 
+              ? 'bg-amber-500/10 border-amber-500/30' 
+              : 'bg-green-500/10 border-green-500/30'"
+          >
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-slate-400 mb-1">Strategy Lock Status</p>
+                <p class="text-lg font-semibold" :class="strategy.is_locked ? 'text-amber-400' : 'text-green-400'">
+                  {{ strategy.is_locked ? '🔒 Locked' : '🔓 Unlocked' }}
+                </p>
+                <p class="text-xs mt-1" :class="strategy.is_locked ? 'text-amber-300/80' : 'text-green-300/80'">
+                  {{ strategy.is_locked 
+                    ? 'Users cannot override the default strategy' 
+                    : 'Users can set their own routing strategy' }}
+                </p>
+              </div>
+              <Button
+                @click="handleToggleLock"
+                :disabled="locking"
+                variant="primary"
+                :class="[
+                  'ml-4 min-w-[140px]',
+                  strategy.is_locked 
+                    ? 'bg-amber-600 hover:bg-amber-700 border-amber-500' 
+                    : 'bg-blue-600 hover:bg-blue-700 border-blue-500'
+                ]"
+              >
+                <span v-if="locking">
+                  {{ strategy.is_locked ? 'Unlocking...' : 'Locking...' }}
+                </span>
+                <span v-else>
+                  {{ strategy.is_locked ? '🔓 Unlock Strategy' : '🔒 Lock Strategy' }}
+                </span>
+              </Button>
+            </div>
+          </div>
+
           <!-- Strategy Selection -->
           <div class="space-y-3">
             <label class="block text-sm font-medium text-slate-300">
@@ -120,10 +160,11 @@ import { ref, onMounted } from 'vue'
 import { routingApi, type RoutingStrategy } from '@/services/api/routing'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
-import ErrorHandler from '@/utils/errorHandler'
+import { ErrorHandler } from '@/utils/errorHandler'
 
 const loading = ref(false)
 const saving = ref(false)
+const locking = ref(false)
 const strategy = ref<RoutingStrategy | null>(null)
 const selectedStrategy = ref<string>('')
 const updateResult = ref<{ success: boolean; message: string } | null>(null)
@@ -194,6 +235,43 @@ const handleUpdateStrategy = async () => {
     ErrorHandler.logError(err, 'RoutingStrategy')
   } finally {
     saving.value = false
+  }
+}
+
+const handleToggleLock = async () => {
+  if (!strategy.value) return
+
+  locking.value = true
+  updateResult.value = null
+
+  try {
+    const currentLockStatus = strategy.value.is_locked
+    const newLockStatus = !currentLockStatus
+    
+    const response = await routingApi.setStrategyLock(newLockStatus)
+
+    updateResult.value = {
+      success: true,
+      message: response.message || `Strategy ${newLockStatus ? 'locked' : 'unlocked'} successfully`
+    }
+
+    // Immediately update local state for better UX
+    if (strategy.value) {
+      strategy.value.is_locked = newLockStatus
+    }
+
+    // Reload to get updated lock status from server
+    await loadStrategy()
+  } catch (err: any) {
+    const appError = ErrorHandler.handleApiError(err)
+    const action = strategy.value?.is_locked ? 'unlock' : 'lock'
+    updateResult.value = {
+      success: false,
+      message: `Failed to ${action} strategy: ${appError.message}`
+    }
+    ErrorHandler.logError(err, 'RoutingStrategy')
+  } finally {
+    locking.value = false
   }
 }
 

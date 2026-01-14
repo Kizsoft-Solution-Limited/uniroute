@@ -154,7 +154,7 @@ import { emailApi, type EmailConfig } from '@/services/api/email'
 import Card from '@/components/ui/Card.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
-import ErrorHandler from '@/utils/errorHandler'
+import { ErrorHandler } from '@/utils/errorHandler'
 
 const loading = ref(false)
 const testing = ref(false)

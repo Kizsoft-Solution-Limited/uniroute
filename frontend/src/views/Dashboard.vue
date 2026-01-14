@@ -1,16 +1,22 @@
 <template>
   <div class="space-y-6">
+    <!-- Loading State -->
+    <div v-if="loading" class="text-center py-12">
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      <p class="text-slate-400 mt-2">Loading dashboard...</p>
+    </div>
+
     <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       <Card class="hover:shadow-lg transition-all transform hover:-translate-y-1 animate-fade-in">
         <div class="flex items-center justify-between">
           <div>
             <p class="text-sm font-medium text-slate-400">Total Requests</p>
             <p class="text-3xl font-bold text-white mt-2">{{ stats.totalRequests.toLocaleString() }}</p>
-            <p class="text-sm text-green-400 mt-2">
+            <p v-if="stats.requestGrowth !== 0" class="text-sm mt-2" :class="stats.requestGrowth > 0 ? 'text-green-400' : 'text-red-400'">
               <span class="inline-flex items-center">
                 <TrendingUp class="w-4 h-4 mr-1" />
-                +{{ stats.requestGrowth }}% this month
+                {{ stats.requestGrowth > 0 ? '+' : '' }}{{ stats.requestGrowth }}% this month
               </span>
             </p>
           </div>
@@ -71,7 +77,7 @@
       <h2 class="text-xl font-semibold text-white mb-4">Quick Actions</h2>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <router-link
-          to="/dashboard/api-keys/create"
+          to="/dashboard/api-keys"
           class="flex items-center space-x-3 p-4 border-2 border-dashed border-slate-700/50 rounded-lg hover:border-blue-500 transition-colors group"
         >
           <div class="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center group-hover:bg-blue-500/30 transition-colors">
@@ -181,6 +187,10 @@ import {
   Plus,
   TrendingUp
 } from 'lucide-vue-next'
+import { dashboardApi } from '@/services/api/dashboard'
+import { useToast } from '@/composables/useToast'
+
+const { showToast } = useToast()
 
 interface Activity {
   icon: string
@@ -198,6 +208,7 @@ interface ProviderUsage {
   color: string
 }
 
+const loading = ref(false)
 const stats = ref({
   totalRequests: 0,
   requestGrowth: 0,
@@ -212,73 +223,70 @@ const recentActivity = ref<Activity[]>([])
 const providerUsage = ref<ProviderUsage[]>([])
 
 onMounted(async () => {
-  // Simulate loading data
   await loadDashboardData()
 })
 
 const loadDashboardData = async () => {
-  // TODO: Fetch from API
-  // For now, use mock data
-  stats.value = {
-    totalRequests: 12543,
-    requestGrowth: 23,
-    activeTunnels: 3,
-    totalTunnels: 8,
-    apiKeys: 5,
-    activeApiKeys: 4,
-    totalCost: 124.56
+  loading.value = true
+  try {
+    const data = await dashboardApi.getOverview()
+    
+    stats.value = {
+      totalRequests: data.total_requests,
+      requestGrowth: data.request_growth,
+      activeTunnels: data.active_tunnels,
+      totalTunnels: data.total_tunnels,
+      apiKeys: data.api_keys,
+      activeApiKeys: data.active_api_keys,
+      totalCost: data.total_cost
+    }
+
+    // Map recent activity
+    recentActivity.value = data.recent_activity.map(activity => ({
+      icon: activity.icon,
+      iconBg: getIconBg(activity.type),
+      title: activity.title,
+      time: activity.time
+    }))
+
+    // Map provider usage with colors
+    const colorMap: Record<string, string> = {
+      'Openai': 'bg-blue-600',
+      'Anthropic': 'bg-purple-600',
+      'Google': 'bg-green-600',
+      'Google-ai': 'bg-green-600',
+      'Gemini': 'bg-yellow-600',
+      'Meta-llama': 'bg-orange-600',
+      'Llama': 'bg-orange-600',
+      'Mistral': 'bg-indigo-600'
+    }
+
+    providerUsage.value = data.provider_usage.map(provider => ({
+      name: provider.name,
+      icon: provider.icon,
+      percentage: provider.percentage,
+      requests: provider.requests,
+      cost: provider.cost,
+      color: colorMap[provider.name] || 'bg-gray-600'
+    }))
+
+    // Animate numbers
+    animateNumbers()
+  } catch (error: any) {
+    console.error('Failed to load dashboard data:', error)
+    showToast('Failed to load dashboard data', 'error')
+  } finally {
+    loading.value = false
   }
+}
 
-  recentActivity.value = [
-    {
-      icon: '🔑',
-      iconBg: 'bg-blue-100 dark:bg-blue-900/30',
-      title: 'New API key created',
-      time: '2 minutes ago'
-    },
-    {
-      icon: '🌐',
-      iconBg: 'bg-purple-100 dark:bg-purple-900/30',
-      title: 'Tunnel connected',
-      time: '15 minutes ago'
-    },
-    {
-      icon: '📊',
-      iconBg: 'bg-green-100 dark:bg-green-900/30',
-      title: 'Request completed',
-      time: '1 hour ago'
-    }
-  ]
-
-  providerUsage.value = [
-    {
-      name: 'OpenAI',
-      icon: '🤖',
-      percentage: 45,
-      requests: 5643,
-      cost: 56.12,
-      color: 'bg-blue-600'
-    },
-    {
-      name: 'Anthropic',
-      icon: '🧠',
-      percentage: 35,
-      requests: 4390,
-      cost: 43.90,
-      color: 'bg-purple-600'
-    },
-    {
-      name: 'Google',
-      icon: '🔍',
-      percentage: 20,
-      requests: 2510,
-      cost: 24.54,
-      color: 'bg-green-600'
-    }
-  ]
-
-  // Animate numbers
-  animateNumbers()
+function getIconBg(type: string): string {
+  const bgMap: Record<string, string> = {
+    api_key: 'bg-blue-100 dark:bg-blue-900/30',
+    tunnel: 'bg-purple-100 dark:bg-purple-900/30',
+    request: 'bg-green-100 dark:bg-green-900/30'
+  }
+  return bgMap[type] || 'bg-gray-100 dark:bg-gray-900/30'
 }
 
 const animateNumbers = () => {

@@ -202,12 +202,18 @@ func (s *CustomStrategy) SelectProvider(ctx context.Context, req providers.ChatR
 		return nil, ErrNoProviders
 	}
 
+	// If no custom rules defined, fallback to model-based selection
+	if s.rules == nil || len(s.rules) == 0 {
+		strategy := &ModelBasedStrategy{}
+		return strategy.SelectProvider(ctx, req, availableProviders)
+	}
+
 	// Sort rules by priority (highest first)
 	// For now, we'll check in order (assuming rules are pre-sorted)
 
 	// Check custom rules first
 	for _, rule := range s.rules {
-		if rule.Condition(req) {
+		if rule.Condition != nil && rule.Condition(req) {
 			// Find provider by name
 			for _, provider := range availableProviders {
 				if provider.Name() == rule.Provider {
@@ -217,7 +223,7 @@ func (s *CustomStrategy) SelectProvider(ctx context.Context, req providers.ChatR
 		}
 	}
 
-	// Fallback to model-based selection
+	// Fallback to model-based selection if no rules match
 	strategy := &ModelBasedStrategy{}
 	return strategy.SelectProvider(ctx, req, availableProviders)
 }

@@ -87,6 +87,61 @@ func (h *UserHandler) HandleUpdateProfile(c *gin.Context) {
 	})
 }
 
+// ChangePasswordRequest represents a password change request
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required,min=8"`
+}
+
+// HandleChangePassword handles password change for authenticated users
+func (h *UserHandler) HandleChangePassword(c *gin.Context) {
+	// Get user ID from JWT claims (set by JWT middleware)
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get user to verify current password
+	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
+	if err != nil {
+		if err == storage.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		h.logger.Error().Err(err).Str("user_id", userID.String()).Msg("Failed to get user")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user"})
+		return
+	}
+
+	// Verify current password
+	if err := h.userRepo.VerifyPassword(user.PasswordHash, req.CurrentPassword); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Current password is incorrect"})
+		return
+	}
+
+	// Update password
+	if err := h.userRepo.UpdatePassword(c.Request.Context(), userID, req.NewPassword); err != nil {
+		h.logger.Error().Err(err).Str("user_id", userID.String()).Msg("Failed to update password")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
+}
+
 // UpdateUserRolesRequest represents a request to update user roles (admin only)
 type UpdateUserRolesRequest struct {
 	Roles []string `json:"roles" binding:"required,min=1,dive,oneof=user admin"`

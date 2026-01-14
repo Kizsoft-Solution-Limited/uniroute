@@ -14,7 +14,7 @@ import (
 
 // GoogleProvider implements the Provider interface for Google (Gemini)
 type GoogleProvider struct {
-	apiKey string
+	apiKey  string
 	baseURL string
 	client  *http.Client
 	logger  zerolog.Logger
@@ -178,10 +178,18 @@ func (p *GoogleProvider) HealthCheck(ctx context.Context) error {
 // GetModels returns list of available Google models
 func (p *GoogleProvider) GetModels() []string {
 	return []string{
-		"gemini-pro",
-		"gemini-pro-vision",
-		"gemini-1.5-pro",
-		"gemini-1.5-flash",
+		// Gemini 2.0 series (latest, 2025)
+		"gemini-2.0-flash-exp", // Gemini 2.0 Flash (experimental)
+		// Gemini 1.5 series (2024-2025)
+		"gemini-1.5-pro-latest", // Gemini 1.5 Pro (latest)
+		"gemini-1.5-pro",        // Gemini 1.5 Pro
+		"gemini-1.5-flash-8b",   // Gemini 1.5 Flash 8B
+		"gemini-1.5-flash",      // Gemini 1.5 Flash
+		// Gemini 1.0 series
+		"gemini-pro",        // Gemini Pro (original)
+		"gemini-pro-vision", // Gemini Pro Vision
+		// Note: When Google releases Gemini 3 Pro, Gemini 3 Deep Think via API,
+		// their model IDs will be added here. Check Google AI Studio for latest models.
 	}
 }
 
@@ -198,4 +206,3 @@ func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 	}
 	return result
 }
-

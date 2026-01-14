@@ -130,6 +130,112 @@ func (r *TunnelRepository) GetTunnelBySubdomain(ctx context.Context, subdomain s
 	return &tunnel, nil
 }
 
+// GetTunnelByID retrieves a tunnel by ID
+func (r *TunnelRepository) GetTunnelByID(ctx context.Context, tunnelID uuid.UUID) (*Tunnel, error) {
+	query := `
+		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
+		       status, region, created_at, updated_at, last_active_at, request_count
+		FROM tunnels
+		WHERE id = $1
+	`
+
+	var tunnel Tunnel
+	var userID sql.NullString
+	var customDomain sql.NullString
+	var lastActive sql.NullTime
+
+	err := r.pool.QueryRow(ctx, query, tunnelID).Scan(
+		&tunnel.ID,
+		&userID,
+		&tunnel.Subdomain,
+		&customDomain,
+		&tunnel.LocalURL,
+		&tunnel.PublicURL,
+		&tunnel.Status,
+		&tunnel.Region,
+		&tunnel.CreatedAt,
+		&tunnel.UpdatedAt,
+		&lastActive,
+		&tunnel.RequestCount,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, ErrTunnelNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if userID.Valid {
+		tunnel.UserID = userID.String
+	}
+	if customDomain.Valid {
+		tunnel.CustomDomain = customDomain.String
+	}
+	if lastActive.Valid {
+		tunnel.LastActive = lastActive.Time
+	}
+
+	return &tunnel, nil
+}
+
+// ListTunnelsByUser retrieves all tunnels for a user
+func (r *TunnelRepository) ListTunnelsByUser(ctx context.Context, userID uuid.UUID) ([]*Tunnel, error) {
+	query := `
+		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
+		       status, region, created_at, updated_at, last_active_at, request_count
+		FROM tunnels
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tunnels []*Tunnel
+	for rows.Next() {
+		var tunnel Tunnel
+		var userID sql.NullString
+		var customDomain sql.NullString
+		var lastActive sql.NullTime
+
+		err := rows.Scan(
+			&tunnel.ID,
+			&userID,
+			&tunnel.Subdomain,
+			&customDomain,
+			&tunnel.LocalURL,
+			&tunnel.PublicURL,
+			&tunnel.Status,
+			&tunnel.Region,
+			&tunnel.CreatedAt,
+			&tunnel.UpdatedAt,
+			&lastActive,
+			&tunnel.RequestCount,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if userID.Valid {
+			tunnel.UserID = userID.String
+		}
+		if customDomain.Valid {
+			tunnel.CustomDomain = customDomain.String
+		}
+		if lastActive.Valid {
+			tunnel.LastActive = lastActive.Time
+		}
+
+		tunnels = append(tunnels, &tunnel)
+	}
+
+	return tunnels, rows.Err()
+}
+
 // UpdateTunnelStatus updates tunnel status
 func (r *TunnelRepository) UpdateTunnelStatus(ctx context.Context, tunnelID, status string) error {
 	query := `

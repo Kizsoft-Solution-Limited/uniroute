@@ -34,26 +34,68 @@ export interface RequestsResponse {
   count: number
 }
 
+export interface CostEstimateRequest {
+  model: string
+  messages: Array<{
+    role: 'system' | 'user' | 'assistant'
+    content: string
+  }>
+}
+
+export interface CostEstimateResponse {
+  model: string
+  estimates: Record<string, number> // provider -> cost
+}
+
+export interface LatencyStats {
+  latency_stats: Record<string, {
+    average_ms: number
+    min_ms: number
+    max_ms: number
+    samples: number
+  }>
+}
+
 export const analyticsApi = {
   /**
    * Get usage statistics
+   * Uses /auth/analytics/usage for frontend (JWT auth) or /v1/analytics/usage for API keys
    */
-  async getUsageStats(startTime?: string, endTime?: string): Promise<UsageStats> {
+  async getUsageStats(startTime?: string, endTime?: string, useJWT: boolean = true): Promise<UsageStats> {
+    const endpoint = useJWT ? '/auth/analytics/usage' : '/v1/analytics/usage'
     const params: Record<string, string> = {}
     if (startTime) params.start_time = startTime
     if (endTime) params.end_time = endTime
 
-    const response = await apiClient.get<UsageStats>('/v1/analytics/usage', { params })
+    const response = await apiClient.get<UsageStats>(endpoint, { params })
     return response.data
   },
 
   /**
    * Get request history
+   * Uses /auth/analytics/requests for frontend (JWT auth) or /v1/analytics/requests for API keys
    */
-  async getRequests(limit = 50, offset = 0): Promise<RequestsResponse> {
-    const response = await apiClient.get<RequestsResponse>('/v1/analytics/requests', {
+  async getRequests(limit = 50, offset = 0, useJWT: boolean = true): Promise<RequestsResponse> {
+    const endpoint = useJWT ? '/auth/analytics/requests' : '/v1/analytics/requests'
+    const response = await apiClient.get<RequestsResponse>(endpoint, {
       params: { limit, offset },
     })
+    return response.data
+  },
+
+  /**
+   * Estimate cost for a chat request
+   */
+  async estimateCost(data: CostEstimateRequest): Promise<CostEstimateResponse> {
+    const response = await apiClient.post<CostEstimateResponse>('/v1/routing/estimate-cost', data)
+    return response.data
+  },
+
+  /**
+   * Get latency statistics for all providers
+   */
+  async getLatencyStats(): Promise<LatencyStats> {
+    const response = await apiClient.get<LatencyStats>('/v1/routing/latency')
     return response.data
   },
 }

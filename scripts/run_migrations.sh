@@ -154,6 +154,14 @@ else
     MIGRATIONS_TO_RUN+=("migrations/010_change_role_to_roles_array.sql")
 fi
 
+# Migration 011: Routing strategy persistence (system_settings table and users.routing_strategy column)
+if check_migration "011" "SELECT 1 FROM information_schema.tables WHERE table_name = 'system_settings' AND table_schema = 'public' AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'routing_strategy' AND table_schema = 'public');"; then
+    echo -e "${GREEN}✅ 011_routing_strategy_persistence.sql (already applied)${NC}"
+else
+    echo -e "${YELLOW}⏸️  011_routing_strategy_persistence.sql (pending)${NC}"
+    MIGRATIONS_TO_RUN+=("migrations/011_routing_strategy_persistence.sql")
+fi
+
 echo ""
 
 # Run pending migrations

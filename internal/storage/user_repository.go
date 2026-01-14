@@ -81,7 +81,7 @@ func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*Use
 	// Treat NULL as false (not verified), and default roles to ['user'] if NULL
 	query := `
 		SELECT id, email, name, password_hash, COALESCE(email_verified, false) as email_verified, 
-		       COALESCE(roles, ARRAY['user']::TEXT[]) as roles, created_at, updated_at
+		       COALESCE(roles, ARRAY['user']::TEXT[]) as roles, routing_strategy, created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -94,6 +94,7 @@ func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*Use
 		&user.PasswordHash,
 		&user.EmailVerified,
 		&user.Roles,
+		&user.RoutingStrategy,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -113,7 +114,7 @@ func (r *UserRepository) GetUserByID(ctx context.Context, userID uuid.UUID) (*Us
 	// Treat NULL as false (not verified), and default roles to ['user'] if NULL
 	query := `
 		SELECT id, email, name, password_hash, COALESCE(email_verified, false) as email_verified, 
-		       COALESCE(roles, ARRAY['user']::TEXT[]) as roles, created_at, updated_at
+		       COALESCE(roles, ARRAY['user']::TEXT[]) as roles, routing_strategy, created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -126,6 +127,7 @@ func (r *UserRepository) GetUserByID(ctx context.Context, userID uuid.UUID) (*Us
 		&user.PasswordHash,
 		&user.EmailVerified,
 		&user.Roles,
+		&user.RoutingStrategy,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -337,6 +339,66 @@ func (r *UserRepository) UpdateUserRoles(ctx context.Context, userID uuid.UUID, 
 	result, err := r.client.pool.Exec(ctx, query, roles, userID)
 	if err != nil {
 		return fmt.Errorf("failed to update user roles: %w", err)
+	}
+
+	// Check if user exists
+	if result.RowsAffected() == 0 {
+		return ErrUserNotFound
+	}
+
+	return nil
+}
+
+// GetUserRoutingStrategy retrieves a user's routing strategy preference
+// Returns empty string if user has no preference (should use default)
+func (r *UserRepository) GetUserRoutingStrategy(ctx context.Context, userID uuid.UUID) (string, error) {
+	query := `
+		SELECT routing_strategy
+		FROM users
+		WHERE id = $1
+	`
+
+	var strategy *string
+	err := r.client.pool.QueryRow(ctx, query, userID).Scan(&strategy)
+	if err == pgx.ErrNoRows {
+		return "", ErrUserNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to get user routing strategy: %w", err)
+	}
+
+	if strategy == nil {
+		return "", nil // User has no preference, use default
+	}
+	return *strategy, nil
+}
+
+// SetUserRoutingStrategy sets a user's routing strategy preference
+// Pass nil to clear the preference (use default)
+func (r *UserRepository) SetUserRoutingStrategy(ctx context.Context, userID uuid.UUID, strategy *string) error {
+	// Validate strategy if provided
+	if strategy != nil {
+		validStrategies := map[string]bool{
+			"model":    true,
+			"cost":     true,
+			"latency":  true,
+			"balanced": true,
+			"custom":   true,
+		}
+		if !validStrategies[*strategy] {
+			return fmt.Errorf("invalid strategy: %s (must be one of: model, cost, latency, balanced, custom)", *strategy)
+		}
+	}
+
+	query := `
+		UPDATE users
+		SET routing_strategy = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+
+	result, err := r.client.pool.Exec(ctx, query, strategy, userID)
+	if err != nil {
+		return fmt.Errorf("failed to set user routing strategy: %w", err)
 	}
 
 	// Check if user exists

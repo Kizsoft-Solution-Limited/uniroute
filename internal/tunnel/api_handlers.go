@@ -11,6 +11,9 @@ import (
 
 // handleListTunnels returns list of active tunnels
 func (ts *TunnelServer) handleListTunnels(w http.ResponseWriter, r *http.Request) {
+	// Add CORS headers
+	ts.security.AddSecurityHeaders(w, r)
+
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -52,6 +55,9 @@ func (ts *TunnelServer) handleListTunnels(w http.ResponseWriter, r *http.Request
 
 // handleTunnelStats returns statistics for a specific tunnel
 func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request) {
+	// Add CORS headers
+	ts.security.AddSecurityHeaders(w, r)
+
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -127,6 +133,9 @@ func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request
 
 // handleListTunnelRequests returns list of requests for a tunnel
 func (ts *TunnelServer) handleListTunnelRequests(w http.ResponseWriter, r *http.Request) {
+	// Add CORS headers
+	ts.security.AddSecurityHeaders(w, r)
+
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -210,6 +219,9 @@ func (ts *TunnelServer) handleListTunnelRequests(w http.ResponseWriter, r *http.
 
 // handleGetTunnelRequest returns a single request with full details
 func (ts *TunnelServer) handleGetTunnelRequest(w http.ResponseWriter, r *http.Request) {
+	// Add CORS headers
+	ts.security.AddSecurityHeaders(w, r)
+
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -288,6 +300,9 @@ func (ts *TunnelServer) handleGetTunnelRequest(w http.ResponseWriter, r *http.Re
 
 // handleReplayTunnelRequest replays a request through the tunnel
 func (ts *TunnelServer) handleReplayTunnelRequest(w http.ResponseWriter, r *http.Request) {
+	// Add CORS headers
+	ts.security.AddSecurityHeaders(w, r)
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return

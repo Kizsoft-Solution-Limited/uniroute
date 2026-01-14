@@ -95,6 +95,121 @@
       </Card>
     </div>
 
+    <!-- Routing Analytics Section -->
+    <div v-if="!loading" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Cost Estimator -->
+      <Card>
+        <div class="p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
+              <Calculator class="w-5 h-5 mr-2" />
+              Cost Estimator
+            </h2>
+            <button
+              @click="showCostEstimator = !showCostEstimator"
+              class="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              {{ showCostEstimator ? 'Hide' : 'Show' }}
+            </button>
+          </div>
+
+          <div v-if="showCostEstimator" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Model
+              </label>
+              <input
+                v-model="costEstimateModel"
+                type="text"
+                placeholder="e.g., gpt-4, claude-3-opus"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              />
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Messages (one per line)
+              </label>
+              <textarea
+                v-model="costEstimateMessages"
+                rows="4"
+                placeholder="Enter messages, one per line..."
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              ></textarea>
+            </div>
+
+            <button
+              @click="estimateCost"
+              :disabled="costEstimateLoading || !costEstimateModel || !costEstimateMessages.trim()"
+              class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {{ costEstimateLoading ? 'Estimating...' : 'Estimate Cost' }}
+            </button>
+
+            <div v-if="costEstimateResult" class="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                Cost Estimates for {{ costEstimateResult.model }}
+              </h3>
+              <div class="space-y-2">
+                <div
+                  v-for="[provider, cost] in Object.entries(costEstimateResult.estimates)"
+                  :key="provider"
+                  class="flex items-center justify-between text-sm"
+                >
+                  <span class="text-gray-600 dark:text-gray-400 capitalize">{{ provider }}</span>
+                  <span class="font-medium text-gray-900 dark:text-white">${{ cost.toFixed(6) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <!-- Latency Stats -->
+      <Card>
+        <div class="p-6">
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+            <Gauge class="w-5 h-5 mr-2" />
+            Provider Latency Stats
+          </h2>
+          <div v-if="latencyStats && Object.keys(latencyStats.latency_stats).length > 0" class="space-y-3">
+            <div
+              v-for="[provider, stats] in Object.entries(latencyStats.latency_stats)"
+              :key="provider"
+              class="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+            >
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-900 dark:text-white capitalize">{{ provider }}</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ stats.samples }} samples</span>
+              </div>
+              <div class="grid grid-cols-3 gap-2 text-xs">
+                <div>
+                  <span class="text-gray-500 dark:text-gray-400">Avg:</span>
+                  <span class="ml-1 font-medium text-gray-900 dark:text-white">{{ stats.average_ms.toFixed(0) }}ms</span>
+                </div>
+                <div>
+                  <span class="text-gray-500 dark:text-gray-400">Min:</span>
+                  <span class="ml-1 font-medium text-green-600 dark:text-green-400">{{ stats.min_ms.toFixed(0) }}ms</span>
+                </div>
+                <div>
+                  <span class="text-gray-500 dark:text-gray-400">Max:</span>
+                  <span class="ml-1 font-medium text-red-600 dark:text-red-400">{{ stats.max_ms.toFixed(0) }}ms</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="text-center py-4">
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+              No latency data available yet.
+            </p>
+            <p class="text-xs text-gray-400 dark:text-gray-500">
+              Latency statistics will appear after you make AI chat requests through UniRoute.
+            </p>
+          </div>
+        </div>
+      </Card>
+    </div>
+
     <!-- Charts Section -->
     <div v-if="!loading && stats" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- Requests by Provider -->
@@ -197,17 +312,28 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import Card from '@/components/ui/Card.vue'
-import { BarChart3 } from 'lucide-vue-next'
-import { analyticsApi, type UsageStats, type Request } from '@/services/api/analytics'
+import { BarChart3, Calculator, Gauge } from 'lucide-vue-next'
+import { analyticsApi, type UsageStats, type Request, type CostEstimateResponse, type LatencyStats } from '@/services/api/analytics'
+import { useToast } from '@/composables/useToast'
 
+const { showToast } = useToast()
 const loading = ref(false)
 const stats = ref<UsageStats | null>(null)
 const recentRequests = ref<Request[]>([])
 const timeRange = ref('30')
+const latencyStats = ref<LatencyStats | null>(null)
+
+// Cost estimation
+const showCostEstimator = ref(false)
+const costEstimateModel = ref('gpt-4')
+const costEstimateMessages = ref('')
+const costEstimateLoading = ref(false)
+const costEstimateResult = ref<CostEstimateResponse | null>(null)
 
 onMounted(() => {
   loadStats()
   loadRecentRequests()
+  // Latency stats will be loaded after stats are loaded (if user has requests)
 })
 
 const loadStats = async () => {
@@ -223,6 +349,11 @@ const loadStats = async () => {
       endTime.toISOString()
     )
     stats.value = response
+    
+    // Load latency stats if user has made requests
+    if (response.total_requests > 0) {
+      loadLatencyStats()
+    }
   } catch (error: any) {
     console.error('Failed to load analytics:', error)
   } finally {
@@ -236,6 +367,48 @@ const loadRecentRequests = async () => {
     recentRequests.value = response.requests
   } catch (error: any) {
     console.error('Failed to load recent requests:', error)
+  }
+}
+
+const loadLatencyStats = async () => {
+  try {
+    const response = await analyticsApi.getLatencyStats()
+    latencyStats.value = response
+  } catch (error: any) {
+    console.error('Failed to load latency stats:', error)
+  }
+}
+
+const estimateCost = async () => {
+  if (!costEstimateModel.value || !costEstimateMessages.value.trim()) {
+    return
+  }
+
+  costEstimateLoading.value = true
+  costEstimateResult.value = null
+
+  try {
+    // Parse messages (simple format: assume user message if not structured)
+    const messages = costEstimateMessages.value.trim().split('\n').filter(m => m.trim()).map(content => ({
+      role: 'user' as const,
+      content: content.trim()
+    }))
+
+    // If empty, add a default message
+    if (messages.length === 0) {
+      messages.push({ role: 'user', content: costEstimateMessages.value.trim() || 'Hello' })
+    }
+
+    const response = await analyticsApi.estimateCost({
+      model: costEstimateModel.value,
+      messages
+    })
+    costEstimateResult.value = response
+  } catch (error: any) {
+    console.error('Failed to estimate cost:', error)
+    showToast(error.response?.data?.message || 'Failed to estimate cost', 'error')
+  } finally {
+    costEstimateLoading.value = false
   }
 }
 

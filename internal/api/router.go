@@ -7,6 +7,7 @@ import (
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/gateway"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/tunnel"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 )
@@ -42,13 +43,20 @@ func SetupRouter(
 		r.Use(middleware.IPWhitelistMiddleware(ipWhitelist))
 	}
 
+	// Apply error logging middleware (after other middleware, before routes)
+	if postgresClient != nil {
+		errorLogRepo := storage.NewErrorLogRepository(postgresClient.Pool())
+		r.Use(middleware.ErrorLoggingMiddleware(errorLogRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger()))
+	}
+
 	// Health check (no auth required)
 	healthHandler := handlers.NewHealthHandler()
 	r.GET("/health", healthHandler.HandleHealth)
 
-	// Swagger UI documentation (no auth required)
-	r.GET("/swagger", handlers.HandleSwaggerUI)
-	r.GET("/swagger.json", handlers.HandleSwaggerJSON)
+	// Swagger UI documentation (no auth required, but supports access_token query param)
+	swaggerHandler := handlers.NewSwaggerHandler(jwtService)
+	r.GET("/swagger", swaggerHandler.HandleSwaggerUI)
+	r.GET("/swagger.json", swaggerHandler.HandleSwaggerJSON)
 
 	// Phase 5: Prometheus metrics endpoint (no auth required)
 	r.GET("/metrics", handlers.HandleMetrics)
@@ -105,8 +113,10 @@ func SetupRouter(
 		// Protected auth routes (require JWT)
 		authProtected := auth.Group("")
 		authProtected.Use(middleware.JWTAuthMiddleware(jwtService))
+		userHandler := handlers.NewUserHandler(userRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 		authProtected.GET("/profile", authHandler.HandleProfile)
-		authProtected.PUT("/profile", handlers.NewUserHandler(userRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger()).HandleUpdateProfile)
+		authProtected.PUT("/profile", userHandler.HandleUpdateProfile)
+		authProtected.PUT("/profile/password", userHandler.HandleChangePassword)
 		authProtected.POST("/refresh", authHandler.HandleRefresh)
 
 		// API key management (user routes - users manage their own keys)
@@ -125,6 +135,50 @@ func SetupRouter(
 			authProtected.PUT("/provider-keys/:provider", providerKeyHandler.UpdateProviderKey)
 			authProtected.DELETE("/provider-keys/:provider", providerKeyHandler.DeleteProviderKey)
 			authProtected.POST("/provider-keys/:provider/test", providerKeyHandler.TestProviderKey)
+		}
+
+		// Frontend chat endpoint (JWT authentication for direct UI usage)
+		// This allows users to chat directly without creating an API key first
+		chatHandler := handlers.NewChatHandler(router, requestRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		authProtected.POST("/chat", chatHandler.HandleChat)
+
+		// Frontend analytics endpoints (JWT authentication for direct UI usage)
+		if requestRepo != nil {
+			analyticsHandler := handlers.NewAnalyticsHandler(requestRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+			authProtected.GET("/analytics/usage", analyticsHandler.GetUsageStats)
+			authProtected.GET("/analytics/requests", analyticsHandler.GetRequests)
+		}
+
+		// Frontend tunnel endpoints (JWT authentication for direct UI usage)
+		// Note: postgresClient is already checked in outer if condition
+		tunnelRepo := tunnel.NewTunnelRepository(postgresClient.Pool(), zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		tunnelHandler := handlers.NewTunnelHandler(tunnelRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		authProtected.GET("/tunnels", tunnelHandler.ListTunnels)
+		authProtected.GET("/tunnels/:id", tunnelHandler.GetTunnel)
+		authProtected.POST("/tunnels/:id/disconnect", tunnelHandler.DisconnectTunnel)
+	}
+
+	// Initialize routing handler (needed for both user and admin routes)
+	var settingsRepo *storage.SystemSettingsRepository
+	var userRepo *storage.UserRepository
+	var routingHandler *handlers.RoutingHandler
+	if postgresClient != nil {
+		settingsRepo = storage.NewSystemSettingsRepository(postgresClient.Pool())
+		userRepo = storage.NewUserRepository(postgresClient, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		
+		// Set routing strategy services in router
+		router.SetRoutingStrategyService(settingsRepo)
+		router.SetUserRoutingStrategyService(userRepo)
+		
+		routingHandler = handlers.NewRoutingHandler(router, settingsRepo, userRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		
+		// User routing strategy endpoints (user-facing)
+		if jwtService != nil {
+			authProtected := r.Group("/auth")
+			authProtected.Use(middleware.JWTAuthMiddleware(jwtService))
+			authProtected.GET("/routing/strategy", routingHandler.GetUserRoutingStrategy)
+			authProtected.PUT("/routing/strategy", routingHandler.SetUserRoutingStrategy)
+			authProtected.DELETE("/routing/strategy", routingHandler.ClearUserRoutingStrategy)
 		}
 	}
 
@@ -156,15 +210,25 @@ func SetupRouter(
 		api.GET("/analytics/requests", analyticsHandler.GetRequests)
 	}
 
+	// Tunnel endpoints (require API key authentication)
+	if postgresClient != nil {
+		tunnelRepo := tunnel.NewTunnelRepository(postgresClient.Pool(), zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		tunnelHandler := handlers.NewTunnelHandler(tunnelRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		api.GET("/tunnels", tunnelHandler.ListTunnels)
+		api.GET("/tunnels/:id", tunnelHandler.GetTunnel)
+		api.POST("/tunnels/:id/disconnect", tunnelHandler.DisconnectTunnel)
+	}
+
 	// Provider endpoints
 	providerHandler := handlers.NewProviderHandler(router, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 	api.GET("/providers", providerHandler.ListProviders)
 	api.GET("/providers/:name/health", providerHandler.GetProviderHealth)
 
-	// Phase 4: Routing endpoints
-	routingHandler := handlers.NewRoutingHandler(router, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
-	api.POST("/routing/estimate-cost", routingHandler.GetCostEstimate)
-	api.GET("/routing/latency", routingHandler.GetLatencyStats)
+	// Phase 4: Routing endpoints (public API)
+	if routingHandler != nil {
+		api.POST("/routing/estimate-cost", routingHandler.GetCostEstimate)
+		api.GET("/routing/latency", routingHandler.GetLatencyStats)
+	}
 
 	// Admin routes (require JWT authentication and admin role)
 	if jwtService != nil {
@@ -173,8 +237,19 @@ func SetupRouter(
 		admin.Use(middleware.AdminMiddleware()) // Require admin role
 
 		// Phase 4: Admin routing endpoints
-		admin.POST("/routing/strategy", routingHandler.SetRoutingStrategy)
-		admin.GET("/routing/strategy", routingHandler.GetRoutingStrategy)
+		if settingsRepo != nil {
+			admin.POST("/routing/strategy", routingHandler.SetRoutingStrategy)
+			admin.GET("/routing/strategy", routingHandler.GetRoutingStrategy)
+			admin.POST("/routing/strategy/lock", routingHandler.SetRoutingStrategyLock)
+
+			// Custom routing rules (admin only)
+			if postgresClient != nil {
+				customRulesRepo := storage.NewCustomRoutingRulesRepository(postgresClient.Pool())
+				customRulesHandler := handlers.NewCustomRulesHandler(router, customRulesRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+				admin.GET("/routing/custom-rules", customRulesHandler.GetCustomRules)
+				admin.POST("/routing/custom-rules", customRulesHandler.SetCustomRules)
+			}
+		}
 
 		// Error logs management (admin only)
 		if postgresClient != nil {

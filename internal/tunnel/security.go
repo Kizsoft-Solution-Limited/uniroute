@@ -37,9 +37,20 @@ func (sm *SecurityMiddleware) ValidateOrigin(origin string) bool {
 
 // AddSecurityHeaders adds security headers to HTTP responses
 func (sm *SecurityMiddleware) AddSecurityHeaders(w http.ResponseWriter, r *http.Request) {
-	// CORS headers
+	// CORS headers - allow all origins if no restrictions configured (for development)
 	origin := r.Header.Get("Origin")
-	if origin != "" && sm.ValidateOrigin(origin) {
+	if len(sm.allowedOrigins) == 0 {
+		// No restrictions configured, allow all origins (development mode)
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Max-Age", "3600")
+	} else if origin != "" && sm.ValidateOrigin(origin) {
+		// Origin restrictions configured, validate
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")

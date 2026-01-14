@@ -30,7 +30,8 @@ export const useAuthStore = defineStore('auth', () => {
       'tunnels:create',
       'tunnels:delete',
       'analytics:read',
-      'provider-keys:manage'
+      'provider-keys:manage',
+      'chat:use'
     ]
     
     // Check user-specific permissions (if provided by backend)

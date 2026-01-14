@@ -71,22 +71,24 @@
                 {{ key.rateLimitPerMinute }}/min, {{ key.rateLimitPerDay }}/day
               </p>
             </div>
-            <div v-if="key.keyPreview" class="mt-3 flex items-center space-x-2">
-              <code class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded text-sm font-mono">
-                {{ key.keyPreview }}
-              </code>
-              <button
-                @click="copyToClipboard(key.keyPreview)"
-                class="p-1.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
-                title="Copy to clipboard"
-              >
-                <Copy class="w-4 h-4" />
-              </button>
+            <div v-if="key.keyPreview" class="mt-3">
+              <div class="flex items-center space-x-2 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-2.5">
+                <code class="flex-1 text-sm font-semibold text-gray-900 dark:text-white font-mono select-all">
+                  {{ key.keyPreview }}
+                </code>
+                <button
+                  @click="copyToClipboard(key.keyPreview)"
+                  class="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors flex-shrink-0"
+                  title="Copy to clipboard"
+                >
+                  <Copy class="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
           <div class="flex items-center space-x-2 ml-4">
             <button
-              @click="revokeKey(key.id)"
+              @click="openRevokeDialog(key.id)"
               class="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
               title="Revoke key"
             >
@@ -124,7 +126,7 @@
                 Rate Limit (per minute)
               </label>
               <Input
-                v-model.number="newKey.rateLimitPerMinute"
+                v-model.number="newKey.rate_limit_per_minute"
                 type="number"
                 min="1"
                 required
@@ -135,7 +137,7 @@
                 Rate Limit (per day)
               </label>
               <Input
-                v-model.number="newKey.rateLimitPerDay"
+                v-model.number="newKey.rate_limit_per_day"
                 type="number"
                 min="1"
                 required
@@ -153,6 +155,72 @@
         </form>
       </Card>
     </div>
+
+    <!-- Show API Key Modal (only shown once after creation) -->
+    <div
+      v-if="showKeyModal"
+      class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      @click.self="showKeyModal = false"
+    >
+      <Card class="w-full max-w-md">
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+          API Key Created
+        </h2>
+        <p class="text-sm text-yellow-600 dark:text-yellow-400 mb-4">
+          ⚠️ Save this key now - it will not be shown again!
+        </p>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Your API Key
+            </label>
+            <div class="relative">
+              <div class="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-2 border-blue-200 dark:border-blue-700 rounded-lg p-4">
+                <code 
+                  class="block text-base font-bold text-gray-900 dark:text-white font-mono break-all select-all cursor-text"
+                  id="api-key-display"
+                >
+                  {{ newlyCreatedKey }}
+                </code>
+              </div>
+              <div class="flex items-center justify-end mt-3 space-x-2">
+                <button
+                  @click="selectAllKey"
+                  class="px-3 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                  title="Select all"
+                >
+                  Select All
+                </button>
+                <button
+                  @click="copyToClipboard(newlyCreatedKey)"
+                  class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors flex items-center space-x-2"
+                  title="Copy to clipboard"
+                >
+                  <Copy class="w-4 h-4" />
+                  <span>Copy</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <Button @click="showKeyModal = false" class="w-full">
+            I've Saved It
+          </Button>
+        </div>
+      </Card>
+    </div>
+
+    <!-- Revoke Confirmation Dialog -->
+    <ConfirmationDialog
+      :show="showRevokeDialog"
+      title="Revoke API Key"
+      message="Are you sure you want to revoke this API key? This action cannot be undone. The key will immediately stop working."
+      variant="danger"
+      confirm-text="Revoke Key"
+      cancel-text="Cancel"
+      :loading="revoking"
+      @confirm="revokeKey"
+      @cancel="cancelRevoke"
+    />
   </div>
 </template>
 
@@ -163,17 +231,8 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import { Key, Plus, Copy, Trash2 } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
-
-interface ApiKey {
-  id: string
-  name: string
-  isActive: boolean
-  createdAt: string
-  expiresAt?: string
-  rateLimitPerMinute: number
-  rateLimitPerDay: number
-  keyPreview?: string
-}
+import { apiKeysApi, type ApiKey, type CreateApiKeyResponse } from '@/services/api/apikeys'
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog.vue'
 
 const { showToast } = useToast()
 
@@ -181,10 +240,15 @@ const loading = ref(false)
 const creating = ref(false)
 const apiKeys = ref<ApiKey[]>([])
 const showCreateModal = ref(false)
+const showKeyModal = ref(false)
+const newlyCreatedKey = ref<string>('')
+const showRevokeDialog = ref(false)
+const keyToRevoke = ref<string | null>(null)
+const revoking = ref(false)
 const newKey = ref({
   name: '',
-  rateLimitPerMinute: 60,
-  rateLimitPerDay: 10000
+  rate_limit_per_minute: 60,
+  rate_limit_per_day: 10000
 })
 
 onMounted(() => {
@@ -194,54 +258,83 @@ onMounted(() => {
 const loadApiKeys = async () => {
   loading.value = true
   try {
-    // TODO: Fetch from API
-    // const response = await apiKeysApi.list()
-    // apiKeys.value = response.data
-    
-    // Mock data for now
-    apiKeys.value = []
+    const response = await apiKeysApi.list()
+    apiKeys.value = response.keys.map(key => ({
+      ...key,
+      isActive: key.is_active,
+      createdAt: key.created_at,
+      expiresAt: key.expires_at || undefined,
+      rateLimitPerMinute: key.rate_limit_per_minute,
+      rateLimitPerDay: key.rate_limit_per_day,
+      keyPreview: key.key_preview || `${key.id.substring(0, 8)}...` // Show partial ID as preview
+    }))
   } catch (error: any) {
-    showToast('Failed to load API keys', 'error')
+    showToast(error.response?.data?.error || 'Failed to load API keys', 'error')
   } finally {
     loading.value = false
   }
 }
 
 const createApiKey = async () => {
+  if (!newKey.value.name.trim()) {
+    showToast('Please enter a name for the API key', 'error')
+    return
+  }
+
   creating.value = true
   try {
-    // TODO: Create via API
-    // const response = await apiKeysApi.create(newKey.value)
-    // apiKeys.value.push(response.data)
+    const response: CreateApiKeyResponse = await apiKeysApi.create({
+      name: newKey.value.name.trim(),
+      rate_limit_per_minute: newKey.value.rate_limit_per_minute || 60,
+      rate_limit_per_day: newKey.value.rate_limit_per_day || 10000
+    })
     
-    showToast('API key created successfully', 'success')
+    // Show the key to user (only time it's shown!)
+    newlyCreatedKey.value = response.key
     showCreateModal.value = false
+    showKeyModal.value = true
+    
+    // Reset form
     newKey.value = {
       name: '',
-      rateLimitPerMinute: 60,
-      rateLimitPerDay: 10000
+      rate_limit_per_minute: 60,
+      rate_limit_per_day: 10000
     }
+    
+    // Reload list
     await loadApiKeys()
   } catch (error: any) {
-    showToast(error.message || 'Failed to create API key', 'error')
+    showToast(error.response?.data?.error || error.message || 'Failed to create API key', 'error')
   } finally {
     creating.value = false
   }
 }
 
-const revokeKey = async (id: string) => {
-  if (!confirm('Are you sure you want to revoke this API key? This action cannot be undone.')) {
-    return
-  }
+const openRevokeDialog = (id: string) => {
+  keyToRevoke.value = id
+  showRevokeDialog.value = true
+}
+
+const revokeKey = async () => {
+  if (!keyToRevoke.value) return
   
+  revoking.value = true
   try {
-    // TODO: Revoke via API
-    // await apiKeysApi.revoke(id)
+    await apiKeysApi.revoke(keyToRevoke.value)
     showToast('API key revoked successfully', 'success')
+    showRevokeDialog.value = false
+    keyToRevoke.value = null
     await loadApiKeys()
   } catch (error: any) {
-    showToast(error.message || 'Failed to revoke API key', 'error')
+    showToast(error.response?.data?.error || error.message || 'Failed to revoke API key', 'error')
+  } finally {
+    revoking.value = false
   }
+}
+
+const cancelRevoke = () => {
+  showRevokeDialog.value = false
+  keyToRevoke.value = null
 }
 
 const copyToClipboard = async (text: string) => {
@@ -250,6 +343,19 @@ const copyToClipboard = async (text: string) => {
     showToast('Copied to clipboard', 'success')
   } catch (error) {
     showToast('Failed to copy to clipboard', 'error')
+  }
+}
+
+const selectAllKey = () => {
+  const element = document.getElementById('api-key-display')
+  if (element) {
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    const selection = window.getSelection()
+    if (selection) {
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
   }
 }
 

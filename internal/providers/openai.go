@@ -176,13 +176,26 @@ func (p *OpenAIProvider) HealthCheck(ctx context.Context) error {
 
 // GetModels returns list of available OpenAI models
 func (p *OpenAIProvider) GetModels() []string {
-	// Common OpenAI models
+	// Latest OpenAI models (as of 2025)
 	return []string{
-		"gpt-4",
+		// GPT-4o series (latest, 2024-2025)
+		"gpt-4o",                 // GPT-4 Optimized (latest, May 2024)
+		"gpt-4o-2024-08-06",      // GPT-4o (August 2024)
+		"gpt-4o-mini",            // GPT-4o Mini (latest)
+		"gpt-4o-mini-2024-07-18", // GPT-4o Mini (July 2024)
+		// GPT-4 Turbo series
+		"gpt-4-turbo", // GPT-4 Turbo
 		"gpt-4-turbo-preview",
 		"gpt-4-0125-preview",
-		"gpt-3.5-turbo",
+		"gpt-4-1106-preview",
+		// GPT-4 (original)
+		"gpt-4",
+		// GPT-3.5 series
+		"gpt-3.5-turbo", // GPT-3.5 Turbo (latest)
 		"gpt-3.5-turbo-0125",
+		"gpt-3.5-turbo-1106",
+		// Note: When OpenAI releases GPT-5.2, GPT-5.2 Pro, o4-mini via API,
+		// their exact model IDs will be added here. Check OpenAI API documentation.
 	}
 }
 

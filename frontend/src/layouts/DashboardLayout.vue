@@ -33,6 +33,7 @@
             v-for="item in navItems"
             :key="item.path"
             :to="item.path"
+            @click="mobileMenuOpen = false"
             class="flex items-center space-x-3 px-4 py-3 rounded-lg text-slate-300 hover:bg-slate-800/60 transition-colors group"
             :class="{ 'bg-blue-500/20 text-blue-400 font-semibold': isActive(item.path) }"
           >
@@ -125,7 +126,8 @@ import {
   AlertTriangle,
   Mail,
   Route,
-  Users
+  Users,
+  MessageSquare
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -155,11 +157,13 @@ const pageTitle = computed(() => {
   const titles: Record<string, string> = {
     dashboard: 'Dashboard',
     'api-keys': 'API Keys',
+    chat: 'AI Chat',
     tunnels: 'Tunnels',
     analytics: 'Analytics',
     'webhook-testing': 'Webhook Testing',
     'settings-profile': 'Profile Settings',
     'settings-provider-keys': 'Provider Keys',
+    'settings-routing-strategy': 'Routing Strategy',
     'admin-users': 'User Management',
     'admin-email': 'Email Configuration',
     'admin-provider-keys': 'Provider Keys Management',
@@ -191,6 +195,11 @@ const navItems = computed(() => {
       path: '/dashboard',
       label: 'Dashboard',
       icon: LayoutDashboard
+    },
+    {
+      path: '/dashboard/chat',
+      label: 'AI Chat',
+      icon: MessageSquare
     },
     {
       path: '/dashboard/api-keys',
@@ -238,7 +247,7 @@ const navItems = computed(() => {
         icon: Route
       },
       {
-        path: '/dashboard/errors',
+        path: '/dashboard/admin/errors',
         label: 'Error Logs',
         icon: AlertTriangle
       }

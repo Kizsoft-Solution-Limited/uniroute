@@ -38,7 +38,7 @@
           :existing-key="getExistingKey(provider.name)"
           @add="handleAddKey"
           @update="handleUpdateKey"
-          @delete="handleDeleteKey"
+          @delete="openDeleteDialog"
           @test="handleTestKey"
         />
       </div>
@@ -58,6 +58,19 @@
       :message="toast.message"
       :type="toast.type"
       @close="toast.show = false"
+    />
+
+    <!-- Delete Confirmation Dialog -->
+    <ConfirmationDialog
+      :show="showDeleteDialog"
+      title="Delete Provider Key"
+      :message="`Are you sure you want to delete your ${providerToDelete} API key? This action cannot be undone.`"
+      variant="danger"
+      confirm-text="Delete Key"
+      cancel-text="Cancel"
+      :loading="deleting"
+      @confirm="handleDeleteKey"
+      @cancel="cancelDelete"
     />
   </div>
 </template>

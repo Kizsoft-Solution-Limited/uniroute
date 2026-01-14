@@ -76,6 +76,16 @@ export const authApi = {
   async updateProfile(data: { name: string }): Promise<User> {
     const response = await apiClient.put<User>('/auth/profile', data)
     return response.data
+  },
+
+  /**
+   * Change user password
+   */
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await apiClient.put('/auth/profile/password', {
+      current_password: currentPassword,
+      new_password: newPassword
+    })
   }
 }
 

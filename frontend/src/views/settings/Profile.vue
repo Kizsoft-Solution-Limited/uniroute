@@ -109,6 +109,7 @@
         </div>
       </form>
     </Card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -188,11 +189,10 @@ const changePassword = async () => {
 
   changingPassword.value = true
   try {
-    // TODO: Change password via API
-    // await authApi.changePassword({
-    //   currentPassword: passwordForm.value.currentPassword,
-    //   newPassword: passwordForm.value.newPassword
-    // })
+    await authApi.changePassword(
+      passwordForm.value.currentPassword,
+      passwordForm.value.newPassword
+    )
     showToast('Password changed successfully', 'success')
     passwordForm.value = {
       currentPassword: '',
@@ -200,7 +200,7 @@ const changePassword = async () => {
       confirmPassword: ''
     }
   } catch (error: any) {
-    showToast(error.message || 'Failed to change password', 'error')
+    showToast(error.response?.data?.error || error.message || 'Failed to change password', 'error')
   } finally {
     changingPassword.value = false
   }

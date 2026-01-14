@@ -2,12 +2,26 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
 	"github.com/gin-gonic/gin"
 )
 
+// SwaggerHandler handles Swagger UI and JSON endpoints
+type SwaggerHandler struct {
+	jwtService *security.JWTService
+}
+
+// NewSwaggerHandler creates a new Swagger handler
+func NewSwaggerHandler(jwtService *security.JWTService) *SwaggerHandler {
+	return &SwaggerHandler{
+		jwtService: jwtService,
+	}
+}
+
 // HandleSwaggerUI serves the Swagger UI HTML page
-func HandleSwaggerUI(c *gin.Context) {
+func (h *SwaggerHandler) HandleSwaggerUI(c *gin.Context) {
 	html := `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -51,7 +65,13 @@ func HandleSwaggerUI(c *gin.Context) {
 		window.onload = function() {
 			// Get the base URL from the current location
 			const baseUrl = window.location.protocol + "//" + window.location.host;
-			const swaggerUrl = baseUrl + "/swagger.json";
+			// Get access_token from URL query parameter
+			const urlParams = new URLSearchParams(window.location.search);
+			const accessToken = urlParams.get('access_token');
+			let swaggerUrl = baseUrl + "/swagger.json";
+			if (accessToken) {
+				swaggerUrl += "?access_token=" + encodeURIComponent(accessToken);
+			}
 			
 			console.log("Loading Swagger UI from:", swaggerUrl);
 			
@@ -70,6 +90,16 @@ func HandleSwaggerUI(c *gin.Context) {
 					layout: "StandaloneLayout",
 					validatorUrl: null, // Disable validator to avoid external requests
 					tryItOutEnabled: true,
+					requestInterceptor: function(request) {
+						// Add access_token to all requests if available
+						if (accessToken) {
+							if (!request.headers) {
+								request.headers = {};
+							}
+							request.headers['Authorization'] = 'Bearer ' + accessToken;
+						}
+						return request;
+					},
 					onComplete: function() {
 						console.log("Swagger UI loaded successfully");
 					},
@@ -99,7 +129,27 @@ func HandleSwaggerUI(c *gin.Context) {
 }
 
 // HandleSwaggerJSON serves the OpenAPI JSON specification
-func HandleSwaggerJSON(c *gin.Context) {
+func (h *SwaggerHandler) HandleSwaggerJSON(c *gin.Context) {
+	// Get access_token from query parameter
+	accessToken := c.Query("access_token")
+	
+	// Validate token and extract roles if provided
+	var userRoles []string
+	var isAdmin bool
+	if accessToken != "" && h.jwtService != nil {
+		claims, err := h.jwtService.ValidateToken(accessToken)
+		if err == nil {
+			userRoles = claims.Roles
+			// Check if user has admin role
+			for _, role := range userRoles {
+				if role == "admin" {
+					isAdmin = true
+					break
+				}
+			}
+		}
+	}
+
 	spec := map[string]interface{}{
 		"openapi": "3.0.0",
 		"info": map[string]interface{}{
@@ -1141,5 +1191,31 @@ func HandleSwaggerJSON(c *gin.Context) {
 			},
 		},
 	}
+
+	// Filter admin endpoints if user is not admin
+	if !isAdmin {
+		paths := spec["paths"].(map[string]interface{})
+		filteredPaths := make(map[string]interface{})
+		
+		for path, pathSpec := range paths {
+			// Skip admin paths
+			if strings.HasPrefix(path, "/admin/") {
+				continue
+			}
+			filteredPaths[path] = pathSpec
+		}
+		spec["paths"] = filteredPaths
+		
+		// Remove Admin tag if no admin endpoints
+		tags := spec["tags"].([]map[string]interface{})
+		filteredTags := []map[string]interface{}{}
+		for _, tag := range tags {
+			if tag["name"] != "Admin" {
+				filteredTags = append(filteredTags, tag)
+			}
+		}
+		spec["tags"] = filteredTags
+	}
+
 	c.JSON(http.StatusOK, spec)
 }

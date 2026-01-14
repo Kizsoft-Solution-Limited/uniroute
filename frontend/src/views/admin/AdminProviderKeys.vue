@@ -102,7 +102,7 @@
               </Button>
               <Button
                 v-if="getExistingKey(provider.name)"
-                @click="handleDelete(provider.name)"
+                @click="openDeleteDialog(provider.name)"
                 variant="danger"
                 :disabled="deleting === provider.name"
               >
@@ -132,6 +132,19 @@
         <p>{{ toast.message }}</p>
       </div>
     </div>
+
+    <!-- Delete Confirmation Dialog -->
+    <ConfirmationDialog
+      :show="showDeleteDialog"
+      title="Delete Provider Key"
+      :message="`Are you sure you want to delete the ${providerToDelete} key? This action cannot be undone.`"
+      variant="danger"
+      confirm-text="Delete Key"
+      cancel-text="Cancel"
+      :loading="deleting === providerToDelete"
+      @confirm="handleDelete"
+      @cancel="cancelDelete"
+    />
   </div>
 </template>
 
@@ -141,7 +154,8 @@ import { providerKeysApi, type ProviderKey } from '@/services/api/providerKeys'
 import Card from '@/components/ui/Card.vue'
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
-import ErrorHandler from '@/utils/errorHandler'
+import ConfirmationDialog from '@/components/ui/ConfirmationDialog.vue'
+import { ErrorHandler } from '@/utils/errorHandler'
 
 interface Provider {
   name: string
@@ -253,13 +267,23 @@ const handleTest = async (provider: string) => {
   }
 }
 
-const handleDelete = async (provider: string) => {
-  if (!confirm(`Are you sure you want to delete the ${provider} key?`)) return
+const showDeleteDialog = ref(false)
+const providerToDelete = ref<string | null>(null)
 
-  deleting.value = provider
+const openDeleteDialog = (provider: string) => {
+  providerToDelete.value = provider
+  showDeleteDialog.value = true
+}
+
+const handleDelete = async () => {
+  if (!providerToDelete.value) return
+
+  deleting.value = providerToDelete.value
   try {
-    await providerKeysApi.delete(provider)
-    showToast(`${provider} key deleted successfully`, 'success')
+    await providerKeysApi.delete(providerToDelete.value)
+    showToast(`${providerToDelete.value} key deleted successfully`, 'success')
+    showDeleteDialog.value = false
+    providerToDelete.value = null
     await loadKeys()
   } catch (err: any) {
     const appError = ErrorHandler.handleApiError(err)
@@ -268,6 +292,11 @@ const handleDelete = async (provider: string) => {
   } finally {
     deleting.value = null
   }
+}
+
+const cancelDelete = () => {
+  showDeleteDialog.value = false
+  providerToDelete.value = null
 }
 
 const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
