@@ -1,8 +1,19 @@
 import { apiClient } from './client'
 
+export interface ContentPart {
+  type: 'text' | 'image_url' | 'audio_url'
+  text?: string
+  image_url?: {
+    url: string // Can be data URL (base64) or HTTP URL
+  }
+  audio_url?: {
+    url: string // Can be data URL (base64) or HTTP URL
+  }
+}
+
 export interface Message {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  content: string | ContentPart[] // string for text-only, ContentPart[] for multimodal
 }
 
 export interface ChatRequest {
@@ -10,6 +21,7 @@ export interface ChatRequest {
   messages: Message[]
   temperature?: number
   max_tokens?: number
+  conversation_id?: string // Optional: save to conversation
 }
 
 export interface ChatResponse {

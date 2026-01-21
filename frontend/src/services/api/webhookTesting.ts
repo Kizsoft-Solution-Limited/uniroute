@@ -1,4 +1,5 @@
 import { apiClient } from './client'
+import { tunnelsApi } from './tunnels'
 
 export interface Tunnel {
   id: string
@@ -50,21 +51,40 @@ export interface ListRequestsParams {
 
 export const webhookTestingApi = {
   /**
-   * List all tunnels
-   * @param tunnelServerUrl - URL of the tunnel server (e.g., http://localhost:8080)
+   * List all tunnels for the authenticated user
+   * Uses the gateway's authenticated endpoint to get user's tunnels
    */
-  async listTunnels(tunnelServerUrl: string): Promise<Tunnel[]> {
-    const response = await fetch(`${tunnelServerUrl}/api/tunnels`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
+  async listTunnels(tunnelServerUrl?: string): Promise<Tunnel[]> {
+    try {
+      // Use the authenticated tunnels API endpoint (filters by user)
+      const response = await tunnelsApi.list(true) // Use JWT auth
+      return response.tunnels.map(t => ({
+        id: t.id,
+        subdomain: t.subdomain,
+        public_url: t.public_url,
+        local_url: t.local_url,
+        request_count: t.request_count || 0,
+        created_at: t.created_at,
+        last_active: t.last_active || ''
+      }))
+    } catch (error: any) {
+      // Fallback to tunnel server API if gateway endpoint fails
+      // This is for backward compatibility or if user is not authenticated
+      if (tunnelServerUrl) {
+        const response = await fetch(`${tunnelServerUrl}/api/tunnels`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+        if (!response.ok) {
+          throw new Error(`Failed to list tunnels: ${response.statusText}`)
+        }
+        const data = await response.json()
+        return data.tunnels || []
       }
-    })
-    if (!response.ok) {
-      throw new Error(`Failed to list tunnels: ${response.statusText}`)
+      throw error
     }
-    const data = await response.json()
-    return data.tunnels || []
   },
 
   /**

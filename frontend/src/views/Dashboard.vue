@@ -75,7 +75,7 @@
     <!-- Quick Actions -->
     <Card>
       <h2 class="text-xl font-semibold text-white mb-4">Quick Actions</h2>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <router-link
           to="/dashboard/api-keys"
           class="flex items-center space-x-3 p-4 border-2 border-dashed border-slate-700/50 rounded-lg hover:border-blue-500 transition-colors group"
@@ -114,6 +114,65 @@
             <p class="text-sm text-slate-400">Configure AI provider keys</p>
           </div>
         </router-link>
+
+        <a
+          href="https://polar.sh/uniroute/donate"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center space-x-3 p-4 border-2 border-dashed border-slate-700/50 rounded-lg hover:border-pink-500 transition-colors group"
+        >
+          <div class="w-10 h-10 bg-pink-500/20 rounded-lg flex items-center justify-center group-hover:bg-pink-500/30 transition-colors">
+            <Heart class="w-5 h-5 text-pink-400" />
+          </div>
+          <div>
+            <p class="font-medium text-white">Support Us</p>
+            <p class="text-sm text-slate-400">Donate via Polar.sh</p>
+          </div>
+        </a>
+      </div>
+    </Card>
+
+    <!-- Tunnel Chart (Admin Only) -->
+    <Card v-if="isAdmin">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold text-white">Active Tunnels Over Time</h2>
+        <div class="flex items-center space-x-4 text-sm text-slate-400">
+          <button
+            @click="chartHours = 6"
+            :class="chartHours === 6 ? 'text-purple-400 font-semibold' : 'hover:text-white'"
+            class="transition-colors"
+          >
+            6h
+          </button>
+          <button
+            @click="chartHours = 24"
+            :class="chartHours === 24 ? 'text-purple-400 font-semibold' : 'hover:text-white'"
+            class="transition-colors"
+          >
+            24h
+          </button>
+          <button
+            @click="chartHours = 168"
+            :class="chartHours === 168 ? 'text-purple-400 font-semibold' : 'hover:text-white'"
+            class="transition-colors"
+          >
+            7d
+          </button>
+        </div>
+      </div>
+      <div v-if="tunnelChartLoading" class="flex items-center justify-center h-80">
+        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+      </div>
+      <div v-else-if="tunnelChartData.length === 0" class="flex items-center justify-center h-80 text-slate-400">
+        <p>No tunnel data available</p>
+      </div>
+      <div v-else class="w-full">
+        <TunnelChart 
+          :data="tunnelChartData" 
+          :width="Math.max(800, Math.min(1200, tunnelChartData.length * 60))" 
+          :height="400"
+          :hours="chartHours"
+        />
       </div>
     </Card>
 
@@ -177,20 +236,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import Card from '@/components/ui/Card.vue'
+import TunnelChart from '@/components/charts/TunnelChart.vue'
 import {
   BarChart3,
   Network,
   Key,
   DollarSign,
   Plus,
-  TrendingUp
+  TrendingUp,
+  Heart
 } from 'lucide-vue-next'
 import { dashboardApi } from '@/services/api/dashboard'
+import { tunnelsApi } from '@/services/api/tunnels'
 import { useToast } from '@/composables/useToast'
+import { useAuthStore } from '@/stores/auth'
 
 const { showToast } = useToast()
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.hasRole('admin'))
 
 interface Activity {
   icon: string
@@ -221,10 +286,92 @@ const stats = ref({
 
 const recentActivity = ref<Activity[]>([])
 const providerUsage = ref<ProviderUsage[]>([])
+const tunnelChartData = ref<Array<{ time: string; active_tunnels: number; total_tunnels: number }>>([])
+const tunnelChartLoading = ref(false)
+
+// Load chart hours from localStorage, default to 24 if not found
+const getStoredChartHours = (): number => {
+  const stored = localStorage.getItem('uniroute_chart_hours')
+  if (stored) {
+    const hours = parseInt(stored, 10)
+    // Validate that it's one of the allowed values (6, 24, or 168)
+    if (hours === 6 || hours === 24 || hours === 168) {
+      return hours
+    }
+  }
+  return 24 // Default to 24h
+}
+
+const chartHours = ref(getStoredChartHours())
+let chartUpdateInterval: number | null = null
+
+// Save chart hours to localStorage whenever it changes
+watch(chartHours, (newHours) => {
+  localStorage.setItem('uniroute_chart_hours', newHours.toString())
+  if (isAdmin.value) {
+    loadTunnelChart()
+  }
+})
 
 onMounted(async () => {
   await loadDashboardData()
+  if (isAdmin.value) {
+    await loadTunnelChart()
+    // Update chart every 30 seconds (only for admins)
+    chartUpdateInterval = window.setInterval(() => {
+      if (isAdmin.value) {
+        loadTunnelChart()
+      }
+    }, 30000)
+  }
 })
+
+onUnmounted(() => {
+  if (chartUpdateInterval !== null) {
+    clearInterval(chartUpdateInterval)
+  }
+})
+
+watch(isAdmin, (newVal) => {
+  if (newVal) {
+    loadTunnelChart()
+  } else {
+    tunnelChartData.value = []
+  }
+})
+
+const loadTunnelChart = async () => {
+  tunnelChartLoading.value = true
+  try {
+    // For time-series views with trend/slope:
+    // - 6h: 30-minute intervals (0.5 hours) for trend visualization
+    // - 24h: 1-hour intervals for trend visualization
+    // - 7d: Daily aggregation (interval=24)
+    let interval: number | undefined
+    if (chartHours.value >= 168) {
+      interval = 24 // Daily intervals for 7d view
+    } else if (chartHours.value === 6) {
+      interval = 0.5 // 30-minute intervals for 6h view
+    } else {
+      interval = 1.0 // 1-hour intervals for 24h view
+    }
+    console.log(`Loading tunnel chart: hours=${chartHours.value}, interval=${interval}`)
+    const stats = await tunnelsApi.getStats(chartHours.value, interval, true)
+    console.log('Tunnel stats received:', stats) // Debug log
+    console.log(`Data points: ${stats.data?.length || 0}`)
+    tunnelChartData.value = stats.data || []
+    if (stats.data && stats.data.length === 0) {
+      console.warn('Tunnel stats API returned empty data array')
+    }
+  } catch (error: any) {
+    console.error('Failed to load tunnel chart data:', error)
+    console.error('Error details:', error.response?.data || error.message)
+    tunnelChartData.value = []
+    // Don't show toast for chart errors to avoid spam
+  } finally {
+    tunnelChartLoading.value = false
+  }
+}
 
 const loadDashboardData = async () => {
   loading.value = true

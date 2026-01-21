@@ -32,19 +32,16 @@ func NewDomainManager(baseDomain string, logger zerolog.Logger) *DomainManager {
 }
 
 // AllocateSubdomain allocates a unique subdomain
+// Note: It may return a subdomain that already exists in the database
+// The CreateTunnel function uses UPSERT to handle this case and update the LocalURL
 func (dm *DomainManager) AllocateSubdomain(ctx context.Context, repository *TunnelRepository) (string, error) {
 	// Try to allocate from pool
 	subdomain := dm.subdomainPool.Allocate()
 	
-	// Check if subdomain is already in use (database check)
-	if repository != nil {
-		existing, err := repository.GetTunnelBySubdomain(ctx, subdomain)
-		if err == nil && existing != nil {
-			// Subdomain taken, try again
-			dm.logger.Warn().Str("subdomain", subdomain).Msg("Subdomain already in use, retrying")
-			return dm.AllocateSubdomain(ctx, repository)
-		}
-	}
+	// Note: We don't check if subdomain already exists here
+	// If it does, CreateTunnel will use UPSERT to update the existing tunnel's LocalURL
+	// This allows reusing subdomains with different ports
+	dm.logger.Debug().Str("subdomain", subdomain).Msg("Allocated subdomain from pool")
 	
 	return subdomain, nil
 }

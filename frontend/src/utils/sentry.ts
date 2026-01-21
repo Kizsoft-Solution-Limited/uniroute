@@ -28,7 +28,7 @@ export function initSentry(app: App) {
     integrations: [
       new BrowserTracing({
         routingInstrumentation: Sentry.vueRouterInstrumentation(router),
-        tracePropagationTargets: ['localhost', /^https:\/\/api\.uniroute\.dev/],
+        tracePropagationTargets: ['localhost', /^https:\/\/api\.uniroute\.co/],
       }),
     ],
     // Performance Monitoring

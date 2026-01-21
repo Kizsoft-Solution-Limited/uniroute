@@ -18,7 +18,7 @@ var (
 
 func TestNewDomainManager(t *testing.T) {
 	logger := zerolog.Nop()
-	manager := NewDomainManager("uniroute.dev", logger)
+	manager := NewDomainManager("uniroute.co", logger)
 
 	assert.NotNil(t, manager)
 	// Note: baseDomain and subdomainPool are unexported, so we can't test them directly
@@ -27,7 +27,7 @@ func TestNewDomainManager(t *testing.T) {
 
 func TestDomainManager_GetPublicURL(t *testing.T) {
 	logger := zerolog.Nop()
-	manager := NewDomainManager("uniroute.dev", logger)
+	manager := NewDomainManager("uniroute.co", logger)
 
 	tests := []struct {
 		name      string
@@ -36,8 +36,8 @@ func TestDomainManager_GetPublicURL(t *testing.T) {
 		https     bool
 		expected  string
 	}{
-		{"HTTP with domain", "abc123", 8080, false, "http://abc123.uniroute.dev"},
-		{"HTTPS with domain", "abc123", 8080, true, "https://abc123.uniroute.dev"},
+		{"HTTP with domain", "abc123", 8080, false, "http://abc123.uniroute.co"},
+		{"HTTPS with domain", "abc123", 8080, true, "https://abc123.uniroute.co"},
 		{"HTTP localhost", "abc123", 8080, false, "http://abc123.localhost:8080"},
 	}
 
@@ -102,7 +102,7 @@ func TestDNSValidator_ValidateTXTRecord(t *testing.T) {
 
 func TestDomainManager_ValidateCustomDomain(t *testing.T) {
 	logger := zerolog.Nop()
-	manager := NewDomainManager("uniroute.dev", logger)
+	manager := NewDomainManager("uniroute.co", logger)
 
 	ctx := context.Background()
 

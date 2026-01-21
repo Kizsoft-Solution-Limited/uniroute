@@ -82,7 +82,19 @@ func (c *CostCalculator) EstimateCost(providerName, model string, messages []pro
 	// Estimate tokens (rough approximation: 1 token ≈ 4 characters)
 	totalChars := 0
 	for _, msg := range messages {
-		totalChars += len(msg.Content)
+		// Handle both string and []ContentPart (multimodal) content
+		switch content := msg.Content.(type) {
+		case string:
+			totalChars += len(content)
+		case []providers.ContentPart:
+			// Sum up text content from all parts
+			for _, part := range content {
+				if part.Type == "text" {
+					totalChars += len(part.Text)
+				}
+				// For images/audio, we could add a fixed token estimate, but for now we skip them
+			}
+		}
 	}
 	estimatedInputTokens := float64(totalChars) / 4.0
 

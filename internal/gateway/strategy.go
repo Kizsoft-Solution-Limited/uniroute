@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/providers"
@@ -31,11 +32,38 @@ func (s *ModelBasedStrategy) SelectProvider(ctx context.Context, req providers.C
 		return nil, ErrNoProviders
 	}
 
+	modelLower := strings.ToLower(req.Model)
+
 	// Find provider that supports the requested model
+	// First try exact match
 	for _, provider := range availableProviders {
 		models := provider.GetModels()
 		for _, model := range models {
-			if model == req.Model {
+			if strings.ToLower(model) == modelLower {
+				return provider, nil
+			}
+		}
+	}
+
+	// Try partial match (for cases like "llama2" matching "llama2:7b" or "mistral" matching "mistral:latest")
+	for _, provider := range availableProviders {
+		models := provider.GetModels()
+		for _, model := range models {
+			providerModelLower := strings.ToLower(model)
+			// Check if requested model name is contained in provider model name or vice versa
+			// This handles cases like "llama2" matching "llama2:7b" or "mistral" matching "mistral:latest"
+			if strings.Contains(providerModelLower, modelLower) || strings.Contains(modelLower, providerModelLower) {
+				return provider, nil
+			}
+		}
+	}
+
+	// Special handling for local models: if model name suggests local (llama, mistral, etc.), prefer local provider
+	if strings.Contains(modelLower, "llama") || strings.Contains(modelLower, "mistral") || 
+	   strings.Contains(modelLower, "phi") || strings.Contains(modelLower, "codellama") ||
+	   strings.Contains(modelLower, "neural") || strings.Contains(modelLower, "orca") {
+		for _, provider := range availableProviders {
+			if provider.Name() == "local" {
 				return provider, nil
 			}
 		}

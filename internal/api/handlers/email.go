@@ -170,7 +170,7 @@ func (h *EmailTestHandler) HandleGetEmailConfig(c *gin.Context) {
 			"SMTP_PORT (e.g., 587 or 2525)",
 			"SMTP_USERNAME (your Mailtrap username)",
 			"SMTP_PASSWORD (your Mailtrap password)",
-			"SMTP_FROM (e.g., noreply@uniroute.dev)",
+			"SMTP_FROM (e.g., noreply@uniroute.co)",
 		}
 	}
 

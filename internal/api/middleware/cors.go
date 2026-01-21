@@ -6,17 +6,27 @@ import (
 )
 
 // CORSMiddleware creates middleware for CORS configuration
-func CORSMiddleware() gin.HandlerFunc {
+// If customOrigins is provided, uses those; otherwise uses defaults
+func CORSMiddleware(customOrigins []string) gin.HandlerFunc {
+	allowOrigins := []string{
+		"http://localhost:3000",
+		"http://localhost:3002", // Frontend dev server
+		"http://localhost:5173", // Vite default port
+		"http://127.0.0.1:3000",
+		"http://127.0.0.1:3002",
+		"http://127.0.0.1:5173",
+		"https://uniroute.co",
+		"https://www.uniroute.co",
+		"https://app.uniroute.co",
+	}
+	
+	// Use custom origins if provided via environment variable
+	if len(customOrigins) > 0 {
+		allowOrigins = customOrigins
+	}
+	
 	return cors.New(cors.Config{
-		AllowOrigins: []string{
-			"http://localhost:3000",
-			"http://localhost:5173", // Vite default port
-			"http://127.0.0.1:3000",
-			"http://127.0.0.1:5173",
-			"https://uniroute.dev",
-			"https://www.uniroute.dev",
-			"https://app.uniroute.dev",
-		},
+		AllowOrigins: allowOrigins,
 		AllowMethods: []string{
 			"GET",
 			"POST",

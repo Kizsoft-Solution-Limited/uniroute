@@ -80,6 +80,22 @@ migrate:
 	@echo "Running database migrations..."
 	@./scripts/run_migrations.sh
 
+# Build CLI only
+build-cli:
+	@echo "Building CLI..."
+	@CGO_ENABLED=0 go build -o bin/uniroute cmd/cli/main.go
+
+# Test CLI manually
+test-cli: build-cli
+	@echo "Testing CLI commands..."
+	@./bin/uniroute --version
+	@./bin/uniroute --help
+	@./bin/uniroute http --help
+	@./bin/uniroute tcp --help
+	@./bin/uniroute tls --help
+	@./bin/uniroute tunnel --help
+	@echo "✓ CLI help commands work correctly"
+
 # Clean
 clean:
 	@echo "Cleaning..."

@@ -108,7 +108,7 @@
 
             <h2 class="text-2xl font-semibold text-white mt-8 mb-4">Contact Us</h2>
             <p>
-              If you have questions about this Privacy Policy or our data practices, please contact us at <a href="mailto:privacy@uniroute.dev" class="text-blue-400 hover:text-blue-300">privacy@uniroute.dev</a>.
+              If you have questions about this Privacy Policy or our data practices, please contact us at <a href="mailto:privacy@uniroute.co" class="text-blue-400 hover:text-blue-300">privacy@uniroute.co</a>.
             </p>
 
             <p class="text-sm text-slate-400 mt-12">

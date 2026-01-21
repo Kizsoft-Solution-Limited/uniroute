@@ -109,12 +109,32 @@ func (sm *SecurityMiddleware) ValidateRequest(r *http.Request) error {
 
 // SanitizePath sanitizes the request path
 func (sm *SecurityMiddleware) SanitizePath(path string) string {
-	// Remove path traversal attempts
+	// Remove path traversal attempts (more comprehensive)
 	path = strings.ReplaceAll(path, "..", "")
 	path = strings.ReplaceAll(path, "//", "/")
+	path = strings.ReplaceAll(path, "\\", "/") // Normalize backslashes
 	
-	// Remove null bytes
+	// Remove null bytes and control characters
 	path = strings.ReplaceAll(path, "\x00", "")
+	path = strings.Map(func(r rune) rune {
+		if r < 32 && r != '\t' && r != '\n' && r != '\r' {
+			return -1 // Remove control characters except tab, newline, carriage return
+		}
+		return r
+	}, path)
+	
+	// Remove leading/trailing slashes and normalize
+	path = strings.Trim(path, "/")
+	if path == "" {
+		path = "/"
+	} else if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	
+	// Limit path length
+	if len(path) > 2048 {
+		path = path[:2048]
+	}
 	
 	return path
 }

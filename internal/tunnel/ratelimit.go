@@ -62,8 +62,8 @@ func (trl *TunnelRateLimiter) GetRateLimit(tunnelID string) *RateLimitConfig {
 // CheckRateLimit checks if a request should be allowed (simplified in-memory version)
 // TODO: Integrate with Redis for distributed rate limiting
 func (trl *TunnelRateLimiter) CheckRateLimit(ctx context.Context, tunnelID string) (bool, error) {
-	// For Phase 3, use simple in-memory rate limiting
-	// Phase 4 will integrate with Redis for distributed rate limiting
+	// Use simple in-memory rate limiting
+	// TODO: Integrate with Redis for distributed rate limiting
 	config := trl.GetRateLimit(tunnelID)
 	
 	// Simple check - in production, use token bucket or sliding window

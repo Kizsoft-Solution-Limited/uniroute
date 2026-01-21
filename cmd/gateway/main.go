@@ -11,6 +11,7 @@ import (
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/config"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/email"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/gateway"
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/oauth"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/providers"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
@@ -31,19 +32,19 @@ func main() {
 
 	log.Info().Msg("Starting UniRoute Gateway...")
 
-	// Phase 1: Initialize in-memory API key service (fallback)
+	// Initialize in-memory API key service (fallback when database is not available)
 	apiKeyService := security.NewAPIKeyService(cfg.APIKeySecret)
 
-	// Phase 2: Initialize database and Redis (optional)
+	// Initialize database and Redis services (optional, enables advanced features)
 	var apiKeyServiceV2 *security.APIKeyServiceV2
 	var jwtService *security.JWTService
 	var rateLimiter *security.RateLimiter
 	var authRateLimiter *security.AuthRateLimiter
 	var postgresClient *storage.PostgresClient
 
-	// Try to initialize Phase 2 services if configured
+	// Initialize database and Redis if configured
 	if cfg.DatabaseURL != "" && cfg.RedisURL != "" {
-		log.Info().Msg("Initializing Phase 2 services (database & Redis)...")
+		log.Info().Msg("Initializing database and Redis services...")
 
 		// Initialize Redis
 		redisClient, err := storage.NewRedisClient(cfg.RedisURL, log)
@@ -75,7 +76,7 @@ func main() {
 		}
 	}
 
-	// Generate a default API key for testing (Phase 1 fallback)
+	// Generate a default API key for testing (when database is not available)
 	if apiKeyServiceV2 == nil {
 		defaultKey, err := apiKeyService.GenerateAPIKey()
 		if err != nil {
@@ -105,10 +106,12 @@ func main() {
 				rules, err := customRulesRepo.GetActiveRules(ctx)
 				if err == nil && len(rules) > 0 {
 					// Convert database rules to gateway routing rules
+					costCalculator := router.GetCostCalculator()
+					latencyTracker := router.GetLatencyTracker()
 					routingRules := make([]gateway.RoutingRule, 0, len(rules))
 					for _, rule := range rules {
 						// Build condition function
-						condition := func(rule *storage.CustomRoutingRule) func(providers.ChatRequest) bool {
+						condition := func(rule *storage.CustomRoutingRule, costCalc *gateway.CostCalculator, latTracker *gateway.LatencyTracker) func(providers.ChatRequest) bool {
 							return func(req providers.ChatRequest) bool {
 								switch rule.ConditionType {
 								case "model":
@@ -116,15 +119,24 @@ func main() {
 										return req.Model == model
 									}
 								case "cost_threshold":
-									// TODO: Implement cost-based condition
+									// Check if estimated cost is below threshold
+									if maxCost, ok := rule.ConditionValue["max_cost"].(float64); ok {
+										// Estimate cost for the request
+										estimatedCost := costCalc.EstimateCost(rule.ProviderName, req.Model, req.Messages)
+										return estimatedCost <= maxCost
+									}
 									return false
 								case "latency_threshold":
-									// TODO: Implement latency-based condition
+									// Check if average latency is below threshold
+									if maxLatencyMs, ok := rule.ConditionValue["max_latency_ms"].(float64); ok {
+										avgLatency := latTracker.GetAverageLatency(rule.ProviderName)
+										return avgLatency.Milliseconds() <= int64(maxLatencyMs)
+									}
 									return false
 								}
 								return false
 							}
-						}(rule)
+						}(rule, costCalculator, latencyTracker)
 
 						routingRule := gateway.RoutingRule{
 							Provider:  rule.ProviderName,
@@ -160,7 +172,7 @@ func main() {
 		Str("base_url", cfg.OllamaBaseURL).
 		Msg("Registered local LLM provider")
 
-	// Phase 3: Register cloud providers (if API keys are configured)
+	// Register cloud providers (if API keys are configured)
 	if cfg.OpenAIAPIKey != "" {
 		openAIProvider := providers.NewOpenAIProvider(cfg.OpenAIAPIKey, "", log)
 		router.RegisterProvider(openAIProvider)
@@ -195,7 +207,7 @@ func main() {
 		Strs("providers", router.ListProviders()).
 		Msg("All providers registered")
 
-	// Phase 5: Initialize request repository if database is available
+	// Initialize request repository for analytics and usage tracking
 	var requestRepo *storage.RequestRepository
 	if postgresClient != nil {
 		requestRepo = storage.NewRequestRepository(postgresClient.Pool())
@@ -232,6 +244,16 @@ func main() {
 		Google:    cfg.GoogleAPIKey,
 	})
 
+	// Set custom rules service for user-specific custom routing rules
+	if postgresClient != nil {
+		customRulesRepo := storage.NewCustomRoutingRulesRepository(postgresClient.Pool())
+		costCalculator := router.GetCostCalculator()
+		latencyTracker := router.GetLatencyTracker()
+		customRulesService := gateway.NewCustomRulesServiceAdapter(customRulesRepo, costCalculator, latencyTracker)
+		router.SetCustomRulesService(customRulesService)
+		log.Info().Msg("Custom rules service initialized - user-specific custom routing rules enabled")
+	}
+
 	// Initialize email service (reads config from environment variables)
 	emailService := email.NewEmailService(log)
 
@@ -250,20 +272,55 @@ func main() {
 		log.Warn().Msg("SMTP not configured - set SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD environment variables")
 	}
 
-	// Setup API routes (with Phase 2 & 5 services if available)
+	// Initialize OAuth service if configured
+	var oauthService *oauth.OAuthService
+	if postgresClient != nil && (cfg.GoogleOAuthClientID != "" || cfg.XOAuthClientID != "") {
+		userRepo := storage.NewUserRepository(postgresClient, log)
+		// Backend URL for OAuth callbacks (OAuth providers redirect here)
+		backendURL := cfg.BackendURL
+		if backendURL == "" {
+			// Auto-detect: use localhost for development, or construct from PORT
+			if cfg.Environment == "development" || cfg.Environment == "local" {
+				backendURL = fmt.Sprintf("http://localhost:%s", cfg.Port)
+			} else {
+				// Production: must be set via BACKEND_URL env var
+				log.Warn().Msg("BACKEND_URL not set in production - OAuth may not work correctly")
+				backendURL = fmt.Sprintf("http://localhost:%s", cfg.Port) // Fallback
+			}
+		}
+		oauthService = oauth.NewOAuthService(
+			cfg.GoogleOAuthClientID,
+			cfg.GoogleOAuthClientSecret,
+			cfg.XOAuthClientID,
+			cfg.XOAuthClientSecret,
+			backendURL,      // Backend URL for OAuth callbacks
+			cfg.FrontendURL, // Frontend URL for final redirect
+			userRepo,
+		)
+		if oauthService.IsGoogleConfigured() {
+			log.Info().Str("backend_url", backendURL).Msg("Google OAuth initialized")
+		}
+		if oauthService.IsXConfigured() {
+			log.Info().Str("backend_url", backendURL).Msg("X OAuth initialized")
+		}
+	}
+
+	// Setup API routes with all available services
 	httpRouter := api.SetupRouter(
 		router,
-		apiKeyService,      // Phase 1 fallback
-		apiKeyServiceV2,    // Phase 2 (database)
-		jwtService,         // Phase 2 (JWT)
-		rateLimiter,        // Phase 2 (rate limiting)
-		authRateLimiter,    // Progressive rate limiting for auth
-		cfg.IPWhitelist,    // Phase 2 (IP whitelist)
-		requestRepo,        // Phase 5 (analytics)
+		apiKeyService,      // In-memory API key service (fallback)
+		apiKeyServiceV2,    // Database-backed API key service
+		jwtService,         // JWT authentication service
+		rateLimiter,        // Rate limiting service
+		authRateLimiter,    // Progressive rate limiting for auth endpoints
+		cfg.IPWhitelist,    // IP whitelist configuration
+		requestRepo,        // Request repository for analytics
 		providerKeyService, // BYOK: Provider key service
-		postgresClient,     // For user repository (auth)
+		postgresClient,     // Database client for user repository
 		emailService,       // Email service
 		cfg.FrontendURL,    // Frontend URL
+		oauthService,       // OAuth service
+		cfg.CORSOrigins,    // CORS origins from environment
 	)
 
 	// Start server

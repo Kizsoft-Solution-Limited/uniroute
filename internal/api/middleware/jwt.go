@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
-	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/errors"
 )
 
 // JWTAuthMiddleware creates middleware for JWT authentication
@@ -15,7 +14,7 @@ func JWTAuthMiddleware(jwtService *security.JWTService) gin.HandlerFunc {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": errors.ErrUnauthorized.Error(),
+				"error": "authorization header required",
 			})
 			c.Abort()
 			return
@@ -25,13 +24,20 @@ func JWTAuthMiddleware(jwtService *security.JWTService) gin.HandlerFunc {
 		parts := strings.Fields(authHeader)
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "invalid authorization header format",
+				"error": "invalid authorization header format, expected: Bearer <token>",
 			})
 			c.Abort()
 			return
 		}
 
 		token := parts[1]
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "token is empty",
+			})
+			c.Abort()
+			return
+		}
 
 		// Validate token
 		claims, err := jwtService.ValidateToken(token)
@@ -42,7 +48,7 @@ func JWTAuthMiddleware(jwtService *security.JWTService) gin.HandlerFunc {
 				})
 			} else {
 				c.JSON(http.StatusUnauthorized, gin.H{
-					"error": errors.ErrInvalidAPIKey.Error(),
+					"error": "invalid token",
 				})
 			}
 			c.Abort()

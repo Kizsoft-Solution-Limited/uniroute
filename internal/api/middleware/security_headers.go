@@ -32,7 +32,8 @@ func SecurityHeadersMiddleware() gin.HandlerFunc {
 					"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; "+
 					"style-src 'self' 'unsafe-inline' https://unpkg.com; "+
 					"font-src 'self' data: https://unpkg.com; "+
-					"img-src 'self' data: https:; "+
+					"img-src 'self' data: blob: https:; "+
+					"media-src 'self' data: blob:; "+
 					"connect-src 'self' https://unpkg.com")
 			} else {
 				c.Header("Content-Security-Policy", "default-src 'self'")
@@ -47,6 +48,11 @@ func SecurityHeadersMiddleware() gin.HandlerFunc {
 
 		// Referrer-Policy: Control referrer information
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+
+		// Permissions-Policy: Control browser features (microphone, camera, etc.)
+		// Allow microphone for voice recording feature (self = same origin only)
+		// Format: feature=(allowed-origins), use * for all origins or 'self' for same origin
+		c.Header("Permissions-Policy", "microphone=(self), camera=(), geolocation=()")
 
 		c.Next()
 	}

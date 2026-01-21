@@ -120,6 +120,11 @@ const routes: RouteRecordRaw[] = [
             path: 'routing-strategy',
             name: 'settings-routing-strategy',
             component: () => import('@/views/settings/RoutingStrategy.vue')
+          },
+          {
+            path: 'custom-rules',
+            name: 'settings-custom-rules',
+            component: () => import('@/views/settings/CustomRules.vue')
           }
         ]
       },
@@ -148,6 +153,12 @@ const routes: RouteRecordRaw[] = [
             path: 'routing',
             name: 'admin-routing',
             component: () => import('@/views/admin/RoutingStrategy.vue'),
+            meta: { permission: 'admin:routing' }
+          },
+          {
+            path: 'custom-rules',
+            name: 'admin-custom-rules',
+            component: () => import('@/views/admin/CustomRules.vue'),
             meta: { permission: 'admin:routing' }
           },
           {
@@ -193,7 +204,7 @@ router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   
   // Skip auth check for login/register pages to avoid redirect loops
-  if (to.name === 'login' || to.name === 'register' || to.name === 'forgot-password' || to.name === 'verify-email') {
+  if (to.name === 'login' || to.name === 'register' || to.name === 'forgot-password' || to.name === 'verify-email' || to.name === 'oauth-callback') {
     next()
     return
   }

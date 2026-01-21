@@ -480,7 +480,7 @@ func (h *RoutingHandler) ClearUserRoutingStrategy(c *gin.Context) {
 // SetRoutingStrategyLock handles POST /admin/routing/strategy/lock
 func (h *RoutingHandler) SetRoutingStrategyLock(c *gin.Context) {
 	var req struct {
-		Locked bool `json:"locked" binding:"required"`
+		Locked *bool `json:"locked"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -489,6 +489,16 @@ func (h *RoutingHandler) SetRoutingStrategyLock(c *gin.Context) {
 		})
 		return
 	}
+
+	// Extract boolean value from pointer - required field
+	if req.Locked == nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": errors.ErrInvalidRequest.Error(),
+			"details": "locked field is required",
+		})
+		return
+	}
+	locked := *req.Locked
 
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
@@ -512,10 +522,10 @@ func (h *RoutingHandler) SetRoutingStrategyLock(c *gin.Context) {
 		return
 	}
 
-	if err := h.SettingsRepository.SetRoutingStrategyLock(ctx, req.Locked, updatedBy); err != nil {
+	if err := h.SettingsRepository.SetRoutingStrategyLock(ctx, locked, updatedBy); err != nil {
 		h.Logger.Error().
 			Err(err).
-			Bool("locked", req.Locked).
+			Bool("locked", locked).
 			Msg("Failed to set routing strategy lock")
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "failed to set routing strategy lock",
@@ -524,17 +534,17 @@ func (h *RoutingHandler) SetRoutingStrategyLock(c *gin.Context) {
 	}
 
 	h.Logger.Info().
-		Bool("locked", req.Locked).
+		Bool("locked", locked).
 		Msg("Routing strategy lock updated")
 
 	action := "unlocked"
-	if req.Locked {
+	if locked {
 		action = "locked"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": fmt.Sprintf("routing strategy %s successfully", action),
-		"locked":  req.Locked,
+		"locked":  locked,
 	})
 }
 

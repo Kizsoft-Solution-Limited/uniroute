@@ -39,19 +39,20 @@
             </div>
             <div>
               <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Public URL</label>
-              <div class="flex items-center space-x-2 mt-1">
+              <div class="flex items-center space-x-2 mt-1 flex-wrap gap-2">
                 <a
                   :href="tunnel.publicUrl"
                   target="_blank"
-                  class="text-blue-600 dark:text-blue-400 hover:underline"
+                  class="text-blue-600 dark:text-blue-400 hover:underline break-all min-w-0 flex-1"
                   :aria-label="`Open ${tunnel.publicUrl} in new tab`"
                 >
                   {{ tunnel.publicUrl }}
                 </a>
                 <button
                   @click="copyToClipboard(tunnel.publicUrl)"
-                  class="p-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                  class="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors flex-shrink-0"
                   aria-label="Copy public URL"
+                  title="Copy public URL"
                 >
                   <Copy class="w-4 h-4" />
                 </button>
@@ -59,12 +60,16 @@
             </div>
             <div>
               <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Local URL</label>
-              <div class="flex items-center space-x-2 mt-1">
-                <code class="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-sm">{{ tunnel.localUrl }}</code>
+              <div class="flex items-center space-x-2 mt-1 flex-wrap gap-2">
+                <code class="px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded text-sm font-mono break-all min-w-0 flex-1 border border-gray-200 dark:border-gray-600">
+                  {{ tunnel.localUrl || 'Not available' }}
+                </code>
                 <button
+                  v-if="tunnel.localUrl"
                   @click="copyToClipboard(tunnel.localUrl)"
-                  class="p-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+                  class="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors flex-shrink-0"
                   aria-label="Copy local URL"
+                  title="Copy local URL"
                 >
                   <Copy class="w-4 h-4" />
                 </button>
@@ -191,6 +196,11 @@ const loadTunnel = async () => {
   loading.value = true
   try {
     const tunnelId = route.params.id as string
+    if (!tunnelId) {
+      showToast('Invalid tunnel ID', 'error')
+      router.push('/dashboard/tunnels')
+      return
+    }
     const response = await tunnelsApi.get(tunnelId)
     const t = response.tunnel
     tunnel.value = {
@@ -199,11 +209,12 @@ const loadTunnel = async () => {
       publicUrl: t.public_url,
       localUrl: t.local_url,
       status: t.status as 'active' | 'inactive',
-      requestCount: t.request_count,
+      requestCount: t.request_count || 0,
       createdAt: t.created_at,
       lastActive: t.last_active || undefined
     }
   } catch (error: any) {
+    console.error('Failed to load tunnel:', error)
     showToast(error.response?.data?.error || error.message || 'Failed to load tunnel details', 'error')
     router.push('/dashboard/tunnels')
   } finally {

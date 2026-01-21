@@ -11,20 +11,39 @@ type ChatRequest struct {
 }
 
 // Message represents a chat message
+// Content can be either a string (text-only) or an array of ContentPart (multimodal)
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string      `json:"role"`
+	Content interface{} `json:"content"` // string for text-only, []ContentPart for multimodal
+}
+
+// ContentPart represents a part of multimodal content
+type ContentPart struct {
+	Type     string `json:"type"` // "text", "image_url", or "audio_url"
+	Text     string `json:"text,omitempty"`
+	ImageURL *ImageURL `json:"image_url,omitempty"`
+	AudioURL *AudioURL `json:"audio_url,omitempty"`
+}
+
+// ImageURL represents an image URL for vision models
+type ImageURL struct {
+	URL string `json:"url"` // Can be data URL (base64) or HTTP URL
+}
+
+// AudioURL represents an audio URL for voice/audio models
+type AudioURL struct {
+	URL string `json:"url"` // Can be data URL (base64) or HTTP URL
 }
 
 // ChatResponse represents a chat completion response
 type ChatResponse struct {
 	ID        string   `json:"id"`
 	Model     string   `json:"model"`
-	Provider  string   `json:"provider,omitempty"` // Phase 4: Which provider handled this
+	Provider  string   `json:"provider,omitempty"` // Which provider handled this request
 	Choices   []Choice `json:"choices"`
 	Usage     Usage    `json:"usage"`
-	Cost      float64  `json:"cost,omitempty"`       // Phase 4: Actual cost
-	LatencyMs int64    `json:"latency_ms,omitempty"` // Phase 4: Request latency
+	Cost      float64  `json:"cost,omitempty"`       // Actual cost for this request
+	LatencyMs int64    `json:"latency_ms,omitempty"` // Request latency in milliseconds
 }
 
 // Choice represents a chat choice

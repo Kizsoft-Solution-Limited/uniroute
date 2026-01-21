@@ -77,7 +77,7 @@
 
             <h2 class="text-2xl font-semibold text-white mt-8 mb-4">10. Contact</h2>
             <p>
-              If you have any questions about these Terms of Service, please contact us at <a href="mailto:legal@uniroute.dev" class="text-blue-400 hover:text-blue-300">legal@uniroute.dev</a>.
+              If you have any questions about these Terms of Service, please contact us at <a href="mailto:legal@uniroute.co" class="text-blue-400 hover:text-blue-300">legal@uniroute.co</a>.
             </p>
 
             <p class="text-sm text-slate-400 mt-12">

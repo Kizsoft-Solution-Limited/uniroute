@@ -59,6 +59,15 @@
               </p>
             </div>
           </div>
+          <a
+            href="https://polar.sh/uniroute/donate"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="w-full flex items-center space-x-3 px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/60 transition-colors mb-2"
+          >
+            <Heart class="w-5 h-5 text-pink-400" />
+            <span>Support Us</span>
+          </a>
           <button
             @click="handleLogout"
             class="w-full flex items-center space-x-3 px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/60 transition-colors"
@@ -127,7 +136,8 @@ import {
   Mail,
   Route,
   Users,
-  MessageSquare
+  MessageSquare,
+  Heart
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -168,6 +178,8 @@ const pageTitle = computed(() => {
     'admin-email': 'Email Configuration',
     'admin-provider-keys': 'Provider Keys Management',
     'admin-routing': 'Routing Strategy',
+    'admin-custom-rules': 'Custom Routing Rules',
+    'settings-custom-rules': 'Custom Routing Rules',
     'admin-errors': 'Error Logs'
   }
   return titles[route.name as string] || 'Dashboard'
@@ -184,6 +196,8 @@ const pageDescription = computed(() => {
     'admin-email': 'View SMTP configuration and test email delivery',
     'admin-provider-keys': 'Manage system-wide provider API keys',
     'admin-routing': 'Configure how UniRoute selects AI providers',
+    'admin-custom-rules': 'Define global custom routing rules for all users',
+    'settings-custom-rules': 'Define your custom routing rules',
     'admin-errors': 'Monitor and manage application errors'
   }
   return descriptions[route.name as string] || ''
@@ -244,6 +258,11 @@ const navItems = computed(() => {
       {
         path: '/dashboard/admin/routing',
         label: 'Routing Strategy',
+        icon: Route
+      },
+      {
+        path: '/dashboard/admin/custom-rules',
+        label: 'Custom Rules',
         icon: Route
       },
       {

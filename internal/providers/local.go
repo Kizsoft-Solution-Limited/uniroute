@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -37,10 +38,34 @@ func (p *LocalProvider) Name() string {
 
 // Chat sends a chat request to the local LLM server
 func (p *LocalProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	// Convert messages - Ollama supports multimodal but we'll convert to text for now
+	ollamaMessages := make([]Message, 0, len(req.Messages))
+	for _, msg := range req.Messages {
+		// Convert multimodal content to text for Ollama (or pass through if supported)
+		var content interface{} = msg.Content
+		if contentParts, ok := msg.Content.([]ContentPart); ok {
+			// Extract text from multimodal content for Ollama
+			textParts := make([]string, 0)
+			for _, part := range contentParts {
+				if part.Type == "text" {
+					textParts = append(textParts, part.Text)
+				} else if part.Type == "image_url" {
+					// Ollama supports images, but for now we'll note it
+					textParts = append(textParts, "[Image attached - Ollama vision models may support this]")
+				}
+			}
+			content = strings.Join(textParts, " ")
+		}
+		ollamaMessages = append(ollamaMessages, Message{
+			Role:    msg.Role,
+			Content: content,
+		})
+	}
+
 	// Convert to Ollama format
 	ollamaReq := map[string]interface{}{
 		"model":    req.Model,
-		"messages": req.Messages,
+		"messages": ollamaMessages,
 	}
 
 	if req.Temperature > 0 {
@@ -96,6 +121,12 @@ func (p *LocalProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespons
 	}
 
 	// Convert to UniRoute format
+	// Ollama returns content as string, convert to our format
+	var content interface{} = ollamaResp.Message.Content
+	if contentStr, ok := content.(string); ok {
+		content = contentStr
+	}
+
 	return &ChatResponse{
 		ID:    fmt.Sprintf("chat-%d", time.Now().Unix()),
 		Model: req.Model,
@@ -103,7 +134,7 @@ func (p *LocalProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespons
 			{
 				Message: Message{
 					Role:    ollamaResp.Message.Role,
-					Content: ollamaResp.Message.Content,
+					Content: content,
 				},
 			},
 		},

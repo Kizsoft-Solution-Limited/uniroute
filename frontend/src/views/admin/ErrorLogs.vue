@@ -112,22 +112,22 @@
               <td class="px-6 py-4 whitespace-nowrap">
                 <span
                   class="px-2 py-1 text-xs font-semibold rounded-full"
-                  :class="getErrorTypeClass(errorLog.error_type)"
+                  :class="getErrorTypeClass(errorLog.error_type || 'unknown')"
                 >
-                  {{ errorLog.error_type }}
+                  {{ errorLog.error_type || 'N/A' }}
                 </span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
                 <span
                   class="px-2 py-1 text-xs font-semibold rounded-full"
-                  :class="getSeverityClass(errorLog.severity)"
+                  :class="getSeverityClass(errorLog.severity || 'error')"
                 >
-                  {{ errorLog.severity }}
+                  {{ errorLog.severity || 'N/A' }}
                 </span>
               </td>
               <td class="px-6 py-4 text-sm text-white">
-                <div class="max-w-md truncate" :title="errorLog.message">
-                  {{ errorLog.message }}
+                <div class="max-w-md truncate" :title="errorLog.message || 'No message'">
+                  {{ errorLog.message || 'N/A' }}
                 </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-400">
@@ -315,9 +315,19 @@ const viewDetails = (errorLog: ErrorLog) => {
   selectedError.value = errorLog
 }
 
-const formatDate = (dateString: string) => {
-  const date = new Date(dateString)
-  return date.toLocaleString()
+const formatDate = (dateString: string | null | undefined) => {
+  if (!dateString) {
+    return 'N/A'
+  }
+  try {
+    const date = new Date(dateString)
+    if (isNaN(date.getTime())) {
+      return 'Invalid Date'
+    }
+    return date.toLocaleString()
+  } catch (e) {
+    return 'Invalid Date'
+  }
 }
 
 const truncateUUID = (uuid: string) => {

@@ -67,7 +67,7 @@
 
             <h2 class="text-2xl font-semibold text-white mt-8 mb-4">Reporting Security Issues</h2>
             <p>
-              If you discover a security vulnerability, please report it to us immediately at <a href="mailto:security@uniroute.dev" class="text-blue-400 hover:text-blue-300">security@uniroute.dev</a>. We take security issues seriously and will respond promptly.
+              If you discover a security vulnerability, please report it to us immediately at <a href="mailto:security@uniroute.co" class="text-blue-400 hover:text-blue-300">security@uniroute.co</a>. We take security issues seriously and will respond promptly.
             </p>
 
             <h2 class="text-2xl font-semibold text-white mt-8 mb-4">Compliance</h2>

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -193,16 +194,74 @@ func (p *GoogleProvider) GetModels() []string {
 	}
 }
 
-// convertMessagesToGoogle converts UniRoute messages to Google format
+// convertMessagesToGoogle converts UniRoute messages to Google Gemini format
+// Google Gemini supports multimodal content with images
 func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, len(messages))
 	for _, msg := range messages {
+		parts := make([]map[string]interface{}, 0)
+
+		// Handle content: can be string (text-only) or []ContentPart (multimodal)
+		switch content := msg.Content.(type) {
+		case string:
+			// Text-only message (backward compatible)
+			parts = append(parts, map[string]interface{}{
+				"text": content,
+			})
+		case []ContentPart:
+			// Multimodal message - Google Gemini uses parts array
+			for _, part := range content {
+				if part.Type == "text" {
+					parts = append(parts, map[string]interface{}{
+						"text": part.Text,
+					})
+				} else if part.Type == "image_url" && part.ImageURL != nil {
+					// Extract base64 data from data URL if present
+					imageURL := part.ImageURL.URL
+					if strings.HasPrefix(imageURL, "data:image/") {
+						// Data URL format: data:image/png;base64,<data>
+						urlParts := strings.SplitN(imageURL, ",", 2)
+						if len(urlParts) == 2 {
+							parts = append(parts, map[string]interface{}{
+								"inline_data": map[string]interface{}{
+									"mime_type": extractMediaType(imageURL),
+									"data":      urlParts[1],
+								},
+							})
+						}
+					} else {
+						// HTTP URL - Google Gemini supports URLs directly
+						parts = append(parts, map[string]interface{}{
+							"file_data": map[string]interface{}{
+								"mime_type": "image/jpeg", // Default, could detect from URL
+								"file_uri":  imageURL,
+							},
+						})
+					}
+				}
+			}
+		default:
+			// Fallback: try to convert to string
+			parts = append(parts, map[string]interface{}{
+				"text": fmt.Sprintf("%v", content),
+			})
+		}
+
 		result = append(result, map[string]interface{}{
 			"role": msg.Role,
-			"parts": []map[string]string{
-				{"text": msg.Content},
-			},
+			"parts": parts,
 		})
 	}
 	return result
+}
+
+// extractMediaType extracts media type from data URL
+func extractMediaType(dataURL string) string {
+	if strings.HasPrefix(dataURL, "data:") {
+		parts := strings.SplitN(dataURL, ";", 2)
+		if len(parts) > 0 {
+			return strings.TrimPrefix(parts[0], "data:")
+		}
+	}
+	return "image/png" // Default
 }

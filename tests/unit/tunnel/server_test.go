@@ -19,7 +19,7 @@ type TunnelConnection = tunnel.TunnelConnection
 
 func TestNewTunnelServer(t *testing.T) {
 	logger := zerolog.Nop()
-	server := NewTunnelServer(8080, logger)
+	server := NewTunnelServer(8080, logger, nil) // Use default origins for tests
 
 	assert.NotNil(t, server)
 	// Note: port and tunnels are unexported, so we can't test them directly
@@ -50,7 +50,7 @@ func TestTunnelServer_GenerateSubdomain(t *testing.T) {
 
 func TestTunnelServer_GetTunnel(t *testing.T) {
 	logger := zerolog.Nop()
-	server := NewTunnelServer(8080, logger)
+	server := NewTunnelServer(8080, logger, nil) // Use default origins for tests
 
 	// Note: tunnels map is unexported, so we can't add tunnels directly
 	// We can test GetTunnel with a non-existent tunnel (should return false)

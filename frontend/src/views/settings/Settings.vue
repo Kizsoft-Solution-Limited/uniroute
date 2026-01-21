@@ -41,6 +41,17 @@
         >
           Routing Strategy
         </router-link>
+        <router-link
+          to="/dashboard/settings/custom-rules"
+          class="py-4 px-1 border-b-2 font-medium text-sm transition-colors"
+          :class="
+            $route.name === 'settings-custom-rules'
+              ? 'border-blue-500 text-blue-400'
+              : 'border-transparent text-slate-400 hover:text-slate-300 hover:border-slate-300'
+          "
+        >
+          Custom Rules
+        </router-link>
       </nav>
     </div>
 

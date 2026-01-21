@@ -16,15 +16,22 @@ type TunnelPersistence struct {
 	logger   zerolog.Logger
 }
 
-// TunnelState represents saved tunnel state
+// TunnelState represents saved tunnel state (for backward compatibility - single tunnel)
 type TunnelState struct {
 	TunnelID    string    `json:"tunnel_id"`
-	Subdomain   string   `json:"subdomain"`
-	PublicURL   string   `json:"public_url"`
-	LocalURL    string   `json:"local_url"`
-	ServerURL   string   `json:"server_url"`
+	Subdomain   string    `json:"subdomain"`
+	PublicURL   string    `json:"public_url"`
+	LocalURL    string    `json:"local_url"`
+	ServerURL   string    `json:"server_url"`
+	Protocol    string    `json:"protocol,omitempty"` // http, tcp, tls
+	Host        string    `json:"host,omitempty"`     // Optional host/subdomain
 	CreatedAt   time.Time `json:"created_at"`
 	LastUsed    time.Time `json:"last_used"`
+}
+
+// MultiTunnelState represents saved state for multiple tunnels
+type MultiTunnelState struct {
+	Tunnels map[string]*TunnelState `json:"tunnels"` // Key is tunnel name or local URL
 }
 
 // NewTunnelPersistence creates a new tunnel persistence manager

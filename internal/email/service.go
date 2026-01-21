@@ -60,7 +60,7 @@ func (s *EmailService) getSMTPConfig() (host string, port int, username, passwor
 	}
 
 	if from == "" {
-		from = "noreply@uniroute.dev"
+		from = "noreply@uniroute.co"
 	}
 
 	configured = host != "" && username != "" && password != ""

@@ -23,6 +23,19 @@ type UserRoutingStrategyServiceInterface interface {
 	GetUserRoutingStrategy(ctx context.Context, userID uuid.UUID) (string, error)
 }
 
+// CustomRulesServiceInterface defines interface for loading custom routing rules
+type CustomRulesServiceInterface interface {
+	GetActiveRulesForUser(ctx context.Context, userID *uuid.UUID) ([]CustomRule, error)
+}
+
+// CustomRule represents a custom routing rule (simplified for router)
+type CustomRule struct {
+	ConditionType  string
+	ConditionValue map[string]interface{}
+	ProviderName   string
+	Priority       int
+}
+
 // Router routes requests to appropriate providers with failover support
 type Router struct {
 	providers                  map[string]providers.Provider
@@ -35,6 +48,7 @@ type Router struct {
 	serverProviderKeys         ServerProviderKeys          // Server-level keys (fallback)
 	routingStrategyService     RoutingStrategyServiceInterface
 	userRoutingStrategyService UserRoutingStrategyServiceInterface
+	customRulesService         CustomRulesServiceInterface // For loading user-specific custom rules
 }
 
 // ProviderKeyServiceInterface defines interface for getting user provider keys
@@ -75,6 +89,11 @@ func (r *Router) SetRoutingStrategyService(service RoutingStrategyServiceInterfa
 // SetUserRoutingStrategyService sets the user routing strategy service (for getting user preferences)
 func (r *Router) SetUserRoutingStrategyService(service UserRoutingStrategyServiceInterface) {
 	r.userRoutingStrategyService = service
+}
+
+// SetCustomRulesService sets the custom rules service (for loading user-specific custom rules)
+func (r *Router) SetCustomRulesService(service CustomRulesServiceInterface) {
+	r.customRulesService = service
 }
 
 // SetServerProviderKeys sets server-level provider keys (fallback)
@@ -191,13 +210,65 @@ func (r *Router) GetStrategyInstanceForUser(ctx context.Context, userID *uuid.UU
 	case StrategyLoadBalanced:
 		return NewLoadBalancedStrategy()
 	case StrategyCustom:
-		// Custom strategy - rules should be loaded from database via SetCustomStrategy
-		// For now, return empty rules (will fallback to model-based)
+		// Custom strategy - load user-specific rules if available
+		if r.customRulesService != nil && userID != nil {
+			customRules, err := r.customRulesService.GetActiveRulesForUser(ctx, userID)
+			if err == nil && len(customRules) > 0 {
+				// Convert to routing rules with condition functions
+				// We need to build conditions, so we'll create a temporary adapter
+				// For now, we'll use a simple approach: create routing rules directly
+				routingRules := make([]RoutingRule, 0, len(customRules))
+				for _, rule := range customRules {
+					condition := r.buildCustomRuleCondition(rule)
+					routingRules = append(routingRules, RoutingRule{
+						Provider:  rule.ProviderName,
+						Priority:  rule.Priority,
+						Condition: condition,
+					})
+				}
+				return NewCustomStrategy(routingRules)
+			}
+		}
+		// Fallback: use global custom rules if set, otherwise model-based
+		if r.strategy != nil {
+			if customStrategy, ok := r.strategy.(*CustomStrategy); ok && customStrategy != nil {
+				return customStrategy
+			}
+		}
+		// No rules available, fallback to model-based
 		return NewCustomStrategy(nil) // nil rules = fallback to model-based
 	case StrategyModelBased:
 		fallthrough
 	default:
 		return &ModelBasedStrategy{}
+	}
+}
+
+// buildCustomRuleCondition creates a condition function from a CustomRule
+func (r *Router) buildCustomRuleCondition(rule CustomRule) func(req providers.ChatRequest) bool {
+	return func(req providers.ChatRequest) bool {
+		switch rule.ConditionType {
+		case "model":
+			if model, ok := rule.ConditionValue["model"].(string); ok {
+				return req.Model == model
+			}
+		case "cost_threshold":
+			// Check if estimated cost is below threshold
+			if maxCost, ok := rule.ConditionValue["max_cost"].(float64); ok {
+				// Estimate cost for the request
+				estimatedCost := r.costCalculator.EstimateCost(rule.ProviderName, req.Model, req.Messages)
+				return estimatedCost <= maxCost
+			}
+			return false
+		case "latency_threshold":
+			// Check if average latency is below threshold
+			if maxLatencyMs, ok := rule.ConditionValue["max_latency_ms"].(float64); ok {
+				avgLatency := r.latencyTracker.GetAverageLatency(rule.ProviderName)
+				return avgLatency.Milliseconds() <= int64(maxLatencyMs)
+			}
+			return false
+		}
+		return false
 	}
 }
 
@@ -224,7 +295,7 @@ func (r *Router) Route(ctx context.Context, req providers.ChatRequest, userID *u
 		return nil, fmt.Errorf("no healthy providers available")
 	}
 
-	// Phase 4: Use routing strategy to select provider (user-specific if available)
+	// Use routing strategy to select provider (user-specific if available)
 	strategy := r.GetStrategyInstanceForUser(ctx, userID)
 	selectedProvider, err := strategy.SelectProvider(ctx, req, availableProviders)
 	if err != nil {
@@ -252,7 +323,7 @@ func (r *Router) Route(ctx context.Context, req providers.ChatRequest, userID *u
 		r.latencyTracker.RecordLatency(provider.Name(), latency)
 
 		if err == nil {
-			// Add Phase 4 metadata
+			// Add routing metadata to response
 			resp.Provider = provider.Name()
 			resp.LatencyMs = latency.Milliseconds()
 

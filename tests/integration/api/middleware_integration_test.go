@@ -82,8 +82,8 @@ func getTestRedisClient(t *testing.T) *storage.RedisClient {
 	return client
 }
 
-// TestAuthMiddlewareV2_Integration tests API key authentication with real database
-func TestAuthMiddlewareV2_Integration(t *testing.T) {
+// TestAuthMiddleware_Integration tests API key authentication with real database
+func TestAuthMiddleware_Integration(t *testing.T) {
 	testutil.SkipIfShort(t)
 	gin.SetMode(gin.TestMode)
 	
@@ -107,7 +107,7 @@ func TestAuthMiddlewareV2_Integration(t *testing.T) {
 	c.Request = httptest.NewRequest("GET", "/test", nil)
 	c.Request.Header.Set("Authorization", "Bearer "+key)
 	
-	middleware := middleware.AuthMiddlewareV2(apiKeyService)
+	middleware := middleware.AuthMiddleware(apiKeyService)
 	middleware(c)
 	
 	if c.Writer.Status() == http.StatusUnauthorized {
@@ -214,7 +214,7 @@ func TestFullMiddlewareFlow_Integration(t *testing.T) {
 	r.Use(middleware.SecurityHeadersMiddleware())
 	
 	api := r.Group("/v1")
-	api.Use(middleware.AuthMiddlewareV2(apiKeyService))
+	api.Use(middleware.AuthMiddleware(apiKeyService))
 	api.Use(middleware.RateLimitMiddleware(rateLimiter, func(identifier string) (int, int) {
 		// Use the API key's limits
 		return apiKey.RateLimitPerMinute, apiKey.RateLimitPerDay

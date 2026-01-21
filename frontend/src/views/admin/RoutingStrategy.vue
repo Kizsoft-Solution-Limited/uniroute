@@ -124,6 +124,43 @@
       </div>
     </Card>
 
+    <!-- Admin Custom Rules Info Banner -->
+    <div
+      v-if="strategy?.strategy === 'custom' || selectedStrategy === 'custom'"
+      class="bg-amber-500/10 border-2 border-amber-500/30 rounded-lg p-4 shadow-lg"
+    >
+      <div class="flex items-start gap-3">
+        <svg
+          class="w-6 h-6 text-amber-400 mt-0.5 flex-shrink-0"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+          />
+        </svg>
+        <div class="flex-1">
+          <h3 class="font-bold text-amber-400 mb-1 text-lg">⚠️ Admin Custom Routing Rules</h3>
+          <p class="text-sm text-amber-300/90 mb-2">
+            When using the <strong class="text-amber-200">Custom</strong> strategy, administrators can define <strong class="text-amber-200">global custom routing rules</strong> that apply to all users by default.
+          </p>
+          <p class="text-xs text-amber-300/70 mb-2">
+            <strong>Important:</strong> These are <strong>global rules</strong> that affect all users. Individual users can override these by setting their own custom routing strategy and defining their own custom rules.
+          </p>
+          <p class="text-xs text-amber-300/70">
+            To configure custom routing rules, go to the 
+            <router-link to="/dashboard/admin/custom-rules" class="text-amber-200 underline hover:text-amber-100">
+              Custom Routing Rules
+            </router-link> section in the admin panel.
+          </p>
+        </div>
+      </div>
+    </div>
+
     <!-- Strategy Information -->
     <Card>
       <div class="space-y-4">
@@ -147,7 +184,7 @@
           </div>
           <div>
             <h3 class="font-medium text-white mb-1">Custom</h3>
-            <p>Uses custom routing rules defined by administrators.</p>
+            <p>Uses custom routing rules. Administrators can define global custom routing rules that apply to all users (unless users have their own custom rules).</p>
           </div>
         </div>
       </div>

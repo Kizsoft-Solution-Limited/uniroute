@@ -79,3 +79,23 @@ type ErrorLog struct {
 	Resolved   bool                   `db:"resolved"`
 	CreatedAt  time.Time              `db:"created_at"`
 }
+
+// Conversation represents a chat conversation
+type Conversation struct {
+	ID        uuid.UUID  `db:"id"`
+	UserID    uuid.UUID  `db:"user_id"`
+	Title     *string    `db:"title"` // Nullable, auto-generated if not set
+	Model     *string    `db:"model"` // Nullable, default model for conversation
+	CreatedAt time.Time  `db:"created_at"`
+	UpdatedAt time.Time  `db:"updated_at"`
+}
+
+// Message represents a message in a conversation
+type Message struct {
+	ID             uuid.UUID              `db:"id"`
+	ConversationID uuid.UUID              `db:"conversation_id"`
+	Role           string                 `db:"role"` // 'system', 'user', 'assistant'
+	Content        interface{}            `db:"content"` // JSONB: string or []ContentPart
+	Metadata       map[string]interface{} `db:"metadata"` // JSONB: tokens, cost, provider, etc.
+	CreatedAt      time.Time              `db:"created_at"`
+}

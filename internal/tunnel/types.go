@@ -2,6 +2,13 @@ package tunnel
 
 import "time"
 
+// Tunnel protocols
+const (
+	ProtocolHTTP = "http"
+	ProtocolTCP  = "tcp"
+	ProtocolTLS  = "tls"
+)
+
 // Message types for WebSocket protocol
 const (
 	MsgTypeInit          = "init"
@@ -11,6 +18,10 @@ const (
 	MsgTypeHTTPRequest   = "http_request"
 	MsgTypeHTTPResponse  = "http_response"
 	MsgTypeHTTPError     = "http_error"
+	MsgTypeTCPData       = "tcp_data"
+	MsgTypeTCPError      = "tcp_error"
+	MsgTypeTLSData       = "tls_data"
+	MsgTypeTLSError      = "tls_error"
 	MsgTypeUpdateTunnel  = "update_tunnel"
 	MsgTypeTunnelStatus  = "tunnel_status"
 )
@@ -19,7 +30,9 @@ const (
 type InitMessage struct {
 	Type      string                 `json:"type,omitempty"`
 	Version   string                 `json:"version,omitempty"`
-	LocalURL  string                 `json:"local_url"`
+	Protocol  string                 `json:"protocol,omitempty"` // http, tcp, tls
+	LocalURL  string                 `json:"local_url"`          // For HTTP: http://localhost:port, For TCP/TLS: host:port
+	Host      string                 `json:"host,omitempty"`     // Optional: specific host/subdomain to request
 	Token     string                 `json:"token,omitempty"`
 	Subdomain string                 `json:"subdomain,omitempty"` // For resuming existing tunnel
 	TunnelID  string                 `json:"tunnel_id,omitempty"` // For resuming existing tunnel
@@ -42,6 +55,7 @@ type TunnelMessage struct {
 	Request   *HTTPRequest  `json:"request,omitempty"`
 	Response  *HTTPResponse `json:"response,omitempty"`
 	Error     *HTTPError    `json:"error,omitempty"`
+	Data     []byte       `json:"data,omitempty"` // For TCP/TLS raw data
 }
 
 // HTTPRequest represents an HTTP request to forward
@@ -111,4 +125,26 @@ type ConnectionStats struct {
 	RT5   float64 `json:"rt5"`   // Response time 5-minute average (seconds)
 	P50   float64 `json:"p50"`   // 50th percentile latency (seconds)
 	P90   float64 `json:"p90"`   // 90th percentile latency (seconds)
+}
+
+// TunnelConfig represents a tunnel configuration (for config file)
+type TunnelConfig struct {
+	Name      string `json:"name"`                // Tunnel name/identifier
+	Protocol  string `json:"protocol"`            // http, tcp, tls
+	LocalAddr string `json:"local_addr"`          // Local address (e.g., "localhost:8080" or "127.0.0.1:3306")
+	Host      string `json:"host,omitempty"`      // Optional: specific host/subdomain
+	ServerURL string `json:"server_url,omitempty"` // Optional: override default server URL
+	Enabled   bool   `json:"enabled"`             // Whether this tunnel should be started with --all
+}
+
+// TunnelConfigFile represents the tunnel configuration file format
+type TunnelConfigFile struct {
+	Version  string          `json:"version"`  // Config file version
+	Tunnels  []TunnelConfig  `json:"tunnels"`  // List of tunnel configurations
+	Defaults *TunnelDefaults `json:"defaults,omitempty"` // Default values
+}
+
+// TunnelDefaults contains default values for tunnels
+type TunnelDefaults struct {
+	ServerURL string `json:"server_url,omitempty"` // Default tunnel server URL
 }

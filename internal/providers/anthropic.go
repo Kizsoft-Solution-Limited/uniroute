@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -214,13 +215,57 @@ func (p *AnthropicProvider) GetModels() []string {
 }
 
 // convertMessagesToAnthropic converts UniRoute messages to Anthropic format
-func convertMessagesToAnthropic(messages []Message) []map[string]string {
-	result := make([]map[string]string, 0, len(messages))
+// Anthropic supports multimodal content with images
+func convertMessagesToAnthropic(messages []Message) []map[string]interface{} {
+	result := make([]map[string]interface{}, 0, len(messages))
 	for _, msg := range messages {
-		result = append(result, map[string]string{
-			"role":    msg.Role,
-			"content": msg.Content,
-		})
+		messageMap := map[string]interface{}{
+			"role": msg.Role,
+		}
+
+		// Handle content: can be string (text-only) or []ContentPart (multimodal)
+		switch content := msg.Content.(type) {
+		case string:
+			// Text-only message (backward compatible)
+			messageMap["content"] = content
+		case []ContentPart:
+			// Multimodal message - Anthropic uses array of content blocks
+			contentArray := make([]map[string]interface{}, 0, len(content))
+			for _, part := range content {
+				if part.Type == "text" {
+					contentArray = append(contentArray, map[string]interface{}{
+						"type": "text",
+						"text": part.Text,
+					})
+				} else if part.Type == "image_url" && part.ImageURL != nil {
+					// Extract base64 data from data URL if present
+					imageURL := part.ImageURL.URL
+					if strings.HasPrefix(imageURL, "data:image/") {
+						// Data URL format: data:image/png;base64,<data>
+						parts := strings.SplitN(imageURL, ",", 2)
+						if len(parts) == 2 {
+							contentArray = append(contentArray, map[string]interface{}{
+								"type": "image",
+								"source": map[string]interface{}{
+									"type":       "base64",
+									"media_type": extractMediaType(imageURL),
+									"data":       parts[1],
+								},
+							})
+						}
+					}
+					// Note: HTTP URLs would need to be fetched and converted to base64
+				}
+			}
+			messageMap["content"] = contentArray
+		default:
+			// Fallback: try to convert to string
+			messageMap["content"] = fmt.Sprintf("%v", content)
+		}
+
+		result = append(result, messageMap)
 	}
 	return result
 }
+
+// extractMediaType is defined in google.go and shared across the package

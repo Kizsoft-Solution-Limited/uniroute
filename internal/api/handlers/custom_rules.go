@@ -14,25 +14,63 @@ import (
 
 // CustomRulesHandler handles custom routing rules configuration
 type CustomRulesHandler struct {
-	router     *gateway.Router
-	ruleRepo   *storage.CustomRoutingRulesRepository
-	logger     zerolog.Logger
+	router         *gateway.Router
+	ruleRepo       *storage.CustomRoutingRulesRepository
+	costCalculator *gateway.CostCalculator
+	latencyTracker *gateway.LatencyTracker
+	logger         zerolog.Logger
 }
 
 // NewCustomRulesHandler creates a new custom rules handler
 func NewCustomRulesHandler(router *gateway.Router, ruleRepo *storage.CustomRoutingRulesRepository, logger zerolog.Logger) *CustomRulesHandler {
 	return &CustomRulesHandler{
-		router:   router,
-		ruleRepo: ruleRepo,
-		logger:   logger,
+		router:         router,
+		ruleRepo:       ruleRepo,
+		costCalculator: router.GetCostCalculator(),
+		latencyTracker: router.GetLatencyTracker(),
+		logger:         logger,
 	}
 }
 
-// GetCustomRules handles GET /admin/routing/custom-rules
+// GetCustomRules handles GET /admin/routing/custom-rules (admin) or GET /auth/routing/custom-rules (user)
 func (h *CustomRulesHandler) GetCustomRules(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	rules, err := h.ruleRepo.GetActiveRules(ctx)
+	// Check if this is an admin request (admin routes) or user request
+	isAdminRequest := c.FullPath() != "" && len(c.FullPath()) >= 6 && c.FullPath()[:6] == "/admin"
+	
+	var userID *uuid.UUID
+	if !isAdminRequest {
+		// User request: get user-specific rules
+		userIDStr, exists := c.Get("user_id")
+		if exists {
+			if uid, ok := userIDStr.(uuid.UUID); ok {
+				userID = &uid
+			} else if idStr, ok := userIDStr.(string); ok {
+				if uid, err := uuid.Parse(idStr); err == nil {
+					userID = &uid
+				}
+			}
+		}
+	}
+	// Admin request: userID stays nil to get global rules
+
+	var rules []*storage.CustomRoutingRule
+	var err error
+	
+	if isAdminRequest {
+		// Get global/admin rules
+		rules, err = h.ruleRepo.GetActiveRules(ctx)
+	} else if userID != nil {
+		// Get user-specific rules
+		rules, err = h.ruleRepo.GetActiveRulesForUser(ctx, userID)
+	} else {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "user not authenticated",
+		})
+		return
+	}
+	
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to get custom routing rules")
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -44,10 +82,11 @@ func (h *CustomRulesHandler) GetCustomRules(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"rules": rules,
 		"count": len(rules),
+		"user_specific": !isAdminRequest,
 	})
 }
 
-// SetCustomRules handles POST /admin/routing/custom-rules
+// SetCustomRules handles POST /admin/routing/custom-rules (admin) or POST /auth/routing/custom-rules (user)
 func (h *CustomRulesHandler) SetCustomRules(c *gin.Context) {
 	var req struct {
 		Rules []CustomRuleRequest `json:"rules" binding:"required"`
@@ -61,13 +100,33 @@ func (h *CustomRulesHandler) SetCustomRules(c *gin.Context) {
 		return
 	}
 
-	// Get user ID
-	userID, exists := c.Get("user_id")
+	// Get user ID from context
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "user not authenticated",
+		})
+		return
+	}
+
+	var userID *uuid.UUID
 	var updatedBy *uuid.UUID
-	if exists {
-		if uid, ok := userID.(uuid.UUID); ok {
+	
+	if uid, ok := userIDStr.(uuid.UUID); ok {
+		userID = &uid
+		updatedBy = &uid
+	} else if idStr, ok := userIDStr.(string); ok {
+		if uid, err := uuid.Parse(idStr); err == nil {
+			userID = &uid
 			updatedBy = &uid
 		}
+	}
+
+	if userID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid user ID",
+		})
+		return
 	}
 
 	ctx := c.Request.Context()
@@ -78,8 +137,21 @@ func (h *CustomRulesHandler) SetCustomRules(c *gin.Context) {
 		rulesMaps[i] = rule.ToInterface()
 	}
 
-	// Save rules
-	if err := h.ruleRepo.SaveRules(ctx, rulesMaps, updatedBy); err != nil {
+	// Check if this is an admin request (admin routes should save as global rules)
+	// For now, we'll check if the route path contains "/admin/"
+	isAdminRequest := c.FullPath() != "" && c.FullPath()[:6] == "/admin"
+	
+	var saveUserID *uuid.UUID
+	if !isAdminRequest {
+		// User request: save as user-specific rules
+		saveUserID = userID
+	} else {
+		// Admin request: save as global rules (user_id = NULL)
+		saveUserID = nil
+	}
+
+	// Save rules (user-specific or global)
+	if err := h.ruleRepo.SaveRulesForUser(ctx, rulesMaps, saveUserID, updatedBy); err != nil {
 		h.logger.Error().Err(err).Msg("Failed to save custom routing rules")
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to save custom routing rules",
@@ -87,14 +159,17 @@ func (h *CustomRulesHandler) SetCustomRules(c *gin.Context) {
 		return
 	}
 
-	// Reload router with new rules
-	if err := h.reloadRouterRules(ctx); err != nil {
-		h.logger.Warn().Err(err).Msg("Failed to reload router rules, but rules were saved")
+	// Reload router with new rules (only for global/admin rules)
+	if isAdminRequest {
+		if err := h.reloadRouterRules(ctx); err != nil {
+			h.logger.Warn().Err(err).Msg("Failed to reload router rules, but rules were saved")
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Custom routing rules updated successfully",
-		"count":   len(req.Rules),
+		"message":      "Custom routing rules updated successfully",
+		"count":        len(req.Rules),
+		"user_specific": !isAdminRequest,
 	})
 }
 
@@ -156,12 +231,19 @@ func (h *CustomRulesHandler) buildCondition(rule *storage.CustomRoutingRule) fun
 				return req.Model == model
 			}
 		case "cost_threshold":
-			// This would require cost calculation - for now, return false
-			// TODO: Implement cost-based condition
+			// Check if estimated cost is below threshold
+			if maxCost, ok := rule.ConditionValue["max_cost"].(float64); ok {
+				// Estimate cost for the request
+				estimatedCost := h.costCalculator.EstimateCost(rule.ProviderName, req.Model, req.Messages)
+				return estimatedCost <= maxCost
+			}
 			return false
 		case "latency_threshold":
-			// This would require latency tracking - for now, return false
-			// TODO: Implement latency-based condition
+			// Check if average latency is below threshold
+			if maxLatencyMs, ok := rule.ConditionValue["max_latency_ms"].(float64); ok {
+				avgLatency := h.latencyTracker.GetAverageLatency(rule.ProviderName)
+				return avgLatency.Milliseconds() <= int64(maxLatencyMs)
+			}
 			return false
 		}
 		return false

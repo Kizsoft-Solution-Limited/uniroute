@@ -1,10 +1,10 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4 md:space-y-6 px-4 md:px-0">
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Tunnels</h1>
-        <p class="text-gray-600 dark:text-gray-400 mt-1">
+        <h1 class="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Tunnels</h1>
+        <p class="text-sm md:text-base text-gray-600 dark:text-gray-400 mt-1">
           View and manage your active tunnels
         </p>
       </div>
@@ -18,11 +18,11 @@
       </div>
     </Card>
 
-    <div v-else-if="tunnels.length === 0" class="text-center py-12">
-      <Network class="w-16 h-16 text-gray-400 mx-auto mb-4" />
-      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No tunnels yet</h3>
-      <p class="text-gray-600 dark:text-gray-400 mb-4">
-        Create a tunnel using the CLI: <code class="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-sm">uniroute tunnel</code>
+    <div v-else-if="tunnels.length === 0" class="text-center py-8 md:py-12 px-4">
+      <Network class="w-12 h-12 md:w-16 md:h-16 text-gray-400 mx-auto mb-4" />
+      <h3 class="text-base md:text-lg font-semibold text-gray-900 dark:text-white mb-2">No tunnels yet</h3>
+      <p class="text-sm md:text-base text-gray-600 dark:text-gray-400 mb-4">
+        Create a tunnel using the CLI: <code class="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-xs md:text-sm break-all">uniroute tunnel</code>
       </p>
     </div>
 
@@ -32,69 +32,75 @@
         :key="tunnel.id"
         class="hover:shadow-lg transition-all"
       >
-        <div class="flex items-start justify-between">
-          <div class="flex-1">
-            <div class="flex items-center space-x-3 mb-2">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div class="flex-1 min-w-0">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:space-x-3 mb-3 gap-2">
+              <h3 class="text-base md:text-lg font-semibold text-gray-900 dark:text-white break-words">
                 {{ tunnel.subdomain }}
               </h3>
               <span
                 v-if="tunnel.status === 'active'"
-                class="px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 rounded-full flex items-center space-x-1"
+                class="px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 rounded-full flex items-center space-x-1 w-fit"
               >
                 <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                 <span>Active</span>
               </span>
               <span
                 v-else
-                class="px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-400 rounded-full"
+                class="px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-400 rounded-full w-fit"
               >
                 Inactive
               </span>
             </div>
-            <div class="space-y-2 text-sm">
-              <div class="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
-                <Globe class="w-4 h-4" />
-                <span class="font-medium">Public URL:</span>
-                <a
-                  :href="tunnel.publicUrl"
-                  target="_blank"
-                  class="text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  {{ tunnel.publicUrl }}
-                </a>
-                <button
-                  @click="copyToClipboard(tunnel.publicUrl)"
-                  class="p-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
-                  title="Copy URL"
-                >
-                  <Copy class="w-4 h-4" />
-                </button>
+            <div class="space-y-3 text-sm">
+              <div class="flex flex-col sm:flex-row sm:items-center gap-2 text-gray-600 dark:text-gray-400">
+                <div class="flex items-center space-x-2 min-w-0 flex-1">
+                  <Globe class="w-4 h-4 flex-shrink-0" />
+                  <span class="font-medium flex-shrink-0">Public URL:</span>
+                </div>
+                <div class="flex items-center space-x-2 min-w-0 flex-1 sm:flex-auto">
+                  <a
+                    :href="tunnel.publicUrl"
+                    target="_blank"
+                    class="text-blue-600 dark:text-blue-400 hover:underline break-all min-w-0"
+                  >
+                    {{ tunnel.publicUrl }}
+                  </a>
+                  <button
+                    @click="copyToClipboard(tunnel.publicUrl)"
+                    class="p-1 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex-shrink-0"
+                    title="Copy URL"
+                  >
+                    <Copy class="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <div class="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
-                <Server class="w-4 h-4" />
-                <span class="font-medium">Local URL:</span>
-                <code class="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-xs">
+              <div class="flex flex-col sm:flex-row sm:items-center gap-2 text-gray-600 dark:text-gray-400">
+                <div class="flex items-center space-x-2 min-w-0 flex-1">
+                  <Server class="w-4 h-4 flex-shrink-0" />
+                  <span class="font-medium flex-shrink-0">Local URL:</span>
+                </div>
+                <code class="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-xs break-all min-w-0 flex-1 sm:flex-auto">
                   {{ tunnel.localUrl }}
                 </code>
               </div>
-              <div class="flex items-center space-x-4 text-xs text-gray-500 dark:text-gray-400 mt-3">
+              <div class="flex flex-col sm:flex-row sm:items-center sm:space-x-4 gap-2 sm:gap-0 text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700">
                 <span>
                   <span class="font-medium">Requests:</span>
                   {{ tunnel.requestCount.toLocaleString() }}
                 </span>
                 <span>
                   <span class="font-medium">Created:</span>
-                  {{ formatDate(tunnel.createdAt) }}
+                  <span class="whitespace-nowrap">{{ formatDate(tunnel.createdAt) }}</span>
                 </span>
-                <span v-if="tunnel.lastActive">
+                <span v-if="tunnel.lastActive" class="break-words">
                   <span class="font-medium">Last Active:</span>
-                  {{ formatDate(tunnel.lastActive) }}
+                  <span class="whitespace-nowrap">{{ formatDate(tunnel.lastActive) }}</span>
                 </span>
               </div>
             </div>
           </div>
-          <div class="flex items-center space-x-2 ml-4">
+          <div class="flex items-center justify-end sm:justify-start space-x-2 md:ml-4 flex-shrink-0">
             <button
               @click="viewTunnelStats(tunnel.id)"
               class="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
@@ -185,7 +191,18 @@ const loadTunnels = async () => {
 
 const viewTunnelStats = (id: string) => {
   // Navigate to tunnel detail page
-  router.push({ name: 'tunnel-detail', params: { id } })
+  router.push({ 
+    name: 'tunnel-detail', 
+    params: { id } 
+  }).catch((err) => {
+    // Fallback if route doesn't exist or navigation fails
+    console.error('Failed to navigate to tunnel detail:', err)
+    // Try using path instead
+    router.push(`/dashboard/tunnels/${id}`).catch((pathErr) => {
+      console.error('Failed to navigate using path:', pathErr)
+      showToast('Failed to open tunnel details', 'error')
+    })
+  })
 }
 
 const openDisconnectDialog = (id: string) => {

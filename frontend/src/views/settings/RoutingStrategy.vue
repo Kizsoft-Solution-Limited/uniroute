@@ -169,6 +169,40 @@
       </div>
     </Card>
 
+    <!-- Custom Rules Info Banner -->
+    <div
+      v-if="strategy?.strategy === 'custom' || selectedStrategy === 'custom'"
+      class="bg-blue-500/10 border-2 border-blue-500/30 rounded-lg p-4 shadow-lg"
+    >
+      <div class="flex items-start gap-3">
+        <svg
+          class="w-6 h-6 text-blue-400 mt-0.5 flex-shrink-0"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+        <div class="flex-1">
+          <h3 class="font-bold text-blue-400 mb-1 text-lg">ℹ️ Custom Routing Rules</h3>
+          <p class="text-sm text-blue-300/90 mb-2">
+            When using the <strong class="text-blue-200">Custom</strong> strategy, you can define your own routing rules to control how requests are routed to providers.
+          </p>
+          <p class="text-xs text-blue-300/70">
+            <strong>Note:</strong> If you haven't defined any custom rules yet, the system will fall back to the model-based strategy. 
+            <router-link to="/dashboard/settings/custom-rules" class="text-blue-300 underline hover:text-blue-200">
+              Configure custom rules here
+            </router-link>.
+          </p>
+        </div>
+      </div>
+    </div>
+
     <!-- Strategy Information -->
     <Card>
       <div class="space-y-4">
@@ -192,7 +226,7 @@
           </div>
           <div>
             <h4 class="font-medium text-white mb-1">Custom</h4>
-            <p>Uses custom routing rules defined by administrators.</p>
+            <p>Uses custom routing rules. You can define your own custom routing rules in the Custom Rules section.</p>
           </div>
         </div>
       </div>

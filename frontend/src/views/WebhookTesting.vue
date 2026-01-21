@@ -392,12 +392,13 @@ const filteredRequests = computed(() => {
 
 const loadTunnels = async () => {
   try {
-    // Get tunnel server URL from config or use default
+    // Get tunnel server URL from config or use default (for fallback)
     const tunnelServerUrl = import.meta.env.VITE_TUNNEL_SERVER_URL || 'http://localhost:8080'
+    // Use authenticated endpoint to get user's tunnels
     const data = await webhookTestingApi.listTunnels(tunnelServerUrl)
     tunnels.value = data
   } catch (error: any) {
-    showToast('Failed to load tunnels', 'error')
+    showToast(error.message || 'Failed to load tunnels', 'error')
   }
 }
 

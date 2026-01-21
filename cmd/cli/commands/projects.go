@@ -87,7 +87,7 @@ func runProjectsList(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(projects) == 0 {
-		fmt.Println("No projects found. Create one at https://app.uniroute.dev")
+		fmt.Println("No projects found. Create one at https://app.uniroute.co")
 		return nil
 	}
 

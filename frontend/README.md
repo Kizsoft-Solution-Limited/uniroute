@@ -29,7 +29,7 @@ Environment variables are configured in `.env` files. Vite automatically loads t
 
 ### Available Variables
 
-- `VITE_API_BASE_URL` - Backend API base URL (default: `http://localhost:8084` in dev, `https://api.uniroute.dev` in prod)
+- `VITE_API_BASE_URL` - Backend API base URL (default: `http://localhost:8084` in dev, `https://api.uniroute.co` in prod)
 - `VITE_TUNNEL_SERVER_URL` - Tunnel server URL (default: `http://localhost:8080` in dev)
 - `VITE_API_URL` - Legacy API URL (optional, kept for compatibility)
 
@@ -38,7 +38,7 @@ Environment variables are configured in `.env` files. Vite automatically loads t
 ### Development vs Production
 
 - **Development** (`npm run dev`): Uses `http://localhost:8084` by default
-- **Production** (`npm run build`): Uses `https://api.uniroute.dev` by default
+- **Production** (`npm run build`): Uses `https://api.uniroute.co` by default
 
 You can override these by setting the environment variables in your `.env` file.
 

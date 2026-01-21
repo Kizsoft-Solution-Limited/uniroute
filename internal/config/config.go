@@ -18,7 +18,7 @@ type Config struct {
 	DatabaseURL   string
 	RedisURL      string
 	IPWhitelist   []string
-	// Phase 3: Cloud provider API keys (server-level, fallback)
+	// Cloud provider API keys (server-level, fallback for BYOK)
 	OpenAIAPIKey    string
 	AnthropicAPIKey string
 	GoogleAPIKey    string
@@ -31,6 +31,17 @@ type Config struct {
 	SMTPPassword string
 	SMTPFrom     string
 	FrontendURL  string
+	// OAuth Configuration
+	GoogleOAuthClientID     string
+	GoogleOAuthClientSecret string
+	XOAuthClientID          string
+	XOAuthClientSecret      string
+	// Backend URL for OAuth callbacks (optional, auto-detected from PORT if not set)
+	BackendURL string
+	// Allowed CORS origins (comma-separated, optional)
+	CORSOrigins []string
+	// Allowed tunnel origins (comma-separated, optional)
+	TunnelOrigins []string
 }
 
 // Load loads configuration from environment variables
@@ -54,24 +65,31 @@ func Load() *Config {
 	}
 
 	return &Config{
-		Port:            getEnv("PORT", "8084"),
-		OllamaBaseURL:   getEnv("OLLAMA_BASE_URL", "http://localhost:11434"),
-		APIKeySecret:    getEnv("API_KEY_SECRET", "change-me-in-production"),
-		JWTSecret:       getEnv("JWT_SECRET", "change-me-in-production-jwt-secret-min-32-chars"),
-		Environment:     getEnv("ENV", "development"),
-		DatabaseURL:     getEnv("DATABASE_URL", ""),
-		RedisURL:        getEnv("REDIS_URL", ""),
-		IPWhitelist:                ipWhitelist,
-		OpenAIAPIKey:               getEnv("OPENAI_API_KEY", ""),
-		AnthropicAPIKey:            getEnv("ANTHROPIC_API_KEY", ""),
-		GoogleAPIKey:               getEnv("GOOGLE_API_KEY", ""),
-		ProviderKeyEncryptionKey:   getEnv("PROVIDER_KEY_ENCRYPTION_KEY", ""),
-		SMTPHost:                   getEnv("SMTP_HOST", ""),
-		SMTPPort:                   getEnvAsInt("SMTP_PORT", 587),
-		SMTPUsername:               getEnv("SMTP_USERNAME", ""),
-		SMTPPassword:               getEnv("SMTP_PASSWORD", ""),
-		SMTPFrom:                   getEnv("SMTP_FROM", ""),
-		FrontendURL:                getEnv("FRONTEND_URL", "http://localhost:3000"),
+		Port:                     getEnv("PORT", "8084"),
+		OllamaBaseURL:            getEnv("OLLAMA_BASE_URL", "http://localhost:11434"),
+		APIKeySecret:             getEnv("API_KEY_SECRET", "change-me-in-production"),
+		JWTSecret:                getEnv("JWT_SECRET", "change-me-in-production-jwt-secret-min-32-chars"),
+		Environment:              getEnv("ENV", "development"),
+		DatabaseURL:              getEnv("DATABASE_URL", ""),
+		RedisURL:                 getEnv("REDIS_URL", ""),
+		IPWhitelist:              ipWhitelist,
+		OpenAIAPIKey:             getEnv("OPENAI_API_KEY", ""),
+		AnthropicAPIKey:          getEnv("ANTHROPIC_API_KEY", ""),
+		GoogleAPIKey:             getEnv("GOOGLE_API_KEY", ""),
+		ProviderKeyEncryptionKey: getEnv("PROVIDER_KEY_ENCRYPTION_KEY", ""),
+		SMTPHost:                 getEnv("SMTP_HOST", ""),
+		SMTPPort:                 getEnvAsInt("SMTP_PORT", 587),
+		SMTPUsername:             getEnv("SMTP_USERNAME", ""),
+		SMTPPassword:             getEnv("SMTP_PASSWORD", ""),
+		SMTPFrom:                 getEnv("SMTP_FROM", ""),
+		FrontendURL:              getEnv("FRONTEND_URL", "http://localhost:3002"),
+		GoogleOAuthClientID:      getEnv("GOOGLE_OAUTH_CLIENT_ID", ""),
+		GoogleOAuthClientSecret:  getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
+		XOAuthClientID:           getEnv("X_OAUTH_CLIENT_ID", ""),
+		XOAuthClientSecret:       getEnv("X_OAUTH_CLIENT_SECRET", ""),
+		BackendURL:               getEnv("BACKEND_URL", ""), // Empty = auto-detect from PORT
+		CORSOrigins:              parseCORSOrigins(getEnv("CORS_ORIGINS", "")),
+		TunnelOrigins:            parseCORSOrigins(getEnv("TUNNEL_ORIGINS", "")),
 	}
 }
 
@@ -91,4 +109,19 @@ func getEnvAsInt(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}
+
+// parseCORSOrigins parses comma-separated CORS origins from environment variable
+func parseCORSOrigins(origins string) []string {
+	if origins == "" {
+		return []string{} // Empty = use defaults in CORS middleware
+	}
+	parts := strings.Split(origins, ",")
+	result := make([]string, 0, len(parts))
+	for _, origin := range parts {
+		if trimmed := strings.TrimSpace(origin); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }

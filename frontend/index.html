@@ -13,10 +13,11 @@
     
     <!-- Security Headers -->
     <!-- Note: X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy, and Permissions-Policy 
-         must be set via HTTP headers, not meta tags. They are configured in vite.config.ts for development 
-         and should be set by the web server in production. -->
+         must be set via HTTP headers, not meta tags. They are configured in the backend middleware (security_headers.go)
+         for production and should be set by the web server in production. Permissions-Policy allows microphone access
+         for voice recording features. -->
     <!-- CSP: Allow localhost for development, production URLs for production -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:8084 http://localhost:8080 https://api.uniroute.dev wss://tunnel.uniroute.dev ws://localhost:8080;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:8084 http://localhost:8080 https://api.uniroute.co wss://tunnel.uniroute.co ws://localhost:8080;" />
     
     <title>UniRoute - AI Gateway</title>
   </head>

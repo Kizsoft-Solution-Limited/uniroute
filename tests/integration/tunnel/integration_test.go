@@ -21,7 +21,7 @@ func TestTunnelServer_ClientConnection(t *testing.T) {
 	}
 
 	logger := zerolog.Nop()
-	server := tunnel.NewTunnelServer(0, logger) // Random port
+	server := tunnel.NewTunnelServer(0, logger, nil) // Random port, use default origins
 
 	// Start server
 	serverErr := make(chan error, 1)

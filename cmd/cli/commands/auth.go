@@ -19,8 +19,12 @@ var authCmd = &cobra.Command{
 	Short: "Authenticate with UniRoute",
 	Long: `Authenticate with the UniRoute server to manage your projects, API keys, and tunnels.
 
+Your login session persists across CLI restarts, computer reboots, and system shutdowns.
+You only need to log in once, and you'll stay logged in until you explicitly log out
+or your token expires.
+
 Commands:
-  login    Login to your UniRoute account
+  login    Login to your UniRoute account (session persists across restarts)
   logout   Logout and clear saved credentials
   status   Show current authentication status`,
 }
@@ -30,10 +34,23 @@ var authLoginCmd = &cobra.Command{
 	Short: "Login to UniRoute",
 	Long: `Login to your UniRoute account using email and password.
 
-Example:
+The server URL is determined by (in priority order):
+  1. --server flag (if provided)
+  2. UNIROUTE_API_URL environment variable
+  3. Previously saved server URL from auth config
+  4. Auto-detected local mode (http://localhost:8084)
+  5. Default production server (https://api.uniroute.co)
+
+Examples:
+  # Use environment variable (recommended)
+  export UNIROUTE_API_URL=http://localhost:8084
   uniroute auth login
-  uniroute auth login --email user@example.com
-  uniroute auth login --server https://api.uniroute.dev`,
+
+  # Explicit server flag
+  uniroute auth login --server http://localhost:8084
+
+  # Auto-detect (will use localhost if local mode detected)
+  uniroute auth login`,
 	RunE: runAuthLogin,
 }
 
@@ -64,7 +81,7 @@ func init() {
 
 	authLoginCmd.Flags().StringVarP(&authEmail, "email", "e", "", "Email address")
 	authLoginCmd.Flags().StringVarP(&authPassword, "password", "p", "", "Password")
-	authLoginCmd.Flags().StringVarP(&authServer, "server", "s", "https://api.uniroute.dev", "UniRoute server URL")
+	authLoginCmd.Flags().StringVarP(&authServer, "server", "s", "", "UniRoute server URL (overrides UNIROUTE_API_URL env var)")
 }
 
 // AuthConfig stores authentication information
@@ -127,27 +144,182 @@ func saveAuthConfig(config *AuthConfig) error {
 }
 
 // getAuthToken returns the current auth token
+// The token persists across CLI sessions, computer restarts, etc.
 func getAuthToken() string {
 	config, err := loadAuthConfig()
 	if err != nil || config == nil {
 		return ""
 	}
+	
+	// Check if token has expired (if expiration info is available)
+	if config.ExpiresAt != "" {
+		expiresAt, err := time.Parse(time.RFC3339, config.ExpiresAt)
+		if err == nil && time.Now().After(expiresAt) {
+			// Token expired, clear it
+			_ = runAuthLogout(nil, nil)
+			return ""
+		}
+	}
+	
 	return config.Token
 }
 
-// getServerURL returns the configured server URL
-func getServerURL() string {
-	config, err := loadAuthConfig()
-	if err != nil || config == nil {
-		return "https://api.uniroute.dev"
+// isAuthenticated checks if user is currently authenticated
+func isAuthenticated() bool {
+	return getAuthToken() != ""
+}
+
+// clearExpiredToken clears the auth config if token appears to be expired
+// This is called when API returns 401 Unauthorized
+func clearExpiredToken() {
+	configPath, err := getConfigPath()
+	if err != nil {
+		return
 	}
-	if config.ServerURL != "" {
+	_ = os.Remove(configPath) // Ignore errors
+}
+
+// getServerURL returns the configured server URL
+// Priority: 1. Environment variable (UNIROUTE_API_URL), 2. Saved auth config, 3. Auto-detect local mode, 4. Default
+func getServerURL() string {
+	// Priority 1: Environment variable (highest priority)
+	if envURL := os.Getenv("UNIROUTE_API_URL"); envURL != "" {
+		return envURL
+	}
+	
+	// Priority 2: Saved auth config
+	config, err := loadAuthConfig()
+	if err == nil && config != nil && config.ServerURL != "" {
 		return config.ServerURL
 	}
-	return "https://api.uniroute.dev"
+	
+	// Priority 3: Auto-detect local mode
+	if isLocalMode() {
+		return "http://localhost:8084"
+	}
+	
+	// Priority 4: Default (only used if nothing else is configured)
+	return "https://api.uniroute.co"
+}
+
+// isLocalMode detects if we're running in local development mode
+// Checks environment variable or attempts to detect from localhost connectivity
+func isLocalMode() bool {
+	// Check explicit environment variable
+	if env := os.Getenv("UNIROUTE_ENV"); env == "local" || env == "development" || env == "dev" {
+		return true
+	}
+	
+	// Check if API URL is set to localhost
+	if apiURL := os.Getenv("UNIROUTE_API_URL"); apiURL != "" {
+		return strings.Contains(apiURL, "localhost") || strings.Contains(apiURL, "127.0.0.1")
+	}
+	
+	// Check if tunnel URL is explicitly set to localhost
+	if tunnelURL := os.Getenv("UNIROUTE_TUNNEL_URL"); tunnelURL != "" {
+		return strings.Contains(tunnelURL, "localhost") || strings.Contains(tunnelURL, "127.0.0.1")
+	}
+	
+	// Try to detect: check if localhost:8055 (tunnel server), localhost:8080 (tunnel server), or localhost:8084 (gateway) is reachable
+	// This helps detect local mode even without auth config
+	client := &http.Client{Timeout: 1 * time.Second}
+	
+	// Check tunnel server on port 8055 (preferred)
+	resp, err := client.Get("http://localhost:8055/health")
+	if err == nil {
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			return true
+		}
+	}
+	
+	// Check tunnel server on port 8080 (fallback)
+	resp, err = client.Get("http://localhost:8080/health")
+	if err == nil {
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			return true
+		}
+	}
+	
+	// Check gateway server (localhost:8084) as fallback
+	resp, err = client.Get("http://localhost:8084/health")
+	if err == nil {
+		resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}
+	
+	return false
+}
+
+// getTunnelServerURL returns the tunnel server URL
+// Priority: 1. Environment variable (UNIROUTE_TUNNEL_URL), 2. Auto-detect local mode, 3. Default
+func getTunnelServerURL() string {
+	// Priority 1: Environment variable (highest priority)
+	if envURL := os.Getenv("UNIROUTE_TUNNEL_URL"); envURL != "" {
+		return envURL
+	}
+	
+	// Priority 2: Auto-detect local mode
+	if isLocalMode() {
+		// Check which port is available (prefer 8055, fallback to 8080)
+		client := &http.Client{Timeout: 1 * time.Second}
+		if resp, err := client.Get("http://localhost:8055/health"); err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return "localhost:8055"
+			}
+		}
+		// Fallback to 8080 if 8055 is not available
+		return "localhost:8080"
+	}
+	
+	// Priority 3: Default (only used if nothing else is configured)
+	return "tunnel.uniroute.co"
 }
 
 func runAuthLogin(cmd *cobra.Command, args []string) error {
+	// Check if user is already logged in
+	if isAuthenticated() {
+		config, err := loadAuthConfig()
+		if err == nil && config != nil {
+			// Verify token is still valid by checking expiration
+			tokenValid := true
+			if config.ExpiresAt != "" {
+				expiresAt, err := time.Parse(time.RFC3339, config.ExpiresAt)
+				if err == nil && time.Now().After(expiresAt) {
+					tokenValid = false
+					// Clear expired token
+					_ = runAuthLogout(nil, nil)
+				}
+			}
+			
+			if tokenValid {
+				fmt.Println("✅ You are already logged in!")
+				fmt.Printf("   Email: %s\n", config.Email)
+				fmt.Printf("   Server: %s\n", config.ServerURL)
+				if config.ExpiresAt != "" {
+					expiresAt, err := time.Parse(time.RFC3339, config.ExpiresAt)
+					if err == nil {
+						timeUntilExpiry := time.Until(expiresAt)
+						days := int(timeUntilExpiry.Hours() / 24)
+						if days > 0 {
+							fmt.Printf("   Expires: %d days remaining\n", days)
+						} else {
+							hours := int(timeUntilExpiry.Hours())
+							fmt.Printf("   Expires: %d hours remaining\n", hours)
+						}
+					}
+				} else {
+					fmt.Printf("   Status: ✅ Active (no expiration)\n")
+				}
+				fmt.Println()
+				fmt.Println("   To log in with a different account, run 'uniroute auth logout' first")
+				return nil
+			}
+		}
+	}
+
 	// Get email if not provided
 	if authEmail == "" {
 		fmt.Print("Email: ")
@@ -187,8 +359,15 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	// Determine server URL: flag > env var > saved config > auto-detect > default
+	serverURL := authServer
+	if serverURL == "" {
+		// No flag provided, use getServerURL() which checks env var, config, and auto-detects
+		serverURL = getServerURL()
+	}
+	
 	// Create request
-	loginURL := fmt.Sprintf("%s/auth/login", authServer)
+	loginURL := fmt.Sprintf("%s/auth/login", serverURL)
 	req, err := http.NewRequest("POST", loginURL, strings.NewReader(string(jsonBody)))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -226,7 +405,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 	config := &AuthConfig{
 		Token:     token,
 		Email:     authEmail,
-		ServerURL: authServer,
+		ServerURL: serverURL,
 	}
 
 	if expiresAt, ok := result["expires_at"].(string); ok {
@@ -239,7 +418,13 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("✅ Successfully logged in!")
 	fmt.Printf("   Email: %s\n", authEmail)
-	fmt.Printf("   Server: %s\n", authServer)
+	
+	// Show helpful message about environment variables if using default
+	if os.Getenv("UNIROUTE_API_URL") == "" && serverURL == "https://api.uniroute.co" {
+		fmt.Printf("   💡 Tip: Set UNIROUTE_API_URL env var to avoid hardcoded defaults\n")
+	}
+	
+	fmt.Printf("   Run 'uniroute auth logout' to log out\n")
 
 	return nil
 }
@@ -274,11 +459,37 @@ func runAuthStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Println("✅ Logged in")
+	// Check if token is still valid
+	token := getAuthToken()
+	if token == "" {
+		fmt.Println("❌ Session expired")
+		fmt.Println("   Run 'uniroute auth login' to authenticate again")
+		return nil
+	}
+
+	fmt.Println("✅ Logged in (session persists across restarts)")
 	fmt.Printf("   Email: %s\n", config.Email)
 	fmt.Printf("   Server: %s\n", config.ServerURL)
 	if config.ExpiresAt != "" {
-		fmt.Printf("   Expires: %s\n", config.ExpiresAt)
+		expiresAt, err := time.Parse(time.RFC3339, config.ExpiresAt)
+		if err == nil {
+			if time.Now().After(expiresAt) {
+				fmt.Printf("   Status: ⚠️  Token expired\n")
+			} else {
+				timeUntilExpiry := time.Until(expiresAt)
+				days := int(timeUntilExpiry.Hours() / 24)
+				if days > 0 {
+					fmt.Printf("   Expires: %s (%d days remaining)\n", config.ExpiresAt, days)
+				} else {
+					hours := int(timeUntilExpiry.Hours())
+					fmt.Printf("   Expires: %s (%d hours remaining)\n", config.ExpiresAt, hours)
+				}
+			}
+		} else {
+			fmt.Printf("   Expires: %s\n", config.ExpiresAt)
+		}
+	} else {
+		fmt.Printf("   Status: ✅ Active (no expiration)\n")
 	}
 
 	return nil

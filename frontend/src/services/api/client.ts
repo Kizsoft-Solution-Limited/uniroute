@@ -3,7 +3,7 @@ import DOMPurify from 'dompurify'
 
 // Create axios instance with base configuration
 // For local development, use http://localhost:8084 (gateway port)
-// For production, use https://api.uniroute.dev
+// For production, use https://api.uniroute.co
 const getBaseURL = () => {
   // Check environment variable first
   if (import.meta.env.VITE_API_BASE_URL) {
@@ -16,7 +16,7 @@ const getBaseURL = () => {
   }
   
   // Production default
-  return 'https://api.uniroute.dev'
+  return 'https://api.uniroute.co'
 }
 
 export const apiClient: AxiosInstance = axios.create({

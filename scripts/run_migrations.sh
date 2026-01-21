@@ -162,6 +162,30 @@ else
     MIGRATIONS_TO_RUN+=("migrations/011_routing_strategy_persistence.sql")
 fi
 
+# Migration 012: Custom routing rules
+if check_migration "012" "SELECT 1 FROM information_schema.tables WHERE table_name = 'custom_routing_rules' AND table_schema = 'public';"; then
+    echo -e "${GREEN}✅ 012_custom_routing_rules.sql (already applied)${NC}"
+else
+    echo -e "${YELLOW}⏸️  012_custom_routing_rules.sql (pending)${NC}"
+    MIGRATIONS_TO_RUN+=("migrations/012_custom_routing_rules.sql")
+fi
+
+# Migration 013: User custom routing rules (check for user_id column in custom_routing_rules)
+if check_migration "013" "SELECT 1 FROM information_schema.columns WHERE table_name = 'custom_routing_rules' AND column_name = 'user_id' AND table_schema = 'public';"; then
+    echo -e "${GREEN}✅ 013_user_custom_routing_rules.sql (already applied)${NC}"
+else
+    echo -e "${YELLOW}⏸️  013_user_custom_routing_rules.sql (pending)${NC}"
+    MIGRATIONS_TO_RUN+=("migrations/013_user_custom_routing_rules.sql")
+fi
+
+# Migration 014: Conversations and messages
+if check_migration "014" "SELECT 1 FROM information_schema.tables WHERE table_name = 'conversations' AND table_schema = 'public' AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'messages' AND table_schema = 'public');"; then
+    echo -e "${GREEN}✅ 014_conversations.sql (already applied)${NC}"
+else
+    echo -e "${YELLOW}⏸️  014_conversations.sql (pending)${NC}"
+    MIGRATIONS_TO_RUN+=("migrations/014_conversations.sql")
+fi
+
 echo ""
 
 # Run pending migrations

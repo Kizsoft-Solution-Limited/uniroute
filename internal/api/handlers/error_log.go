@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
 	"github.com/gin-gonic/gin"
@@ -155,12 +156,43 @@ func (h *ErrorLogHandler) HandleGetErrorLogs(c *gin.Context) {
 		return
 	}
 
-	// Get total count (for pagination)
-	// TODO: Add count method to repository if needed
+	// Convert to response format with properly formatted dates
+	errorLogsResponse := make([]map[string]interface{}, 0, len(logs))
+	for _, log := range logs {
+		responseLog := map[string]interface{}{
+			"id":         log.ID.String(),
+			"error_type": log.ErrorType,
+			"message":    log.Message,
+			"severity":   log.Severity,
+			"resolved":   log.Resolved,
+			"created_at": log.CreatedAt.Format(time.RFC3339),
+		}
+
+		if log.UserID != nil {
+			responseLog["user_id"] = log.UserID.String()
+		}
+		if log.StackTrace != nil {
+			responseLog["stack_trace"] = *log.StackTrace
+		}
+		if log.URL != nil {
+			responseLog["url"] = *log.URL
+		}
+		if log.UserAgent != nil {
+			responseLog["user_agent"] = *log.UserAgent
+		}
+		if log.IPAddress != nil {
+			responseLog["ip_address"] = *log.IPAddress
+		}
+		if log.Context != nil && len(log.Context) > 0 {
+			responseLog["context"] = log.Context
+		}
+
+		errorLogsResponse = append(errorLogsResponse, responseLog)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"errors": logs,
-		"count":  len(logs),
+		"errors": errorLogsResponse,
+		"count":  len(errorLogsResponse),
 		"limit":  filters.Limit,
 	})
 }

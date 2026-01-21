@@ -19,6 +19,21 @@ export interface GetTunnelResponse {
   tunnel: Tunnel
 }
 
+export interface TunnelStatsPoint {
+  time: string
+  active_tunnels: number
+  total_tunnels: number
+}
+
+export interface TunnelStatsResponse {
+  period: {
+    start: string
+    end: string
+  }
+  interval_hours: number // Can be fractional (e.g., 0.25 for 15 minutes)
+  data: TunnelStatsPoint[]
+}
+
 export const tunnelsApi = {
   /**
    * List all tunnels for the authenticated user
@@ -33,10 +48,10 @@ export const tunnelsApi = {
   /**
    * Get tunnel details by ID
    */
-  async get(id: string, useJWT: boolean = true): Promise<Tunnel> {
+  async get(id: string, useJWT: boolean = true): Promise<GetTunnelResponse> {
     const endpoint = useJWT ? `/auth/tunnels/${id}` : `/v1/tunnels/${id}`
-    const response = await apiClient.get<{ tunnel: Tunnel }>(endpoint)
-    return response.data.tunnel
+    const response = await apiClient.get<GetTunnelResponse>(endpoint)
+    return response.data
   },
 
   /**
@@ -46,5 +61,24 @@ export const tunnelsApi = {
     const endpoint = useJWT ? `/auth/tunnels/${id}/disconnect` : `/v1/tunnels/${id}/disconnect`
     await apiClient.post(endpoint)
   },
-}
 
+  /**
+   * Get tunnel statistics over time for charting (admin only - shows all tunnels)
+   * @param hours - Time range in hours (6, 24, or 168 for 7d)
+   * @param interval - Optional interval in hours (only needed for 7d view, otherwise backend aggregates)
+   */
+  async getStats(hours: number = 24, interval?: number, useJWT: boolean = true): Promise<TunnelStatsResponse> {
+    // Admin endpoint - always use /admin/tunnels/stats
+    // For 6h/24h: backend returns single aggregated point (no interval needed)
+    // For 7d: backend returns one point per day (interval=24)
+    const endpoint = '/admin/tunnels/stats'
+    const params: Record<string, any> = { hours }
+    if (interval !== undefined) {
+      params.interval = interval
+    }
+    const response = await apiClient.get<TunnelStatsResponse>(endpoint, {
+      params
+    })
+    return response.data
+  },
+}

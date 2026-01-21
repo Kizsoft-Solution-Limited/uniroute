@@ -58,6 +58,22 @@ uniroute auth login
 uniroute projects list
 ```
 
+**CLI Environment Variables** (Recommended for local development):
+
+```bash
+# Set API server URL (default: auto-detects local mode or uses https://api.uniroute.co)
+export UNIROUTE_API_URL=http://localhost:8084
+
+# Set tunnel server URL (default: auto-detects local mode or uses tunnel.uniroute.co)
+export UNIROUTE_TUNNEL_URL=localhost:8080
+
+# Enable local development mode
+export UNIROUTE_ENV=local
+
+# Then login (will use localhost automatically)
+uniroute auth login
+```
+
 **Option 2: Build from Source**
 
 ```bash
@@ -67,6 +83,9 @@ cd uniroute
 
 # Install dependencies
 go mod download
+
+# Install OAuth2 package (required for Google/X login)
+go get golang.org/x/oauth2
 
 # Build binaries
 make build
@@ -108,15 +127,27 @@ SMTP_HOST=sandbox.smtp.mailtrap.io
 SMTP_PORT=2525
 SMTP_USERNAME=your-mailtrap-username
 SMTP_PASSWORD=your-mailtrap-password
-SMTP_FROM=noreply@uniroute.dev
+SMTP_FROM=noreply@uniroute.co
 
-# Optional: Cloud Provider API Keys (for Phase 3)
+# Optional: Cloud Provider API Keys (server-level, fallback for BYOK)
 OPENAI_API_KEY=your-openai-key
 ANTHROPIC_API_KEY=your-anthropic-key
 GOOGLE_API_KEY=your-google-key
 
+# Optional: OAuth Configuration (for Google and X/Twitter login)
+GOOGLE_OAUTH_CLIENT_ID=your-google-oauth-client-id
+GOOGLE_OAUTH_CLIENT_SECRET=your-google-oauth-client-secret
+X_OAUTH_CLIENT_ID=your-x-oauth-client-id
+X_OAUTH_CLIENT_SECRET=your-x-oauth-client-secret
+
 # Optional: IP Whitelist (comma-separated)
 IP_WHITELIST=127.0.0.1,::1
+
+# Optional: CORS Origins (comma-separated, overrides defaults)
+CORS_ORIGINS=http://localhost:3000,https://app.uniroute.co
+
+# Optional: Tunnel Allowed Origins (comma-separated, overrides defaults)
+TUNNEL_ORIGINS=http://localhost,https://tunnel.uniroute.co,.uniroute.co
 ```
 
 #### SMTP Configuration
@@ -131,13 +162,41 @@ UniRoute requires SMTP configuration for email verification and password reset f
    SMTP_PORT=2525
    SMTP_USERNAME=your-mailtrap-username
    SMTP_PASSWORD=your-mailtrap-password
-   SMTP_FROM=noreply@uniroute.dev
+   SMTP_FROM=noreply@uniroute.co
    ```
 
 **For Production:**
 - Use a production SMTP service (SendGrid, AWS SES, Mailgun, etc.)
 - Update `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, and `SMTP_PASSWORD` accordingly
 - Common ports: `587` (STARTTLS) or `465` (TLS)
+
+#### OAuth Configuration
+
+UniRoute supports OAuth authentication with Google and X (Twitter). To enable:
+
+1. **Google OAuth:**
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create OAuth 2.0 credentials
+   - Add authorized redirect URI: `{BACKEND_URL}/auth/google/callback` (e.g., `http://localhost:8084/auth/google/callback` for local dev)
+   - Add to `.env`:
+     ```bash
+     GOOGLE_OAUTH_CLIENT_ID=your-client-id
+     GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
+     ```
+
+2. **X (Twitter) OAuth:**
+   - Go to [Twitter Developer Portal](https://developer.twitter.com/)
+   - Create an OAuth 2.0 app
+   - Add callback URL: `{BACKEND_URL}/auth/x/callback` (e.g., `http://localhost:8084/auth/x/callback` for local dev)
+   - Add to `.env`:
+     ```bash
+     X_OAUTH_CLIENT_ID=your-client-id
+     X_OAUTH_CLIENT_SECRET=your-client-secret
+     ```
+
+**Note:** 
+- OAuth providers redirect to your backend server, which then redirects to the frontend with the authentication token
+- **OAuth users do NOT need email verification** - OAuth providers (Google, X) already verify user emails, so users are automatically marked as verified upon OAuth login/registration
 
 See [CLI_INSTALLATION.md](./CLI_INSTALLATION.md) for detailed installation instructions.
 
@@ -177,17 +236,36 @@ ngrok http 8084
 # Returns: https://abc123.ngrok-free.app -> http://localhost:8084
 ```
 
-**Option 3: Built-in UniRoute tunnel (requires CLI installation)**
+**Option 3: Built-in UniRoute tunnel (requires CLI installation)** ⭐ Recommended
 ```bash
 # Download CLI (see CLI_INSTALLATION.md)
 # Or build: make build
 
 # Expose your local app (any port, any app)
 uniroute tunnel --port 8084
-# Returns: http://{subdomain}.uniroute.dev -> http://localhost:8084
+# Returns: http://{subdomain}.uniroute.co -> http://localhost:8084
 
 # Works with any local application, not just UniRoute!
+
+# Multiple protocols supported
+uniroute tunnel --protocol http --port 8080   # HTTP tunnel
+uniroute tunnel --protocol tcp --port 3306    # TCP tunnel (MySQL)
+uniroute tunnel --protocol tls --port 5432    # TLS tunnel (PostgreSQL)
+
+# Start multiple tunnels at once
+uniroute tunnel --all  # Starts all configured tunnels from ~/.uniroute/tunnels.json
+
+# Resume previous tunnel
+uniroute tunnel --resume  # Automatically resumes last tunnel
 ```
+
+**Tunnel Features:**
+- ✅ HTTP, TCP, and TLS protocol support
+- ✅ Persistent tunnels (survive CLI restarts)
+- ✅ Multiple tunnels support
+- ✅ Custom subdomains
+- ✅ Automatic reconnection
+- ✅ Tunnel state management
 
 ---
 
@@ -199,11 +277,15 @@ uniroute tunnel --port 8084
 - **Intelligent Routing** - Model selection based on cost, latency, availability
 - **Load Balancing** - Distribute traffic across multiple instances
 - **Automatic Failover** - Seamless switching when providers fail
-- **Security & Access Control** - API keys, JWT, rate limiting
+- **Security & Access Control** - API keys, JWT, rate limiting, IP whitelisting
 - **User Authentication** - Registration, login, email verification, password reset
+- **OAuth Authentication** - Login/register with Google and X (Twitter)
 - **Email Service** - SMTP integration for verification and password reset emails
 - **Monitoring & Analytics** - Usage tracking, cost tracking, performance metrics
-- **Multi-Provider Support** - OpenAI, Anthropic, Google, Cohere, Local LLMs
+- **Error Logging** - Frontend error tracking and admin error log management
+- **Multi-Provider Support** - OpenAI, Anthropic, Google, Local LLMs
+- **Tunneling** - Built-in ngrok-like tunneling for exposing local services
+- **CLI Tool** - Command-line interface for tunnel management and authentication
 - **Developer Experience** - CLI tool, SDKs, OpenAPI docs
 
 ### Supported Providers
@@ -219,26 +301,156 @@ uniroute tunnel --port 8084
 
 ## 🏗️ Architecture
 
+### System Architecture
+
+UniRoute follows a **layered architecture** with clear separation of concerns:
+
 ```
-┌─────────────────┐
-│   Client Apps   │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│      AI Gateway (API)          │
-│  ┌───────────────────────────┐ │
-│  │  Request Router          │ │
-│  │  Security Layer          │ │
-│  │  Monitoring & Analytics  │ │
-│  └───────────────────────────┘ │
-└────────┬────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│   Model Providers (Backends)   │
-│  OpenAI │ Anthropic │ Local   │
-└─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    Client Layer                             │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
+│  │ Web App  │  │   CLI    │  │   SDK    │  │   API    │  │
+│  │ (Vue.js) │  │  Tool    │  │  Clients │  │  Users   │  │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  │
+└───────┼─────────────┼─────────────┼─────────────┼────────┘
+        │             │             │             │
+        └─────────────┬──┴──────────────┴─────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Presentation Layer (API Gateway)               │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  HTTP API (Gin Framework)                            │  │
+│  │  ├── REST Endpoints (/v1/chat, /auth/*, etc.)       │  │
+│  │  ├── WebSocket (Tunnel Server)                       │  │
+│  │  └── Middleware (CORS, Auth, Rate Limit, Security)  │  │
+│  └──────────────────────────────────────────────────────┘  │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  Business Logic Layer                       │
+│  ┌──────────────────┐  ┌──────────────────┐               │
+│  │  Gateway Router  │  │  OAuth Service   │               │
+│  │  ├── Routing     │  │  ├── Google      │               │
+│  │  ├── Strategy    │  │  └── X/Twitter   │               │
+│  │  └── Failover    │  └──────────────────┘               │
+│  └──────────────────┘  ┌──────────────────┐               │
+│  ┌──────────────────┐  │  Security Layer  │               │
+│  │  Cost Calculator │  │  ├── JWT         │               │
+│  │  Latency Tracker │  │  ├── API Keys    │               │
+│  └──────────────────┘  │  └── Rate Limit  │               │
+└─────────────────────────┼───────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Data Access Layer                        │
+│  ┌──────────────────┐  ┌──────────────────┐               │
+│  │  Repositories    │  │  Provider Layer  │               │
+│  │  ├── User        │  │  ├── OpenAI      │               │
+│  │  ├── API Key     │  │  ├── Anthropic   │               │
+│  │  ├── Tunnel      │  │  ├── Google      │               │
+│  │  └── Request     │  │  └── Local LLM   │               │
+│  └──────────────────┘  └──────────────────┘               │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Infrastructure Layer                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
+│  │  PostgreSQL  │  │    Redis     │  │   External   │    │
+│  │  (Database)  │  │  (Cache/RL)  │  │   Services   │    │
+│  └──────────────┘  └──────────────┘  └──────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Architecture Principles
+
+1. **Layered Architecture**: Clear separation between presentation, business logic, and data access
+2. **Interface-Based Design**: Providers, repositories, and services use interfaces for flexibility
+3. **Dependency Injection**: Services are injected, not hardcoded
+4. **Repository Pattern**: Data access abstracted through repositories
+5. **Strategy Pattern**: Routing strategies (cost, latency, balanced, custom)
+6. **Middleware Pattern**: Cross-cutting concerns (auth, rate limiting, CORS)
+7. **Configuration via Environment**: All settings via environment variables, no hardcoded values
+
+### Project Structure
+
+```
+uniroute/
+├── cmd/
+│   ├── gateway/          # Gateway server entry point
+│   ├── tunnel-server/    # Tunnel server entry point
+│   └── cli/              # CLI tool entry point
+├── internal/
+│   ├── api/              # Presentation layer
+│   │   ├── handlers/     # HTTP request handlers
+│   │   ├── middleware/   # HTTP middleware (auth, CORS, rate limit)
+│   │   └── router.go     # Route definitions
+│   ├── gateway/          # Business logic - routing
+│   │   ├── router.go     # Main routing logic
+│   │   ├── strategy.go   # Routing strategies
+│   │   ├── cost_calculator.go
+│   │   └── latency_tracker.go
+│   ├── providers/        # LLM provider implementations
+│   │   ├── interface.go  # Provider interface
+│   │   ├── openai.go
+│   │   ├── anthropic.go
+│   │   ├── google.go
+│   │   └── local.go
+│   ├── oauth/            # OAuth authentication
+│   │   └── service.go    # Google & X OAuth service
+│   ├── security/         # Security layer
+│   │   ├── jwt.go        # JWT authentication
+│   │   ├── apikey.go     # API key management
+│   │   ├── apikey_v2.go  # Database-backed API keys
+│   │   └── ratelimit.go  # Rate limiting
+│   ├── storage/          # Data access layer
+│   │   ├── postgres.go   # PostgreSQL client
+│   │   ├── redis.go      # Redis client
+│   │   ├── models.go     # Data models
+│   │   └── *_repository.go  # Repository implementations
+│   ├── tunnel/           # Tunnel functionality
+│   │   ├── server.go     # Tunnel server
+│   │   ├── client.go     # Tunnel client
+│   │   └── repository.go # Tunnel data access
+│   ├── email/            # Email service
+│   └── config/           # Configuration management
+├── frontend/             # Vue.js frontend application
+│   ├── src/
+│   │   ├── views/        # Page components
+│   │   ├── components/   # Reusable components
+│   │   ├── services/     # API clients
+│   │   └── stores/       # State management
+├── migrations/           # Database migrations
+├── tests/                # Test suites
+└── pkg/                  # Shared packages
+    ├── logger/
+    ├── errors/
+    └── version/
+```
+
+### Data Flow
+
+1. **Request Flow**:
+   ```
+   Client → API Gateway → Middleware (Auth/Rate Limit) → Handler → 
+   Gateway Router → Provider → LLM API → Response → Client
+   ```
+
+2. **OAuth Flow** (No email verification required - OAuth providers verify):
+   ```
+   User clicks "Login with Google/X" → Frontend calls /auth/google or /auth/x → 
+   Backend returns auth URL → User authorizes → OAuth provider redirects to 
+   /auth/google/callback or /auth/x/callback → Backend creates/logs in user 
+   (email auto-verified) → Redirects to frontend with JWT token → User authenticated
+   ```
+
+3. **Tunnel Flow**:
+   ```
+   CLI connects → Tunnel Server (WebSocket) → Tunnel created → 
+   Public URL assigned → Traffic forwarded → Local service responds → 
+   Response sent back through tunnel
 ```
 
 ---
@@ -246,10 +458,12 @@ uniroute tunnel --port 8084
 ## 💻 Technology Stack
 
 - **Backend**: Go 1.21+
+- **Frontend**: Vue.js 3 + TypeScript + Tailwind CSS
 - **API Framework**: Gin
 - **Database**: PostgreSQL + Redis
-- **Authentication**: JWT + API Keys
+- **Authentication**: JWT + API Keys + OAuth2 (Google, X/Twitter)
 - **Email Service**: SMTP (Mailtrap, SendGrid, AWS SES, etc.)
+- **Tunneling**: Built-in WebSocket-based tunnel server
 - **Monitoring**: Prometheus + Grafana
 - **Logging**: Structured logging (zerolog)
 
@@ -258,6 +472,9 @@ uniroute tunnel --port 8084
 ## 📚 Documentation
 
 - **[SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md)** - 🔐 Complete security documentation and measures
+- **[CLI_INSTALLATION.md](./docs/CLI_INSTALLATION.md)** - 📦 CLI installation and usage guide
+- **[TUNNEL_CONFIG.md](./docs/TUNNEL_CONFIG.md)** - 🔌 Tunnel configuration and management
+- **[TUNNEL_RESUME.md](./docs/TUNNEL_RESUME.md)** - 🔄 Tunnel resume functionality
 - **API Documentation**: Interactive Swagger UI available at `http://localhost:8084/swagger` when the server is running
 - **Postman Collection**: Import `UniRoute.postman_collection.json` for ready-to-use API requests
 
@@ -884,12 +1101,17 @@ Your support helps us continue developing and maintaining UniRoute!
 - ✅ **Unified API** - Single endpoint for all LLM providers
 - ✅ **Multi-Provider Support** - OpenAI, Anthropic, Google, Local LLMs (Ollama, vLLM)
 - ✅ **User Authentication** - Registration, login, email verification, password reset
+- ✅ **OAuth Authentication** - Login/register with Google and X (Twitter)
 - ✅ **Email Service** - SMTP integration for verification and password reset emails
-- ✅ **Security & Rate Limiting** - API keys, JWT, progressive rate limiting
+- ✅ **Security & Rate Limiting** - API keys, JWT, progressive rate limiting, IP whitelisting
 - ✅ **Intelligent Routing** - Cost-based, latency-based, and failover routing
+- ✅ **Custom Routing Rules** - User-specific routing strategies and custom rules
+- ✅ **BYOK (Bring Your Own Keys)** - User-provided provider API keys with encryption
 - ✅ **Monitoring & Analytics** - Usage tracking, cost tracking, performance metrics
-- ✅ **Developer Experience** - CLI tool, SDKs, built-in tunneling
-- ✅ **Error Logging** - Admin dashboard for error management
+- ✅ **Tunneling** - Built-in tunnel server and CLI for exposing local services (HTTP, TCP, TLS)
+- ✅ **CLI Tool** - Full-featured command-line interface for tunnel management and authentication
+- ✅ **Error Logging** - Frontend error tracking with admin dashboard
+- ✅ **Developer Experience** - CLI tool, SDKs, built-in tunneling, OpenAPI docs
 
 ---
 

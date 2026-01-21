@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/config"
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/tunnel"
 	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/logger"
@@ -55,10 +56,10 @@ func main() {
 	// Load configuration
 	cfg := config.Load()
 
-	// Create tunnel server
-	server := tunnel.NewTunnelServer(*port, log)
+	// Create tunnel server with allowed origins from environment
+	server := tunnel.NewTunnelServer(*port, log, cfg.TunnelOrigins)
 
-	// Phase 5: Set up domain manager if base domain is configured
+	// Set up domain manager if base domain is configured
 	baseDomain := getEnv("TUNNEL_BASE_DOMAIN", "")
 	if baseDomain != "" {
 		domainManager := tunnel.NewDomainManager(baseDomain, log)
@@ -66,7 +67,7 @@ func main() {
 		log.Info().Str("base_domain", baseDomain).Msg("Domain manager configured")
 	}
 
-	// Phase 4: Set up database and Redis if available
+	// Set up database and Redis if available
 	if cfg.DatabaseURL != "" {
 		postgresClient, err := storage.NewPostgresClient(cfg.DatabaseURL, log)
 		if err != nil {
@@ -76,6 +77,23 @@ func main() {
 			repo := tunnel.NewTunnelRepository(postgresClient.Pool(), log)
 			server.SetRepository(repo)
 			log.Info().Msg("Database connected, request logging enabled")
+			
+			// Set up JWT validator for automatic tunnel-user association
+			// This allows CLI-created tunnels to be automatically associated with authenticated users
+			// IMPORTANT: JWT_SECRET must match the gateway's JWT_SECRET for this to work
+			if cfg.JWTSecret != "" && cfg.JWTSecret != "change-me-in-production-jwt-secret-min-32-chars" {
+				jwtService := security.NewJWTService(cfg.JWTSecret)
+				server.SetJWTValidator(func(tokenString string) (string, error) {
+					claims, err := jwtService.ValidateToken(tokenString)
+					if err != nil {
+						return "", err
+					}
+					return claims.UserID, nil
+				})
+				log.Info().Msg("JWT validator configured - tunnels will be auto-associated with authenticated users")
+			} else {
+				log.Warn().Msg("JWT_SECRET not configured or using default - tunnels will NOT be auto-associated with users. Set JWT_SECRET environment variable to enable.")
+			}
 		}
 	}
 

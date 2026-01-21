@@ -19,28 +19,38 @@ import (
 type ChatHandler struct {
 	router      *gateway.Router
 	requestRepo *storage.RequestRepository
+	convRepo    *storage.ConversationRepository
 	logger      zerolog.Logger
 }
 
 // NewChatHandler creates a new chat handler
-func NewChatHandler(router *gateway.Router, requestRepo *storage.RequestRepository, logger zerolog.Logger) *ChatHandler {
+func NewChatHandler(router *gateway.Router, requestRepo *storage.RequestRepository, convRepo *storage.ConversationRepository, logger zerolog.Logger) *ChatHandler {
 	return &ChatHandler{
 		router:      router,
 		requestRepo: requestRepo,
+		convRepo:    convRepo,
 		logger:      logger,
 	}
 }
 
-// HandleChat handles POST /v1/chat requests
+// ChatRequestWithConversation extends ChatRequest with optional conversation_id
+type ChatRequestWithConversation struct {
+	providers.ChatRequest
+	ConversationID *string `json:"conversation_id,omitempty"` // Optional: save to conversation
+}
+
+// HandleChat handles POST /v1/chat and POST /auth/chat requests
 func (h *ChatHandler) HandleChat(c *gin.Context) {
-	var req providers.ChatRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var reqWithConv ChatRequestWithConversation
+	if err := c.ShouldBindJSON(&reqWithConv); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   errors.ErrInvalidRequest.Error(),
 			"details": err.Error(),
 		})
 		return
 	}
+
+	req := reqWithConv.ChatRequest
 
 	// Validate required fields
 	if req.Model == "" {
@@ -99,9 +109,33 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 	} else {
 		provider = resp.Provider
 		c.JSON(http.StatusOK, resp)
+
+		// Save messages to conversation if conversation_id is provided
+		if reqWithConv.ConversationID != nil && h.convRepo != nil && userID != nil {
+			conversationID, err := uuid.Parse(*reqWithConv.ConversationID)
+			if err == nil {
+				// Save user message (last message in the request)
+				if len(req.Messages) > 0 {
+					lastUserMsg := req.Messages[len(req.Messages)-1]
+					_, _ = h.convRepo.AddMessage(c.Request.Context(), conversationID, lastUserMsg.Role, lastUserMsg.Content, nil)
+				}
+
+				// Save assistant response
+				if resp != nil && len(resp.Choices) > 0 {
+					assistantMsg := resp.Choices[0].Message
+					metadata := map[string]interface{}{
+						"tokens":  resp.Usage.TotalTokens,
+						"cost":    resp.Cost,
+						"provider": resp.Provider,
+						"latency_ms": latency.Milliseconds(),
+					}
+					_, _ = h.convRepo.AddMessage(c.Request.Context(), conversationID, assistantMsg.Role, assistantMsg.Content, metadata)
+				}
+			}
+		}
 	}
 
-	// Phase 5: Track request (async, don't block response)
+	// Track request asynchronously (don't block response)
 	if h.requestRepo != nil {
 		go func() {
 			requestRecord := &storage.Request{
@@ -150,7 +184,7 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 		}()
 	}
 
-	// Phase 5: Record Prometheus metrics
+	// Record Prometheus metrics for monitoring
 	if err == nil && resp != nil {
 		monitoring.RecordRequest(resp.Provider, resp.Model, status, latency.Seconds())
 		monitoring.RecordTokens(resp.Provider, resp.Model, "input", resp.Usage.PromptTokens)

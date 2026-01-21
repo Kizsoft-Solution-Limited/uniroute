@@ -108,8 +108,8 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		Model   string `json:"model"`
 		Choices []struct {
 			Message struct {
-				Role    string `json:"role"`
-				Content string `json:"content"`
+				Role    string      `json:"role"`
+				Content interface{} `json:"content"` // Can be string or array
 			} `json:"message"`
 		} `json:"choices"`
 		Usage struct {
@@ -126,10 +126,31 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 	// Convert to UniRoute format
 	choices := make([]Choice, 0, len(openAIResp.Choices))
 	for _, choice := range openAIResp.Choices {
+		// Convert content back to string (OpenAI always returns text in responses)
+		var contentStr string
+		switch c := choice.Message.Content.(type) {
+		case string:
+			contentStr = c
+		case []interface{}:
+			// Extract text from multimodal response
+			for _, part := range c {
+				if partMap, ok := part.(map[string]interface{}); ok {
+					if partType, _ := partMap["type"].(string); partType == "text" {
+						if text, _ := partMap["text"].(string); text != "" {
+							contentStr = text
+							break
+						}
+					}
+				}
+			}
+		default:
+			contentStr = fmt.Sprintf("%v", c)
+		}
+
 		choices = append(choices, Choice{
 			Message: Message{
 				Role:    choice.Message.Role,
-				Content: choice.Message.Content,
+				Content: contentStr, // Responses are always text
 			},
 		})
 	}
@@ -200,13 +221,47 @@ func (p *OpenAIProvider) GetModels() []string {
 }
 
 // convertMessagesToOpenAI converts UniRoute messages to OpenAI format
-func convertMessagesToOpenAI(messages []Message) []map[string]string {
-	result := make([]map[string]string, 0, len(messages))
+// Supports both text-only (string) and multimodal ([]ContentPart) content
+func convertMessagesToOpenAI(messages []Message) []interface{} {
+	result := make([]interface{}, 0, len(messages))
 	for _, msg := range messages {
-		result = append(result, map[string]string{
-			"role":    msg.Role,
-			"content": msg.Content,
-		})
+		messageMap := map[string]interface{}{
+			"role": msg.Role,
+		}
+
+		// Handle content: can be string (text-only) or []ContentPart (multimodal)
+		switch content := msg.Content.(type) {
+		case string:
+			// Text-only message (backward compatible)
+			messageMap["content"] = content
+		case []ContentPart:
+			// Multimodal message
+			contentArray := make([]interface{}, 0, len(content))
+			for _, part := range content {
+				if part.Type == "text" {
+					contentArray = append(contentArray, map[string]interface{}{
+						"type": "text",
+						"text": part.Text,
+					})
+				} else if part.Type == "image_url" && part.ImageURL != nil {
+					contentArray = append(contentArray, map[string]interface{}{
+						"type": "image_url",
+						"image_url": map[string]interface{}{
+							"url": part.ImageURL.URL,
+						},
+					})
+				}
+			}
+			messageMap["content"] = contentArray
+		case []interface{}:
+			// Already in OpenAI format (for direct passthrough)
+			messageMap["content"] = content
+		default:
+			// Fallback: try to convert to string
+			messageMap["content"] = fmt.Sprintf("%v", content)
+		}
+
+		result = append(result, messageMap)
 	}
 	return result
 }

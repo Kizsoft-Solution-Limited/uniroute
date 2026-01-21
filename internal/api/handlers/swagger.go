@@ -159,7 +159,7 @@ func (h *SwaggerHandler) HandleSwaggerJSON(c *gin.Context) {
 			"contact": map[string]interface{}{
 				"name":  "UniRoute Support",
 				"url":   "https://github.com/Kizsoft-Solution-Limited/uniroute",
-				"email": "support@uniroute.dev",
+				"email": "support@uniroute.co",
 			},
 		},
 		"servers": []map[string]interface{}{

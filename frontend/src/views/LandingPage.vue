@@ -123,21 +123,22 @@
         <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style="animation-delay: 1s"></div>
       </div>
       
-      <div class="container mx-auto px-6 py-24 md:py-32 relative z-10">
+      <div class="container mx-auto px-6 py-4 md:py-4 relative z-10">
         <div class="max-w-5xl mx-auto text-center">
           <div class="inline-flex items-center px-4 py-2 mb-8 bg-blue-500/10 backdrop-blur-sm border border-blue-500/20 text-blue-300 rounded-full text-sm font-medium">
             <span class="w-2 h-2 bg-blue-400 rounded-full mr-2 animate-pulse"></span>
-            One unified gateway for every AI model
+            AI Gateway + Secure Tunneling in one platform
           </div>
           <h1 class="text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight tracking-tight">
             The AI Gateway
             <span class="block mt-2 bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
-              that powers everything
+              & Secure Tunneling Platform
             </span>
           </h1>
           <p class="text-xl md:text-2xl text-slate-300 mb-12 max-w-3xl mx-auto leading-relaxed">
             Route, secure, and manage traffic to any LLM—cloud or local. 
             <span class="text-white font-semibold">One unified API for OpenAI, Anthropic, Google, and local models.</span>
+            <span class="block mt-3 text-lg">Plus, expose local services instantly with built-in HTTP, TCP, and TLS tunneling.</span>
           </p>
           <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
             <router-link
@@ -169,14 +170,23 @@
               <span class="ml-2 md:ml-4 text-[10px] md:text-xs lg:text-sm text-slate-400 whitespace-nowrap">One API for all AI models</span>
             </div>
             <div class="overflow-x-auto -mx-3 md:mx-0 px-3 md:px-0">
-              <pre class="text-[10px] sm:text-xs md:text-sm text-slate-300 whitespace-pre overflow-x-auto scrollbar-thin"><code class="block min-w-max"><span class="text-purple-400">const</span> <span class="text-blue-400">response</span> = <span class="text-purple-400">await</span> <span class="text-yellow-400">fetch</span>(<span class="text-green-400">'https://api.uniroute.dev/v1/chat'</span>, {
+              <pre class="text-[10px] sm:text-xs md:text-sm text-slate-300 whitespace-pre overflow-x-auto scrollbar-thin"><code class="block min-w-max"><span class="text-purple-400">const</span> <span class="text-blue-400">response</span> = <span class="text-purple-400">await</span> <span class="text-yellow-400">fetch</span>(<span class="text-green-400">'https://api.uniroute.co/v1/chat'</span>, {
+  <span class="text-blue-400">method</span>: <span class="text-green-400">'POST'</span>,
   <span class="text-blue-400">headers</span>: {
     <span class="text-green-400">'Authorization'</span>: <span class="text-green-400">'Bearer ur_your-key'</span>,
     <span class="text-green-400">'Content-Type'</span>: <span class="text-green-400">'application/json'</span>
   },
   <span class="text-blue-400">body</span>: <span class="text-yellow-400">JSON</span>.<span class="text-yellow-400">stringify</span>({
-    <span class="text-blue-400">model</span>: <span class="text-green-400">'gpt-4'</span>, <span class="text-slate-500">// or 'claude-3', 'gemini', 'llama2'</span>
-    <span class="text-blue-400">messages</span>: [{ <span class="text-blue-400">role</span>: <span class="text-green-400">'user'</span>, <span class="text-blue-400">content</span>: <span class="text-green-400">'Hello!'</span> }]
+    <span class="text-blue-400">model</span>: <span class="text-green-400">'gpt-4o'</span>, <span class="text-slate-500">// or 'claude-3', 'gemini', 'llama2'</span>
+    <span class="text-blue-400">messages</span>: [{
+      <span class="text-blue-400">role</span>: <span class="text-green-400">'user'</span>,
+      <span class="text-blue-400">content</span>: [
+        { <span class="text-blue-400">type</span>: <span class="text-green-400">'text'</span>, <span class="text-blue-400">text</span>: <span class="text-green-400">'Analyze these images and audio'</span> },
+        { <span class="text-blue-400">type</span>: <span class="text-green-400">'image_url'</span>, <span class="text-blue-400">image_url</span>: { <span class="text-blue-400">url</span>: <span class="text-green-400">'data:image/...'</span> } },
+        { <span class="text-blue-400">type</span>: <span class="text-green-400">'image_url'</span>, <span class="text-blue-400">image_url</span>: { <span class="text-blue-400">url</span>: <span class="text-green-400">'data:image/...'</span> } },
+        { <span class="text-blue-400">type</span>: <span class="text-green-400">'audio_url'</span>, <span class="text-blue-400">audio_url</span>: { <span class="text-blue-400">url</span>: <span class="text-green-400">'data:audio/...'</span> } }
+      ]
+    }]
   })
 });</code></pre>
             </div>
@@ -188,18 +198,95 @@
               <div class="w-2 h-2 md:w-3 md:h-3 bg-red-500 rounded-full flex-shrink-0"></div>
               <div class="w-2 h-2 md:w-3 md:h-3 bg-yellow-500 rounded-full flex-shrink-0"></div>
               <div class="w-2 h-2 md:w-3 md:h-3 bg-green-500 rounded-full flex-shrink-0"></div>
-              <span class="ml-2 md:ml-4 text-[10px] md:text-xs lg:text-sm text-slate-400 whitespace-nowrap">Expose local servers instantly</span>
+              <span class="ml-2 md:ml-4 text-[10px] md:text-xs lg:text-sm text-slate-400 whitespace-nowrap">Secure tunneling for any service</span>
             </div>
             <div class="overflow-x-auto -mx-3 md:mx-0 px-3 md:px-0">
-              <pre class="text-[10px] sm:text-xs md:text-sm text-slate-300 whitespace-pre overflow-x-auto scrollbar-thin"><code class="block min-w-max"><span class="text-slate-500"># Login to your account</span>
-<span class="text-purple-400">uniroute</span> auth login
+              <pre class="text-[10px] sm:text-xs md:text-sm text-slate-300 whitespace-pre overflow-x-auto scrollbar-thin"><code class="block min-w-max"><span class="text-slate-500"># Create tunnels (auto-resumes if available)</span>
+<span class="text-purple-400">uniroute</span> http 8080
+<span class="text-purple-400">uniroute</span> tcp 3306
+<span class="text-purple-400">uniroute</span> tls 5432
+<span class="text-purple-400">uniroute</span> --all
 
-<span class="text-slate-500"># Expose your local server</span>
-<span class="text-purple-400">uniroute</span> tunnel --port 8080
+<span class="text-slate-500"># Force new tunnel (don't resume)</span>
+<span class="text-purple-400">uniroute</span> http 8080 --new
 
-<span class="text-slate-500"># Returns:</span>
-<span class="text-green-400">Public URL: https://abc123.uniroute.dev</span>
-<span class="text-green-400">Forwarding: https://abc123.uniroute.dev -> http://localhost:8080</span></code></pre>
+<span class="text-slate-500"># Manage tunnels</span>
+<span class="text-purple-400">uniroute</span> list
+<span class="text-purple-400">uniroute</span> resume abc123
+
+<span class="text-slate-500"># Public URLs automatically assigned</span>
+<span class="text-green-400">✓ https://abc123.uniroute.co</span>
+<span class="text-green-400">✓ mysql-tunnel.uniroute.co:20001</span></code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tunnel Commands Reference -->
+        <div class="mt-8 md:mt-12 max-w-4xl mx-auto">
+          <div class="bg-slate-800/60 rounded-xl border border-slate-700/50 p-6 md:p-8">
+            <h3 class="text-2xl font-bold text-white mb-6 text-center">All Tunnel Commands</h3>
+            <div class="grid md:grid-cols-2 gap-6">
+              <div>
+                <h4 class="text-lg font-semibold text-white mb-4 flex items-center">
+                  <svg class="w-5 h-5 text-indigo-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Create Tunnels
+                </h4>
+                <div class="space-y-2 text-sm">
+                  <div class="flex items-start">
+                    <code class="text-indigo-300 bg-slate-900/50 px-2 py-1 rounded mr-2">uniroute http 8080</code>
+                    <span class="text-slate-400 text-xs mt-1">HTTP tunnel</span>
+                  </div>
+                  <div class="flex items-start">
+                    <code class="text-indigo-300 bg-slate-900/50 px-2 py-1 rounded mr-2">uniroute tcp 3306</code>
+                    <span class="text-slate-400 text-xs mt-1">TCP tunnel</span>
+                  </div>
+                  <div class="flex items-start">
+                    <code class="text-indigo-300 bg-slate-900/50 px-2 py-1 rounded mr-2">uniroute tls 5432</code>
+                    <span class="text-slate-400 text-xs mt-1">TLS tunnel</span>
+                  </div>
+                  <div class="flex items-start">
+                    <code class="text-indigo-300 bg-slate-900/50 px-2 py-1 rounded mr-2">uniroute --all</code>
+                    <span class="text-slate-400 text-xs mt-1">Start all tunnels</span>
+                  </div>
+                  <div class="flex items-start">
+                    <code class="text-indigo-300 bg-slate-900/50 px-2 py-1 rounded mr-2">uniroute http 8080 --new</code>
+                    <span class="text-slate-400 text-xs mt-1">Force new tunnel</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <h4 class="text-lg font-semibold text-white mb-4 flex items-center">
+                  <svg class="w-5 h-5 text-green-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Manage Tunnels
+                </h4>
+                <div class="space-y-2 text-sm">
+                  <div class="flex items-start">
+                    <code class="text-green-300 bg-slate-900/50 px-2 py-1 rounded mr-2">uniroute list</code>
+                    <span class="text-slate-400 text-xs mt-1">List all tunnels</span>
+                  </div>
+                  <div class="flex items-start">
+                    <code class="text-green-300 bg-slate-900/50 px-2 py-1 rounded mr-2">uniroute resume abc123</code>
+                    <span class="text-slate-400 text-xs mt-1">Resume tunnel</span>
+                  </div>
+                  <div class="flex items-start">
+                    <code class="text-green-300 bg-slate-900/50 px-2 py-1 rounded mr-2">uniroute tunnel --init</code>
+                    <span class="text-slate-400 text-xs mt-1">Create config</span>
+                  </div>
+                  <div class="flex items-start">
+                    <code class="text-green-300 bg-slate-900/50 px-2 py-1 rounded mr-2">uniroute tunnel --clear</code>
+                    <span class="text-slate-400 text-xs mt-1">Clear saved state</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="mt-6 pt-6 border-t border-slate-700/50">
+              <p class="text-sm text-slate-400 text-center">
+                💡 <strong class="text-white">Tip:</strong> Tunnels automatically resume their previous subdomain when you run the same command again
+              </p>
             </div>
           </div>
         </div>
@@ -207,7 +294,7 @@
     </section>
 
     <!-- Features Section -->
-    <section id="features" class="py-12 md:py-16 lg:py-20 relative">
+    <section id="features" class="py-4 md:py-4 lg:py-4 relative">
       <div class="container mx-auto px-6">
         <div class="text-center mb-12 md:mb-16">
           <h2 class="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">
@@ -227,7 +314,7 @@
             </div>
             <h3 class="text-xl font-semibold text-white mb-3">Unified API</h3>
             <p class="text-slate-400 leading-relaxed">
-              One API format for all AI models. No need to learn different APIs for OpenAI, Anthropic, Google, or local models. Consistent request/response format across all providers.
+              One API format for all AI models. No need to learn different APIs for OpenAI, Anthropic, Google, or local models. Consistent request/response format across all providers. Supports multimodal inputs including multiple images and audio files.
             </p>
           </div>
 
@@ -254,6 +341,19 @@
             <h3 class="text-xl font-semibold text-white mb-3">Multi-Provider Support</h3>
             <p class="text-slate-400 leading-relaxed">
               Support for OpenAI (GPT-4, GPT-3.5), Anthropic (Claude 3, Claude 2), Google (Gemini), and local models (Ollama, vLLM). Add new providers easily with our extensible architecture.
+            </p>
+          </div>
+
+          <!-- Multimodal Support -->
+          <div class="bg-slate-800/50 backdrop-blur-sm rounded-xl p-8 border border-slate-700/50 hover:border-cyan-500/50 transition-all hover:shadow-xl hover:shadow-cyan-500/10">
+            <div class="w-14 h-14 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-lg flex items-center justify-center mb-6 shadow-lg shadow-cyan-500/20">
+              <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-white mb-3">Multimodal Support</h3>
+            <p class="text-slate-400 leading-relaxed">
+              Send multiple images and audio files in a single request. Support for vision models, voice transcription, and multimodal AI interactions. Perfect for image analysis, document processing, and voice-enabled applications.
             </p>
           </div>
 
@@ -291,9 +391,29 @@
               </svg>
             </div>
             <h3 class="text-xl font-semibold text-white mb-3">Built-in Tunneling</h3>
-            <p class="text-slate-400 leading-relaxed">
-              Expose your local servers instantly with our built-in tunnel. No ngrok, no cloudflared needed. Secure, free, and integrated. Perfect for local LLM development and testing.
+            <p class="text-slate-400 leading-relaxed mb-3">
+              Expose local services instantly with secure tunneling. Support for HTTP, TCP, and TLS protocols. Multiple tunnels, port mapping, and automatic resumption—all built-in and free.
             </p>
+            <ul class="space-y-1.5 text-sm text-slate-300">
+              <li class="flex items-start">
+                <svg class="w-4 h-4 text-indigo-400 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>HTTP, TCP, and TLS support</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-4 h-4 text-indigo-400 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>Multiple tunnels with config management</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-4 h-4 text-indigo-400 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>Automatic tunnel resumption</span>
+              </li>
+            </ul>
           </div>
 
           <!-- Webhook Testing -->
@@ -321,25 +441,12 @@
               Securely store your provider API keys (OpenAI, Anthropic, Google) with AES-256 encryption. You pay providers directly, we handle routing and management. No markup, no hidden fees.
             </p>
           </div>
-
-          <!-- Local LLM Support -->
-          <div class="bg-slate-800/50 backdrop-blur-sm rounded-xl p-8 border border-slate-700/50 hover:border-violet-500/50 transition-all hover:shadow-xl hover:shadow-violet-500/10">
-            <div class="w-14 h-14 bg-gradient-to-br from-violet-500 to-purple-500 rounded-lg flex items-center justify-center mb-6 shadow-lg shadow-violet-500/20">
-              <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
-              </svg>
-            </div>
-            <h3 class="text-xl font-semibold text-white mb-3">Local LLM Support</h3>
-            <p class="text-slate-400 leading-relaxed">
-              Native support for local models like Ollama and vLLM. Run AI models on your own infrastructure for privacy, cost savings, and offline capabilities. Seamlessly switch between local and cloud.
-            </p>
-          </div>
         </div>
       </div>
     </section>
 
     <!-- Providers Section -->
-    <section id="providers" class="py-12 md:py-16 lg:py-20 relative">
+    <section id="providers" class="py-6 md:py-6 lg:py-6 relative">
       <div class="container mx-auto px-6">
         <div class="text-center mb-12 md:mb-16">
           <h2 class="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">
@@ -383,7 +490,7 @@
     </section>
 
     <!-- Use Cases Section -->
-    <section class="py-12 md:py-16 lg:py-20 relative">
+    <section class="py-5 md:py-5 lg:py-5 relative">
       <div class="container mx-auto px-6">
         <div class="text-center mb-12 md:mb-16">
           <h2 class="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">
@@ -447,6 +554,32 @@
             </ul>
           </div>
           <div class="bg-slate-800/50 backdrop-blur-sm rounded-xl p-8 border border-slate-700/50">
+            <h3 class="text-xl font-semibold text-white mb-4">Local Development & Testing</h3>
+            <p class="text-slate-400 leading-relaxed mb-4">
+              Expose local services instantly for webhook testing, API development, and database access. Secure tunneling with HTTP, TCP, and TLS support. Perfect for development, testing, and demos.
+            </p>
+            <ul class="space-y-2 text-sm text-slate-300">
+              <li class="flex items-start">
+                <svg class="w-5 h-5 text-green-400 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>Instant public URLs for local services</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-5 h-5 text-green-400 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>TCP/TLS for databases and services</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-5 h-5 text-green-400 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>Multiple tunnels with one command</span>
+              </li>
+            </ul>
+          </div>
+          <div class="bg-slate-800/50 backdrop-blur-sm rounded-xl p-8 border border-slate-700/50">
             <h3 class="text-xl font-semibold text-white mb-4">Enterprise AI Infrastructure</h3>
             <p class="text-slate-400 leading-relaxed mb-4">
               Centralized AI gateway for your organization. Manage API keys, track usage, control costs, and ensure security across all AI applications. Self-hostable for complete control.
@@ -477,7 +610,7 @@
     </section>
 
     <!-- How It Works -->
-    <section class="py-12 md:py-16 lg:py-20 relative">
+    <section class="py-6 md:py-6 lg:py-6 relative">
       <div class="container mx-auto px-6">
         <div class="text-center mb-12 md:mb-16">
           <h2 class="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">
@@ -487,7 +620,7 @@
             Get started in minutes, not hours
           </p>
         </div>
-        <div class="grid md:grid-cols-3 gap-12 max-w-5xl mx-auto">
+        <div class="grid md:grid-cols-4 gap-8 max-w-6xl mx-auto">
           <div class="text-center">
             <div class="w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center mb-6 mx-auto text-3xl font-bold text-white shadow-lg shadow-blue-500/20">
               1
@@ -515,12 +648,21 @@
               Use our unified API to route requests to any provider. We handle security, failover, analytics, and cost tracking automatically.
             </p>
           </div>
+          <div class="text-center">
+            <div class="w-20 h-20 bg-gradient-to-br from-pink-500 to-rose-500 rounded-full flex items-center justify-center mb-6 mx-auto text-3xl font-bold text-white shadow-lg shadow-pink-500/20">
+              4
+            </div>
+            <h3 class="text-xl font-semibold text-white mb-4">Expose local services</h3>
+            <p class="text-slate-400 leading-relaxed">
+              Use built-in tunneling to expose local servers instantly. HTTP, TCP, and TLS support. Perfect for webhooks, databases, and development.
+            </p>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- Pricing Section -->
-    <section id="pricing" class="py-12 md:py-16 lg:py-20 relative">
+    <section id="pricing" class="py-6 md:py-6 lg:py-6 relative">
       <div class="container mx-auto px-6">
         <div class="text-center mb-12 md:mb-16">
           <h2 class="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">
@@ -704,7 +846,7 @@
     </section>
 
     <!-- Documentation Section -->
-    <section id="docs" class="py-12 md:py-16 lg:py-20 relative">
+    <section id="docs" class="py-8 md:py-8 lg:py-8 relative">
       <div class="container mx-auto px-6">
         <div class="text-center mb-12 md:mb-16">
           <h2 class="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">
@@ -805,7 +947,7 @@
     </section>
 
     <!-- CTA Section -->
-    <section class="py-12 md:py-16 lg:py-20 relative">
+    <section class="py-6 md:py-6 lg:py-6 relative">
       <div class="container mx-auto px-6">
         <div class="max-w-4xl mx-auto text-center bg-slate-800/60 rounded-2xl border border-slate-700/50 p-12 md:p-16 shadow-2xl">
           <h2 class="text-4xl md:text-5xl font-bold text-white mb-6 tracking-tight">
@@ -852,7 +994,7 @@
               <span class="text-lg font-bold text-white">UniRoute</span>
             </div>
             <p class="text-slate-400 text-sm leading-relaxed">
-              One unified gateway for every AI model
+              One unified gateway for every AI model. Plus secure tunneling for local services.
             </p>
           </div>
           <div>
@@ -860,6 +1002,7 @@
             <ul class="space-y-3 text-sm">
               <li><a href="#features" class="text-slate-400 hover:text-white transition-colors">Features</a></li>
               <li><a href="#providers" class="text-slate-400 hover:text-white transition-colors">Providers</a></li>
+              <li><a href="#features" class="text-slate-400 hover:text-white transition-colors">Tunneling</a></li>
               <li><a href="#pricing" class="text-slate-400 hover:text-white transition-colors">Pricing</a></li>
               <li><a href="#docs" class="text-slate-400 hover:text-white transition-colors">Documentation</a></li>
             </ul>
@@ -870,6 +1013,19 @@
               <li><a href="/about" class="text-slate-400 hover:text-white transition-colors">About</a></li>
               <li><a href="/blog" class="text-slate-400 hover:text-white transition-colors">Blog</a></li>
               <li><a href="/careers" class="text-slate-400 hover:text-white transition-colors">Careers</a></li>
+              <li>
+                <a 
+                  href="https://polar.sh/uniroute/donate" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  class="text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  </svg>
+                  Donate
+                </a>
+              </li>
             </ul>
           </div>
           <div>

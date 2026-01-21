@@ -463,3 +463,19 @@ func (r *UserRepository) CountUsers(ctx context.Context) (int, error) {
 
 	return count, nil
 }
+
+// UpdateUserEmailVerified updates the email verified status for a user
+func (r *UserRepository) UpdateUserEmailVerified(ctx context.Context, userID uuid.UUID, verified bool) error {
+	query := `
+		UPDATE users
+		SET email_verified = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+
+	_, err := r.client.pool.Exec(ctx, query, verified, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update email verified status: %w", err)
+	}
+
+	return nil
+}

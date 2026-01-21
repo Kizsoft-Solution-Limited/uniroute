@@ -12,7 +12,7 @@ import (
 // APIKeyService handles API key generation and validation
 type APIKeyService struct {
 	secret string
-	keys   map[string]string // In-memory storage for Phase 1 (will use DB in Phase 2)
+	keys   map[string]string // In-memory storage (fallback when database is not available)
 }
 
 // NewAPIKeyService creates a new API key service
@@ -40,7 +40,7 @@ func (s *APIKeyService) GenerateAPIKey() (string, error) {
 		return "", fmt.Errorf("failed to hash API key: %w", err)
 	}
 
-	// Store hashed key (in-memory for Phase 1)
+	// Store hashed key (in-memory storage)
 	s.keys[key] = string(hashed)
 
 	return key, nil
