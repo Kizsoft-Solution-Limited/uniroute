@@ -218,7 +218,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 			"model":      req.Model,
 			"messages":   convertMessagesToAnthropic(req.Messages),
 			"max_tokens": 4096,
-			"stream":    true,
+			"stream":     true,
 		}
 
 		if req.Temperature > 0 {
@@ -308,9 +308,9 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 				} `json:"delta"`
 				Index int `json:"index"`
 				Usage struct {
-					InputTokens    int `json:"input_tokens"`
-					OutputTokens   int `json:"output_tokens"`
-					TotalTokens    int `json:"total_tokens"`
+					InputTokens  int `json:"input_tokens"`
+					OutputTokens int `json:"output_tokens"`
+					TotalTokens  int `json:"total_tokens"`
 				} `json:"usage"`
 			}
 

@@ -88,7 +88,7 @@ func SetupRouter(
 		authHandler := handlers.NewAuthHandler(userRepo, jwtService, emailSvc, authRateLimiter, frontendURL, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 
 		auth := r.Group("/auth")
-		
+
 		// OAuth routes
 		if oauthService != nil {
 			oauthHandler := handlers.NewOAuthHandler(oauthService, jwtService, frontendURL)
@@ -97,7 +97,7 @@ func SetupRouter(
 			auth.GET("/x", oauthHandler.HandleXAuth)
 			auth.GET("/x/callback", oauthHandler.HandleXCallback)
 		}
-		
+
 		auth.POST("/register", authHandler.HandleRegister)
 
 		// Login with progressive rate limiting (max 5 attempts before 15min block)
@@ -170,7 +170,7 @@ func SetupRouter(
 		chatHandler.SetJWTService(jwtService) // Set JWT service for WebSocket auth
 		authProtected.POST("/chat", chatHandler.HandleChat)
 		authProtected.POST("/chat/stream", chatHandler.HandleChatStream) // SSE streaming endpoint
-		authProtected.GET("/chat/ws", chatHandler.HandleChatWebSocket)    // WebSocket streaming endpoint
+		authProtected.GET("/chat/ws", chatHandler.HandleChatWebSocket)   // WebSocket streaming endpoint
 
 		// Frontend analytics endpoints (JWT authentication for direct UI usage)
 		if requestRepo != nil {
@@ -197,13 +197,13 @@ func SetupRouter(
 	if postgresClient != nil {
 		settingsRepo = storage.NewSystemSettingsRepository(postgresClient.Pool())
 		userRepo = storage.NewUserRepository(postgresClient, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
-		
+
 		// Set routing strategy services in router
 		router.SetRoutingStrategyService(settingsRepo)
 		router.SetUserRoutingStrategyService(userRepo)
-		
+
 		routingHandler = handlers.NewRoutingHandler(router, settingsRepo, userRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
-		
+
 		// User routing strategy endpoints (user-facing)
 		if jwtService != nil {
 			authProtected := r.Group("/auth")
@@ -211,7 +211,7 @@ func SetupRouter(
 			authProtected.GET("/routing/strategy", routingHandler.GetUserRoutingStrategy)
 			authProtected.PUT("/routing/strategy", routingHandler.SetUserRoutingStrategy)
 			authProtected.DELETE("/routing/strategy", routingHandler.ClearUserRoutingStrategy)
-			
+
 			// User custom routing rules endpoints
 			if postgresClient != nil {
 				customRulesRepo := storage.NewCustomRoutingRulesRepository(postgresClient.Pool())
@@ -249,7 +249,7 @@ func SetupRouter(
 	chatHandler := handlers.NewChatHandler(router, requestRepo, nil, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 	api.POST("/chat", chatHandler.HandleChat)
 	api.POST("/chat/stream", chatHandler.HandleChatStream) // SSE streaming endpoint
-	api.GET("/chat/ws", chatHandler.HandleChatWebSocket)  // WebSocket streaming endpoint
+	api.GET("/chat/ws", chatHandler.HandleChatWebSocket)   // WebSocket streaming endpoint
 
 	// Analytics endpoints for usage tracking
 	if requestRepo != nil {
