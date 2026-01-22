@@ -17,6 +17,7 @@ import (
 type OAuthService struct {
 	googleConfig *oauth2.Config
 	xConfig      *oauth2.Config
+	githubConfig *oauth2.Config
 	userRepo     *storage.UserRepository
 	frontendURL  string
 }
@@ -24,7 +25,7 @@ type OAuthService struct {
 // NewOAuthService creates a new OAuth service
 // backendURL: The backend server URL (e.g., http://localhost:8084) for OAuth callbacks
 // frontendURL: The frontend URL for redirecting after successful OAuth
-func NewOAuthService(googleClientID, googleClientSecret, xClientID, xClientSecret, backendURL, frontendURL string, userRepo *storage.UserRepository) *OAuthService {
+func NewOAuthService(googleClientID, googleClientSecret, xClientID, xClientSecret, githubClientID, githubClientSecret, backendURL, frontendURL string, userRepo *storage.UserRepository) *OAuthService {
 	service := &OAuthService{
 		userRepo:    userRepo,
 		frontendURL: frontendURL,
@@ -52,6 +53,20 @@ func NewOAuthService(googleClientID, googleClientSecret, xClientID, xClientSecre
 			Endpoint: oauth2.Endpoint{
 				AuthURL:  "https://twitter.com/i/oauth2/authorize",
 				TokenURL: "https://api.twitter.com/2/oauth2/token",
+			},
+		}
+	}
+
+	// Configure GitHub OAuth
+	if githubClientID != "" && githubClientSecret != "" {
+		service.githubConfig = &oauth2.Config{
+			ClientID:     githubClientID,
+			ClientSecret: githubClientSecret,
+			RedirectURL:  backendURL + "/auth/github/callback",
+			Scopes:       []string{"user:email"},
+			Endpoint: oauth2.Endpoint{
+				AuthURL:  "https://github.com/login/oauth/authorize",
+				TokenURL: "https://github.com/login/oauth/access_token",
 			},
 		}
 	}
@@ -230,4 +245,127 @@ func (s *OAuthService) IsGoogleConfigured() bool {
 // IsXConfigured checks if X OAuth is configured
 func (s *OAuthService) IsXConfigured() bool {
 	return s.xConfig != nil
+}
+
+// GetGithubAuthURL returns the GitHub OAuth authorization URL
+func (s *OAuthService) GetGithubAuthURL(state string) (string, error) {
+	if s.githubConfig == nil {
+		return "", fmt.Errorf("GitHub OAuth not configured")
+	}
+	return s.githubConfig.AuthCodeURL(state, oauth2.AccessTypeOnline), nil
+}
+
+// IsGithubConfigured checks if GitHub OAuth is configured
+func (s *OAuthService) IsGithubConfigured() bool {
+	return s.githubConfig != nil
+}
+
+// GithubUserInfo represents GitHub user information
+type GithubUserInfo struct {
+	ID        int    `json:"id"`
+	Login     string `json:"login"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+// HandleGithubCallback handles GitHub OAuth callback
+func (s *OAuthService) HandleGithubCallback(ctx context.Context, code string) (*storage.User, error) {
+	if s.githubConfig == nil {
+		return nil, fmt.Errorf("GitHub OAuth not configured")
+	}
+
+	// Exchange code for token
+	token, err := s.githubConfig.Exchange(ctx, code)
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange token: %w", err)
+	}
+
+	// Get user info from GitHub
+	client := s.githubConfig.Client(ctx, token)
+	
+	// First, get user profile
+	resp, err := client.Get("https://api.github.com/user")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var userInfo GithubUserInfo
+	if err := json.Unmarshal(body, &userInfo); err != nil {
+		return nil, fmt.Errorf("failed to parse user info: %w", err)
+	}
+
+	// If email is not in the user profile, fetch it from the emails endpoint
+	if userInfo.Email == "" {
+		emailsResp, err := client.Get("https://api.github.com/user/emails")
+		if err == nil {
+			defer emailsResp.Body.Close()
+			emailsBody, err := io.ReadAll(emailsResp.Body)
+			if err == nil {
+				var emails []struct {
+					Email    string `json:"email"`
+					Primary  bool   `json:"primary"`
+					Verified bool   `json:"verified"`
+				}
+				if err := json.Unmarshal(emailsBody, &emails); err == nil {
+					// Find primary email
+					for _, email := range emails {
+						if email.Primary && email.Verified {
+							userInfo.Email = email.Email
+							break
+						}
+					}
+					// If no primary verified email, use first verified email
+					if userInfo.Email == "" {
+						for _, email := range emails {
+							if email.Verified {
+								userInfo.Email = email.Email
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Use login as fallback email if still no email
+	if userInfo.Email == "" {
+		userInfo.Email = fmt.Sprintf("%s@github.oauth", userInfo.Login)
+	}
+
+	// Use login as name if name is not provided
+	if userInfo.Name == "" {
+		userInfo.Name = userInfo.Login
+	}
+
+	// Check if user exists
+	user, err := s.userRepo.GetUserByEmail(ctx, userInfo.Email)
+	if err != nil {
+		if err == storage.ErrUserNotFound {
+			// Create new user with OAuth
+			// Generate a random password (won't be used for OAuth users)
+			randomPassword := uuid.New().String()
+			user, err = s.userRepo.CreateUser(ctx, userInfo.Email, randomPassword, userInfo.Name)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create user: %w", err)
+			}
+			// OAuth providers (GitHub) already verify emails, so mark as verified immediately
+			// No email verification needed for OAuth users
+			if err := s.userRepo.UpdateUserEmailVerified(ctx, user.ID, true); err != nil {
+				return nil, fmt.Errorf("failed to verify email: %w", err)
+			}
+			user.EmailVerified = true
+		} else {
+			return nil, fmt.Errorf("failed to get user: %w", err)
+		}
+	}
+
+	return user, nil
 }

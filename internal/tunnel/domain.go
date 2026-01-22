@@ -76,6 +76,14 @@ func (dm *DomainManager) ValidateCustomDomain(ctx context.Context, domain string
 	return nil
 }
 
+// ValidateCNAME checks if a domain has the correct CNAME record pointing to the target
+func (dm *DomainManager) ValidateCNAME(ctx context.Context, domain, target string) (bool, error) {
+	if dm.dnsValidator == nil {
+		return false, fmt.Errorf("DNS validator not initialized")
+	}
+	return dm.dnsValidator.ValidateCNAMERecord(ctx, domain, target)
+}
+
 // GetPublicURL generates the public URL for a subdomain
 func (dm *DomainManager) GetPublicURL(subdomain string, port int, useHTTPS bool) string {
 	scheme := "http"

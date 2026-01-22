@@ -25,4 +25,12 @@ export const oauthApi = {
     const response = await apiClient.get<OAuthAuthResponse>('/auth/x')
     return response.data
   },
+
+  /**
+   * Get GitHub OAuth authorization URL
+   */
+  async getGithubAuthURL(): Promise<OAuthAuthResponse> {
+    const response = await apiClient.get<OAuthAuthResponse>('/auth/github')
+    return response.data
+  },
 }

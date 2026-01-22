@@ -104,8 +104,27 @@ func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request
 	}
 	tunnel.mu.RUnlock()
 
-	// Get connection stats
-	connStats := ts.statsCollector.GetConnectionStats(tunnelID, 1) // 1 open connection for this tunnel
+	// Calculate actual number of open connections
+	// Count active TCP/UDP connections for this tunnel
+	ts.tcpConnMu.RLock()
+	openConnections := int64(0)
+	for _, conn := range ts.tcpConnections {
+		if conn.TunnelID == tunnelID {
+			openConnections++
+		}
+	}
+	ts.tcpConnMu.RUnlock()
+	
+	ts.udpConnMu.RLock()
+	for _, conn := range ts.udpConnections {
+		if conn.TunnelID == tunnelID {
+			openConnections++
+		}
+	}
+	ts.udpConnMu.RUnlock()
+	
+	// Get connection stats with actual open connections count
+	connStats := ts.statsCollector.GetConnectionStats(tunnelID, openConnections)
 
 	// Combine tunnel info and statistics
 	response := map[string]interface{}{

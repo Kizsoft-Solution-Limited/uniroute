@@ -292,7 +292,7 @@ func main() {
 
 	// Initialize OAuth service if configured
 	var oauthService *oauth.OAuthService
-	if postgresClient != nil && (cfg.GoogleOAuthClientID != "" || cfg.XOAuthClientID != "") {
+	if postgresClient != nil && (cfg.GoogleOAuthClientID != "" || cfg.XOAuthClientID != "" || cfg.GithubOAuthClientID != "") {
 		userRepo := storage.NewUserRepository(postgresClient, log)
 		// Backend URL for OAuth callbacks (OAuth providers redirect here)
 		backendURL := cfg.BackendURL
@@ -311,6 +311,8 @@ func main() {
 			cfg.GoogleOAuthClientSecret,
 			cfg.XOAuthClientID,
 			cfg.XOAuthClientSecret,
+			cfg.GithubOAuthClientID,
+			cfg.GithubOAuthClientSecret,
 			backendURL,      // Backend URL for OAuth callbacks
 			cfg.FrontendURL, // Frontend URL for final redirect
 			userRepo,
@@ -320,6 +322,9 @@ func main() {
 		}
 		if oauthService.IsXConfigured() {
 			log.Info().Str("backend_url", backendURL).Msg("X OAuth initialized")
+		}
+		if oauthService.IsGithubConfigured() {
+			log.Info().Str("backend_url", backendURL).Msg("GitHub OAuth initialized")
 		}
 	}
 

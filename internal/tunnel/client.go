@@ -32,7 +32,7 @@ type RequestEventHandler func(event RequestEvent)
 type TunnelClient struct {
 	serverURL      string
 	localURL       string
-	protocol       string // http, tcp, tls
+	protocol       string // http, tcp, tls, udp
 	host           string // Optional: specific host/subdomain
 	wsConn         *websocket.Conn
 	tunnel         *TunnelInfo
@@ -47,6 +47,8 @@ type TunnelClient struct {
 	queueMu        sync.Mutex
 	tcpConnections map[string]net.Conn // Track active TCP/TLS connections
 	tcpConnMu      sync.RWMutex
+	udpConn        *net.UDPConn   // UDP connection to local service
+	udpConnMu      sync.RWMutex
 	subdomain      string             // Saved subdomain for resuming
 	tunnelID       string             // Saved tunnel ID for resuming
 	persistence    *TunnelPersistence // For saving/loading tunnel state
@@ -375,6 +377,16 @@ func (tc *TunnelClient) handleMessages() {
 			if msg.Error != nil {
 				tc.handleTCPError(msg.RequestID, msg.Error)
 			}
+		case MsgTypeUDPData:
+			// Handle UDP data
+			if len(msg.Data) > 0 && msg.RequestID != "" {
+				go tc.handleUDPData(msg.RequestID, msg.Data)
+			}
+		case MsgTypeUDPError:
+			// Handle UDP errors
+			if msg.Error != nil {
+				tc.handleUDPError(msg.RequestID, msg.Error)
+			}
 		case MsgTypePong:
 			// Heartbeat response - update last pong time
 			tc.pongMu.Lock()
@@ -397,12 +409,40 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		return
 	}
 
-	// Build local URL
-	// CRITICAL: Ensure path starts with / if it's empty (root path)
+	// Filter out static asset requests - don't notify handler for these
+	staticAssetPaths := []string{
+		"/favicon.ico",
+		"/favicon.png",
+		"/robots.txt",
+		"/.well-known/",
+	}
+	
 	path := req.Path
 	if path == "" {
 		path = "/"
 	}
+	
+	isStaticAsset := false
+	for _, staticPath := range staticAssetPaths {
+		if path == staticPath || strings.HasPrefix(path, staticPath) {
+			isStaticAsset = true
+			break
+		}
+	}
+	
+	// Also check for image/icon file extensions
+	if !isStaticAsset {
+		lowerPath := strings.ToLower(path)
+		staticExtensions := []string{".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg", ".webp", ".woff", ".woff2", ".ttf", ".eot"}
+		for _, ext := range staticExtensions {
+			if strings.HasSuffix(lowerPath, ext) {
+				isStaticAsset = true
+				break
+			}
+		}
+	}
+
+	// Build local URL
 	localURL := tc.localURL + path
 	if req.Query != "" {
 		localURL += "?" + req.Query
@@ -413,6 +453,7 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		Str("method", req.Method).
 		Str("path", req.Path).
 		Str("local_url", localURL).
+		Bool("is_static_asset", isStaticAsset).
 		Msg("Forwarding request to local server")
 
 	// Reconstruct HTTP request
@@ -443,19 +484,21 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 			Str("local_url", localURL).
 			Msg("Failed to forward request to local server - connection error")
 		
-		// Notify request handler of error (502 Bad Gateway)
-		tc.requestHandlerMu.RLock()
-		handler := tc.requestHandler
-		tc.requestHandlerMu.RUnlock()
-		
-		if handler != nil {
-			handler(RequestEvent{
-				Time:       time.Now(),
-				Method:     req.Method,
-				Path:       req.Path,
-				StatusCode: 502,
-				StatusText: "Bad Gateway",
-			})
+		// Notify request handler of error (502 Bad Gateway) - skip static assets
+		if !isStaticAsset {
+			tc.requestHandlerMu.RLock()
+			handler := tc.requestHandler
+			tc.requestHandlerMu.RUnlock()
+			
+			if handler != nil {
+				handler(RequestEvent{
+					Time:       time.Now(),
+					Method:     req.Method,
+					Path:       req.Path,
+					StatusCode: 502,
+					StatusText: "Bad Gateway",
+				})
+			}
 		}
 		
 		tc.sendError(req.RequestID, "connection_refused", err.Error())
@@ -498,19 +541,21 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 	// Send response back through tunnel
 	tc.sendResponse(response)
 
-	// Notify request handler if set
-	tc.requestHandlerMu.RLock()
-	handler := tc.requestHandler
-	tc.requestHandlerMu.RUnlock()
-	
-	if handler != nil {
-		handler(RequestEvent{
-			Time:       time.Now(),
-			Method:     req.Method,
-			Path:       req.Path,
-			StatusCode: resp.StatusCode,
-			StatusText: resp.Status,
-		})
+	// Notify request handler if set (skip static assets)
+	if !isStaticAsset {
+		tc.requestHandlerMu.RLock()
+		handler := tc.requestHandler
+		tc.requestHandlerMu.RUnlock()
+		
+		if handler != nil {
+			handler(RequestEvent{
+				Time:       time.Now(),
+				Method:     req.Method,
+				Path:       req.Path,
+				StatusCode: resp.StatusCode,
+				StatusText: resp.Status,
+			})
+		}
 	}
 
 	tc.logger.Debug().
@@ -1045,5 +1090,152 @@ func (tc *TunnelClient) closeTCPConnection(connectionID string) {
 		tc.logger.Debug().
 			Str("connection_id", connectionID).
 			Msg("TCP connection closed")
+	}
+}
+
+// handleUDPData handles UDP data from tunnel server
+func (tc *TunnelClient) handleUDPData(connectionID string, data []byte) {
+	// Ensure UDP connection is established
+	tc.udpConnMu.Lock()
+	if tc.udpConn == nil {
+		// Parse local URL (format: host:port for UDP)
+		localAddr := tc.localURL
+		if strings.HasPrefix(localAddr, "udp://") {
+			localAddr = strings.TrimPrefix(localAddr, "udp://")
+		} else if strings.HasPrefix(localAddr, "http://") {
+			localAddr = strings.TrimPrefix(localAddr, "http://")
+		} else if strings.HasPrefix(localAddr, "https://") {
+			localAddr = strings.TrimPrefix(localAddr, "https://")
+		}
+
+		// Resolve UDP address
+		addr, err := net.ResolveUDPAddr("udp", localAddr)
+		if err != nil {
+			tc.logger.Error().
+				Err(err).
+				Str("local_addr", localAddr).
+				Msg("Failed to resolve UDP address")
+			tc.udpConnMu.Unlock()
+			tc.sendUDPError(connectionID, "resolve_error", err.Error())
+			return
+		}
+
+		// Create UDP connection (we'll use a single connection for all packets)
+		conn, err := net.DialUDP("udp", nil, addr)
+		if err != nil {
+			tc.logger.Error().
+				Err(err).
+				Str("local_addr", localAddr).
+				Msg("Failed to create UDP connection")
+			tc.udpConnMu.Unlock()
+			tc.sendUDPError(connectionID, "connection_failed", err.Error())
+			return
+		}
+
+		tc.udpConn = conn
+		tc.logger.Info().
+			Str("local_addr", localAddr).
+			Msg("Established UDP connection to local service")
+
+		// Start reading from local UDP connection and forwarding to tunnel
+		go tc.forwardUDPToTunnel()
+	}
+	udpConn := tc.udpConn
+	tc.udpConnMu.Unlock()
+
+	// Write data to local UDP connection
+	_, err := udpConn.Write(data)
+	if err != nil {
+		tc.logger.Error().
+			Err(err).
+			Str("connection_id", connectionID).
+			Msg("Failed to write UDP data to local connection")
+		tc.sendUDPError(connectionID, "write_error", err.Error())
+	}
+}
+
+// forwardUDPToTunnel reads from local UDP connection and forwards to tunnel
+func (tc *TunnelClient) forwardUDPToTunnel() {
+	tc.udpConnMu.RLock()
+	conn := tc.udpConn
+	tc.udpConnMu.RUnlock()
+
+	if conn == nil {
+		return
+	}
+
+	buffer := make([]byte, 4096)
+	for {
+		n, err := conn.Read(buffer)
+		if err != nil {
+			tc.logger.Debug().
+				Err(err).
+				Msg("UDP connection read error")
+			// UDP is connectionless, so we don't close on read error
+			// Just log and continue
+			continue
+		}
+
+		if n > 0 {
+			// Generate connection ID for this packet
+			connectionID := fmt.Sprintf("udp-%d", time.Now().UnixNano())
+
+			// Forward data to tunnel
+			msg := TunnelMessage{
+				Type:      MsgTypeUDPData,
+				RequestID: connectionID,
+				Data:      buffer[:n],
+			}
+
+			tc.mu.RLock()
+			wsConn := tc.wsConn
+			tc.mu.RUnlock()
+
+			if wsConn != nil {
+				if err := wsConn.WriteJSON(msg); err != nil {
+					tc.logger.Error().
+						Err(err).
+						Str("connection_id", connectionID).
+						Msg("Failed to forward UDP data to tunnel")
+				}
+			}
+		}
+	}
+}
+
+// handleUDPError handles UDP errors from tunnel server
+func (tc *TunnelClient) handleUDPError(connectionID string, err *HTTPError) {
+	tc.logger.Error().
+		Str("connection_id", connectionID).
+		Str("error", err.Error).
+		Str("message", err.Message).
+		Msg("UDP connection error from tunnel")
+}
+
+// sendUDPError sends a UDP error to tunnel server
+func (tc *TunnelClient) sendUDPError(connectionID, errorType, message string) {
+	msg := TunnelMessage{
+		Type:      MsgTypeUDPError,
+		RequestID: connectionID,
+		Error: &HTTPError{
+			RequestID: connectionID,
+			Error:     errorType,
+			Message:   message,
+		},
+	}
+
+	tc.mu.RLock()
+	conn := tc.wsConn
+	tc.mu.RUnlock()
+
+	if conn == nil {
+		return
+	}
+
+	if err := conn.WriteJSON(msg); err != nil {
+		tc.logger.Error().
+			Err(err).
+			Str("connection_id", connectionID).
+			Msg("Failed to send UDP error")
 	}
 }

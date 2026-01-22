@@ -137,7 +137,8 @@ import {
   Route,
   Users,
   MessageSquare,
-  Heart
+  Heart,
+  Globe
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -169,6 +170,7 @@ const pageTitle = computed(() => {
     'api-keys': 'API Keys',
     chat: 'AI Chat',
     tunnels: 'Tunnels',
+    domains: 'Custom Domains',
     analytics: 'Analytics',
     'webhook-testing': 'Webhook Testing',
     'settings-profile': 'Profile Settings',
@@ -190,6 +192,7 @@ const pageDescription = computed(() => {
     dashboard: 'Overview of your UniRoute usage and activity',
     'api-keys': 'Manage your API keys and access tokens',
     tunnels: 'View and manage your active tunnels',
+    domains: 'Manage your custom domains and assign them to tunnels',
     analytics: 'Track usage, costs, and performance metrics',
     'webhook-testing': 'Inspect, replay, and test webhook requests',
     'admin-users': 'Manage users and their roles',
@@ -224,6 +227,11 @@ const navItems = computed(() => {
       path: '/dashboard/tunnels',
       label: 'Tunnels',
       icon: Network
+    },
+    {
+      path: '/dashboard/domains',
+      label: 'Domains',
+      icon: Globe
     },
     {
       path: '/dashboard/analytics',

@@ -91,7 +91,7 @@ cd uniroute
 # Install dependencies
 go mod download
 
-# Install OAuth2 package (required for Google/X login)
+# Install OAuth2 package (required for Google/GitHub/X login)
 go get golang.org/x/oauth2
 
 # Build binaries
@@ -141,9 +141,11 @@ OPENAI_API_KEY=your-openai-key
 ANTHROPIC_API_KEY=your-anthropic-key
 GOOGLE_API_KEY=your-google-key
 
-# Optional: OAuth Configuration (for Google and X/Twitter login)
+# Optional: OAuth Configuration (for Google, GitHub, and X/Twitter login)
 GOOGLE_OAUTH_CLIENT_ID=your-google-oauth-client-id
 GOOGLE_OAUTH_CLIENT_SECRET=your-google-oauth-client-secret
+GITHUB_OAUTH_CLIENT_ID=your-github-oauth-client-id
+GITHUB_OAUTH_CLIENT_SECRET=your-github-oauth-client-secret
 X_OAUTH_CLIENT_ID=your-x-oauth-client-id
 X_OAUTH_CLIENT_SECRET=your-x-oauth-client-secret
 
@@ -179,7 +181,7 @@ UniRoute requires SMTP configuration for email verification and password reset f
 
 #### OAuth Configuration
 
-UniRoute supports OAuth authentication with Google and X (Twitter). To enable:
+UniRoute supports OAuth authentication with Google, GitHub, and X (Twitter). To enable:
 
 1. **Google OAuth:**
    - Go to [Google Cloud Console](https://console.cloud.google.com/)
@@ -191,7 +193,17 @@ UniRoute supports OAuth authentication with Google and X (Twitter). To enable:
      GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
      ```
 
-2. **X (Twitter) OAuth:**
+2. **GitHub OAuth:**
+   - Go to [GitHub Developer Settings](https://github.com/settings/developers)
+   - Create a new OAuth App
+   - Set Authorization callback URL: `{BACKEND_URL}/auth/github/callback` (e.g., `http://localhost:8084/auth/github/callback` for local dev)
+   - Add to `.env`:
+     ```bash
+     GITHUB_OAUTH_CLIENT_ID=your-client-id
+     GITHUB_OAUTH_CLIENT_SECRET=your-client-secret
+     ```
+
+3. **X (Twitter) OAuth:**
    - Go to [Twitter Developer Portal](https://developer.twitter.com/)
    - Create an OAuth 2.0 app
    - Add callback URL: `{BACKEND_URL}/auth/x/callback` (e.g., `http://localhost:8084/auth/x/callback` for local dev)
@@ -203,7 +215,7 @@ UniRoute supports OAuth authentication with Google and X (Twitter). To enable:
 
 **Note:** 
 - OAuth providers redirect to your backend server, which then redirects to the frontend with the authentication token
-- **OAuth users do NOT need email verification** - OAuth providers (Google, X) already verify user emails, so users are automatically marked as verified upon OAuth login/registration
+- **OAuth users do NOT need email verification** - OAuth providers (Google, GitHub, X) already verify user emails, so users are automatically marked as verified upon OAuth login/registration
 
 See [CLI_INSTALLATION.md](./CLI_INSTALLATION.md) for detailed installation instructions.
 
@@ -258,21 +270,145 @@ uniroute tunnel --port 8084
 uniroute tunnel --protocol http --port 8080   # HTTP tunnel
 uniroute tunnel --protocol tcp --port 3306    # TCP tunnel (MySQL)
 uniroute tunnel --protocol tls --port 5432    # TLS tunnel (PostgreSQL)
+uniroute tunnel --protocol udp --port 53      # UDP tunnel (DNS)
+
+# Shortcut commands
+uniroute http 8080    # HTTP tunnel (shortcut)
+uniroute tcp 3306     # TCP tunnel (shortcut)
+uniroute tls 5432     # TLS tunnel (shortcut)
+uniroute udp 53       # UDP tunnel (shortcut)
+
+# Custom subdomain support (shortcut syntax)
+uniroute http 8080 myapp              # Request specific subdomain (myapp.uniroute.co) - shortcut
+uniroute http 8080 myapp --new        # Create new tunnel with specific subdomain - shortcut
+uniroute tcp 3306 mydb                # TCP tunnel with specific subdomain - shortcut
+uniroute tcp 3306 mydb --new          # TCP tunnel with subdomain and force new - shortcut
+
+# Custom subdomain support (flag syntax - also works)
+uniroute tunnel --host myapp          # Request specific subdomain (myapp.uniroute.co)
+uniroute tunnel --host myapp --new    # Create new tunnel with specific subdomain
+uniroute http 8080 --host myapp       # HTTP tunnel with specific subdomain
+uniroute http 8080 --host myapp --new # HTTP tunnel with subdomain and force new
+
+# Custom domain support
+uniroute domain example.com                    # Add domain to account (no tunnel assignment)
+uniroute domain example.com abc123             # Add domain AND assign to tunnel by subdomain (shortcut)
+uniroute domain example.com --subdomain abc123  # Add domain AND assign to tunnel (flag syntax)
+uniroute domain example.com --tunnel-id <id>    # Add domain AND assign to specific tunnel
+
+# Domain management commands
+uniroute domain list                           # List all your custom domains
+uniroute domain show example.com               # Show domain details and status
+uniroute domain verify example.com             # Verify DNS configuration
+uniroute domain resume                         # Resume last used domain assignment
+uniroute domain resume abc123                  # Resume domain assignment by subdomain
+uniroute domain resume example.com              # Resume domain assignment by domain
+uniroute domain remove example.com             # Remove domain from account
 
 # Start multiple tunnels at once
 uniroute tunnel --all  # Starts all configured tunnels from ~/.uniroute/tunnels.json
 
 # Resume previous tunnel
 uniroute tunnel --resume  # Automatically resumes last tunnel
+uniroute resume abc123    # Resume tunnel by subdomain (shortcut)
 ```
 
 **Tunnel Features:**
-- ✅ HTTP, TCP, and TLS protocol support
+- ✅ HTTP, TCP, TLS, and UDP protocol support
 - ✅ Persistent tunnels (survive CLI restarts)
 - ✅ Multiple tunnels support
 - ✅ Custom subdomains
+- ✅ Custom domains (bring your own domain)
+- ✅ Domain management (list, show, verify, remove)
+- ✅ Domain resume functionality
 - ✅ Automatic reconnection
 - ✅ Tunnel state management
+
+### Custom Domain Management
+
+UniRoute supports using your own custom domains instead of random subdomains. You can manage domains through the CLI or dashboard.
+
+**Adding and Assigning Domains:**
+
+```bash
+# Add domain to your account (not assigned to any tunnel yet)
+uniroute domain example.com
+
+# Add domain AND assign to tunnel in one command
+uniroute domain example.com abc123              # By subdomain (shortcut)
+uniroute domain example.com --subdomain abc123  # By subdomain (flag)
+uniroute domain example.com --tunnel-id <id>   # By tunnel ID
+```
+
+**Domain Management Commands:**
+
+```bash
+# List all your domains
+uniroute domain list
+
+# Show details for a specific domain
+uniroute domain show example.com
+
+# Verify DNS configuration
+uniroute domain verify example.com
+
+# Resume domain assignment (restore previous assignment)
+uniroute domain resume                    # Resume last used assignment
+uniroute domain resume abc123             # Resume by subdomain
+uniroute domain resume example.com        # Resume by domain name
+
+# Remove domain from account
+uniroute domain remove example.com
+```
+
+**DNS Configuration:**
+
+After adding a domain, you need to configure DNS:
+
+1. **Add CNAME Record** in your DNS provider:
+   ```
+   Type: CNAME
+   Name: example.com (or @ for root domain)
+   Target: tunnel.uniroute.co
+   ```
+
+2. **Verify DNS** configuration:
+   ```bash
+   uniroute domain verify example.com
+   ```
+   Or use the dashboard at `https://app.uniroute.co/dashboard/domains`
+
+3. **Once verified**, your domain is ready to use!
+
+**Domain Resume Feature:**
+
+When you assign a domain to a tunnel, the assignment is automatically saved. You can resume it later:
+
+```bash
+# First time: assign domain to tunnel
+uniroute domain naijacrawl.com abc123
+
+# Later: resume the same assignment
+uniroute domain resume abc123
+# or
+uniroute domain resume naijacrawl.com
+```
+
+The resume feature:
+- ✅ Saves domain-to-tunnel assignments automatically
+- ✅ Allows resuming by domain name or subdomain
+- ✅ Automatically looks up current tunnel ID
+- ✅ Works across CLI sessions (persistent storage)
+
+**Domain Management in Dashboard:**
+
+You can also manage domains through the web dashboard:
+- View all domains: `/dashboard/domains`
+- Add new domains
+- Verify DNS configuration
+- Delete domains
+
+Both CLI and dashboard use the same backend system, so domains created via CLI appear in the dashboard and vice versa.
 
 ---
 
@@ -286,7 +422,7 @@ uniroute tunnel --resume  # Automatically resumes last tunnel
 - **Automatic Failover** - Seamless switching when providers fail
 - **Security & Access Control** - API keys, JWT, rate limiting, IP whitelisting
 - **User Authentication** - Registration, login, email verification, password reset
-- **OAuth Authentication** - Login/register with Google and X (Twitter)
+- **OAuth Authentication** - Login/register with Google, GitHub, and X (Twitter)
 - **Email Service** - SMTP integration for verification and password reset emails
 - **Monitoring & Analytics** - Usage tracking, cost tracking, performance metrics
 - **Error Logging** - Frontend error tracking and admin error log management
@@ -447,9 +583,9 @@ uniroute/
 
 2. **OAuth Flow** (No email verification required - OAuth providers verify):
    ```
-   User clicks "Login with Google/X" → Frontend calls /auth/google or /auth/x → 
+   User clicks "Login with Google/GitHub/X" → Frontend calls /auth/google, /auth/github, or /auth/x → 
    Backend returns auth URL → User authorizes → OAuth provider redirects to 
-   /auth/google/callback or /auth/x/callback → Backend creates/logs in user 
+   /auth/google/callback, /auth/github/callback, or /auth/x/callback → Backend creates/logs in user 
    (email auto-verified) → Redirects to frontend with JWT token → User authenticated
    ```
 
@@ -468,7 +604,7 @@ uniroute/
 - **Frontend**: Vue.js 3 + TypeScript + Tailwind CSS
 - **API Framework**: Gin
 - **Database**: PostgreSQL + Redis
-- **Authentication**: JWT + API Keys + OAuth2 (Google, X/Twitter)
+- **Authentication**: JWT + API Keys + OAuth2 (Google, GitHub, X/Twitter)
 - **Email Service**: SMTP (Mailtrap, SendGrid, AWS SES, etc.)
 - **Tunneling**: Built-in WebSocket-based tunnel server
 - **Monitoring**: Prometheus + Grafana
@@ -482,6 +618,7 @@ uniroute/
 - **[CLI_INSTALLATION.md](./docs/CLI_INSTALLATION.md)** - 📦 CLI installation and usage guide
 - **[TUNNEL_CONFIG.md](./docs/TUNNEL_CONFIG.md)** - 🔌 Tunnel configuration and management
 - **[TUNNEL_RESUME.md](./docs/TUNNEL_RESUME.md)** - 🔄 Tunnel resume functionality
+- **Custom Domain Management** - See "Custom Domain Management" section above for CLI commands and DNS setup
 - **API Documentation**: Interactive Swagger UI available at `http://localhost:8084/swagger` when the server is running
 - **Postman Collection**: Import `UniRoute.postman_collection.json` for ready-to-use API requests
 
@@ -1108,7 +1245,7 @@ Your support helps us continue developing and maintaining UniRoute!
 - ✅ **Unified API** - Single endpoint for all LLM providers
 - ✅ **Multi-Provider Support** - OpenAI, Anthropic, Google, Local LLMs (Ollama, vLLM)
 - ✅ **User Authentication** - Registration, login, email verification, password reset
-- ✅ **OAuth Authentication** - Login/register with Google and X (Twitter)
+- ✅ **OAuth Authentication** - Login/register with Google, GitHub, and X (Twitter)
 - ✅ **Email Service** - SMTP integration for verification and password reset emails
 - ✅ **Security & Rate Limiting** - API keys, JWT, progressive rate limiting, IP whitelisting
 - ✅ **Intelligent Routing** - Cost-based, latency-based, and failover routing

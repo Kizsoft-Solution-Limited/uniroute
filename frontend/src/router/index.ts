@@ -40,6 +40,18 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresGuest: true }
   },
   {
+    path: '/docs',
+    name: 'docs',
+    redirect: '/docs/introduction',
+    meta: { requiresGuest: true }
+  },
+  {
+    path: '/docs/:path(.*)',
+    name: 'docs-page',
+    component: () => import('@/views/Docs.vue'),
+    meta: { requiresGuest: true }
+  },
+  {
     path: '/security',
     name: 'security',
     component: () => import('@/views/Security.vue')
@@ -53,6 +65,12 @@ const routes: RouteRecordRaw[] = [
     path: '/privacy',
     name: 'privacy',
     component: () => import('@/views/Privacy.vue')
+  },
+  {
+    path: '/pricing',
+    name: 'pricing',
+    component: () => import('@/views/Pricing.vue'),
+    meta: { requiresGuest: true }
   },
   {
     path: '/dashboard',
@@ -74,6 +92,12 @@ const routes: RouteRecordRaw[] = [
         path: 'tunnels',
         name: 'tunnels',
         component: () => import('@/views/Tunnels.vue'),
+        meta: { permission: 'tunnels:read' }
+      },
+      {
+        path: 'domains',
+        name: 'domains',
+        component: () => import('@/views/Domains.vue'),
         meta: { permission: 'tunnels:read' }
       },
       {
@@ -202,17 +226,17 @@ const router = createRouter({
 // Navigation guards
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
-  
+
   // Skip auth check for login/register pages to avoid redirect loops
   if (to.name === 'login' || to.name === 'register' || to.name === 'forgot-password' || to.name === 'verify-email' || to.name === 'oauth-callback') {
     next()
     return
   }
-  
+
   // Check if we have a token but no user - need to verify auth
   const hasToken = authStore.token || localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')
   const hasUser = !!authStore.user
-  
+
   // If we have a token but no user, try to check auth
   if (hasToken && !hasUser) {
     try {
@@ -233,7 +257,7 @@ router.beforeEach(async (to, from, next) => {
       }
     }
   }
-  
+
   const isAuthenticated = authStore.isAuthenticated
 
   // Check if route requires authentication

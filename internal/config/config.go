@@ -36,6 +36,8 @@ type Config struct {
 	GoogleOAuthClientSecret string
 	XOAuthClientID          string
 	XOAuthClientSecret      string
+	GithubOAuthClientID     string
+	GithubOAuthClientSecret string
 	// Backend URL for OAuth callbacks (optional, auto-detected from PORT if not set)
 	BackendURL string
 	// Allowed CORS origins (comma-separated, optional)
@@ -87,6 +89,8 @@ func Load() *Config {
 		GoogleOAuthClientSecret:  getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
 		XOAuthClientID:           getEnv("X_OAUTH_CLIENT_ID", ""),
 		XOAuthClientSecret:       getEnv("X_OAUTH_CLIENT_SECRET", ""),
+		GithubOAuthClientID:      getEnv("GITHUB_OAUTH_CLIENT_ID", ""),
+		GithubOAuthClientSecret:  getEnv("GITHUB_OAUTH_CLIENT_SECRET", ""),
 		BackendURL:               getEnv("BACKEND_URL", ""), // Empty = auto-detect from PORT
 		CORSOrigins:              parseCORSOrigins(getEnv("CORS_ORIGINS", "")),
 		TunnelOrigins:            parseCORSOrigins(getEnv("TUNNEL_ORIGINS", "")),

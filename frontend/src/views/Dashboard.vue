@@ -103,6 +103,19 @@
         </router-link>
 
         <router-link
+          to="/dashboard/domains"
+          class="flex items-center space-x-3 p-4 border-2 border-dashed border-slate-700/50 rounded-lg hover:border-cyan-500 transition-colors group"
+        >
+          <div class="w-10 h-10 bg-cyan-500/20 rounded-lg flex items-center justify-center group-hover:bg-cyan-500/30 transition-colors">
+            <Globe class="w-5 h-5 text-cyan-400" />
+          </div>
+          <div>
+            <p class="font-medium text-white">Manage Domains</p>
+            <p class="text-sm text-slate-400">Add custom domains</p>
+          </div>
+        </router-link>
+
+        <router-link
           to="/dashboard/settings/provider-keys"
           class="flex items-center space-x-3 p-4 border-2 border-dashed border-slate-700/50 rounded-lg hover:border-green-500 transition-colors group"
         >
@@ -246,7 +259,8 @@ import {
   DollarSign,
   Plus,
   TrendingUp,
-  Heart
+  Heart,
+  Globe
 } from 'lucide-vue-next'
 import { dashboardApi } from '@/services/api/dashboard'
 import { tunnelsApi } from '@/services/api/tunnels'

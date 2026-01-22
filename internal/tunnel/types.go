@@ -7,6 +7,7 @@ const (
 	ProtocolHTTP = "http"
 	ProtocolTCP  = "tcp"
 	ProtocolTLS  = "tls"
+	ProtocolUDP  = "udp"
 )
 
 // Message types for WebSocket protocol
@@ -22,6 +23,8 @@ const (
 	MsgTypeTCPError      = "tcp_error"
 	MsgTypeTLSData       = "tls_data"
 	MsgTypeTLSError      = "tls_error"
+	MsgTypeUDPData       = "udp_data"
+	MsgTypeUDPError      = "udp_error"
 	MsgTypeUpdateTunnel  = "update_tunnel"
 	MsgTypeTunnelStatus  = "tunnel_status"
 )
@@ -30,8 +33,8 @@ const (
 type InitMessage struct {
 	Type      string                 `json:"type,omitempty"`
 	Version   string                 `json:"version,omitempty"`
-	Protocol  string                 `json:"protocol,omitempty"` // http, tcp, tls
-	LocalURL  string                 `json:"local_url"`          // For HTTP: http://localhost:port, For TCP/TLS: host:port
+	Protocol  string                 `json:"protocol,omitempty"` // http, tcp, tls, udp
+	LocalURL  string                 `json:"local_url"`          // For HTTP: http://localhost:port, For TCP/TLS/UDP: host:port
 	Host      string                 `json:"host,omitempty"`     // Optional: specific host/subdomain to request
 	Token     string                 `json:"token,omitempty"`
 	Subdomain string                 `json:"subdomain,omitempty"` // For resuming existing tunnel
@@ -130,7 +133,7 @@ type ConnectionStats struct {
 // TunnelConfig represents a tunnel configuration (for config file)
 type TunnelConfig struct {
 	Name      string `json:"name"`                // Tunnel name/identifier
-	Protocol  string `json:"protocol"`            // http, tcp, tls
+	Protocol  string `json:"protocol"`            // http, tcp, tls, udp
 	LocalAddr string `json:"local_addr"`          // Local address (e.g., "localhost:8080" or "127.0.0.1:3306")
 	Host      string `json:"host,omitempty"`      // Optional: specific host/subdomain
 	ServerURL string `json:"server_url,omitempty"` // Optional: override default server URL

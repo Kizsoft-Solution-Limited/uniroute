@@ -62,12 +62,14 @@ func init() {
 	rootCmd.AddCommand(httpCmd)  // Shortcut: uniroute http [port]
 	rootCmd.AddCommand(tcpCmd)   // Shortcut: uniroute tcp [port]
 	rootCmd.AddCommand(tlsCmd)   // Shortcut: uniroute tls [port]
+	rootCmd.AddCommand(udpCmd)   // Shortcut: uniroute udp [port]
 	rootCmd.AddCommand(resumeCmd) // Shortcut: uniroute resume [subdomain]
 	rootCmd.AddCommand(listCmd)   // Shortcut: uniroute list
 	rootCmd.AddCommand(keysCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(logsCmd)
 	rootCmd.AddCommand(upgradeCmd)
+	rootCmd.AddCommand(domainCmd) // Shortcut: uniroute domain [domain]
 }
 
 // SetVersion sets the version for the CLI

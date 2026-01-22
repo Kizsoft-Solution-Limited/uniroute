@@ -53,7 +53,31 @@
               </span>
             </div>
             <div class="space-y-3 text-sm">
-              <div class="flex flex-col sm:flex-row sm:items-center gap-2 text-gray-600 dark:text-gray-400">
+              <!-- Custom Domain Display (Read-only) -->
+              <div v-if="tunnel.customDomain" class="flex flex-col sm:flex-row sm:items-center gap-2 text-gray-600 dark:text-gray-400">
+                <div class="flex items-center space-x-2 min-w-0 flex-1">
+                  <Globe class="w-4 h-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+                  <span class="font-medium flex-shrink-0">Custom Domain:</span>
+                </div>
+                <div class="flex items-center space-x-2 min-w-0 flex-1 sm:flex-auto">
+                  <span class="text-blue-600 dark:text-blue-400 font-mono text-sm break-all">{{ tunnel.customDomain }}</span>
+                  <button
+                    @click="copyToClipboard(tunnel.customDomain)"
+                    class="p-1 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex-shrink-0"
+                    title="Copy domain"
+                  >
+                    <Copy class="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <p v-if="tunnel.customDomain" class="text-xs text-gray-500 dark:text-gray-400 ml-6">
+                Configure DNS: <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">CNAME {{ tunnel.customDomain }} → tunnel.uniroute.co</code>
+              </p>
+              <p v-else class="text-xs text-gray-500 dark:text-gray-400 italic">
+                No custom domain. Use <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">uniroute domain example.com</code> to set one.
+              </p>
+              
+              <div class="flex flex-col sm:flex-row sm:items-center gap-2 text-gray-600 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700">
                 <div class="flex items-center space-x-2 min-w-0 flex-1">
                   <Globe class="w-4 h-4 flex-shrink-0" />
                   <span class="font-medium flex-shrink-0">Public URL:</span>
@@ -132,6 +156,7 @@
       @confirm="disconnectTunnel"
       @cancel="cancelDisconnect"
     />
+
   </div>
 </template>
 
@@ -153,6 +178,7 @@ interface Tunnel {
   requestCount: number
   createdAt: string
   lastActive?: string
+  customDomain?: string | null
 }
 
 const { showToast } = useToast()
@@ -180,7 +206,8 @@ const loadTunnels = async () => {
       status: t.status as 'active' | 'inactive',
       requestCount: t.request_count,
       createdAt: t.created_at,
-      lastActive: t.last_active || undefined
+      lastActive: t.last_active || undefined,
+      customDomain: t.custom_domain || null
     }))
   } catch (error: any) {
     showToast(error.response?.data?.error || 'Failed to load tunnels', 'error')
@@ -250,4 +277,5 @@ const formatDate = (date: string) => {
     minute: '2-digit'
   })
 }
+
 </script>

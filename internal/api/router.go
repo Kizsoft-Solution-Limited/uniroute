@@ -96,6 +96,8 @@ func SetupRouter(
 			auth.GET("/google/callback", oauthHandler.HandleGoogleCallback)
 			auth.GET("/x", oauthHandler.HandleXAuth)
 			auth.GET("/x/callback", oauthHandler.HandleXCallback)
+			auth.GET("/github", oauthHandler.HandleGithubAuth)
+			auth.GET("/github/callback", oauthHandler.HandleGithubCallback)
 		}
 
 		auth.POST("/register", authHandler.HandleRegister)
@@ -188,6 +190,19 @@ func SetupRouter(
 		authProtected.GET("/tunnels/:id", tunnelHandler.GetTunnel)
 		authProtected.POST("/tunnels/:id/disconnect", tunnelHandler.DisconnectTunnel)
 		authProtected.POST("/tunnels/:id/associate", tunnelHandler.AssociateTunnel)
+		authProtected.POST("/tunnels/:id/domain", tunnelHandler.SetCustomDomain)
+		authProtected.PUT("/tunnels/:id/domain", tunnelHandler.SetCustomDomain)
+
+		// Custom domain management endpoints
+		domainRepo := storage.NewCustomDomainRepository(postgresClient.Pool())
+		domainHandler := handlers.NewDomainHandler(domainRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		// Create domain manager for DNS validation
+		domainManager := tunnel.NewDomainManager("", zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		domainHandler.SetDomainManager(domainManager)
+		authProtected.GET("/domains", domainHandler.ListDomains)
+		authProtected.POST("/domains", domainHandler.CreateDomain)
+		authProtected.DELETE("/domains/:id", domainHandler.DeleteDomain)
+		authProtected.POST("/domains/:id/verify", domainHandler.VerifyDomain)
 	}
 
 	// Initialize routing handler (needed for both user and admin routes)
@@ -262,10 +277,17 @@ func SetupRouter(
 	if postgresClient != nil {
 		tunnelRepo := tunnel.NewTunnelRepository(postgresClient.Pool(), zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 		tunnelHandler := handlers.NewTunnelHandler(tunnelRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		
+		// Create domain manager for custom domain validation (base domain can be empty for validation-only)
+		domainManager := tunnel.NewDomainManager("", zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		tunnelHandler.SetDomainManager(domainManager)
+		
 		api.GET("/tunnels", tunnelHandler.ListTunnels)
 		// Note: /tunnels/stats moved to admin routes - admin only
 		api.GET("/tunnels/:id", tunnelHandler.GetTunnel)
 		api.POST("/tunnels/:id/disconnect", tunnelHandler.DisconnectTunnel)
+		api.POST("/tunnels/:id/domain", tunnelHandler.SetCustomDomain)
+		api.PUT("/tunnels/:id/domain", tunnelHandler.SetCustomDomain)
 	}
 
 	// Provider endpoints

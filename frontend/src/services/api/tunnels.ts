@@ -9,6 +9,7 @@ export interface Tunnel {
   request_count: number
   created_at: string
   last_active?: string | null
+  custom_domain?: string | null
 }
 
 export interface ListTunnelsResponse {
@@ -78,6 +79,20 @@ export const tunnelsApi = {
     }
     const response = await apiClient.get<TunnelStatsResponse>(endpoint, {
       params
+    })
+    return response.data
+  },
+
+  /**
+   * Set custom domain for a tunnel
+   * @param id - Tunnel ID
+   * @param domain - Custom domain to set
+   * @param useJWT - Whether to use JWT authentication (default: true)
+   */
+  async setCustomDomain(id: string, domain: string, useJWT: boolean = true): Promise<{ message: string; domain: string }> {
+    const endpoint = useJWT ? `/auth/tunnels/${id}/domain` : `/v1/tunnels/${id}/domain`
+    const response = await apiClient.post<{ message: string; domain: string }>(endpoint, {
+      domain
     })
     return response.data
   },

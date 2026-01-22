@@ -120,6 +120,57 @@ func (r *TunnelRepository) CreateTunnel(ctx context.Context, tunnel *Tunnel) err
 	return nil
 }
 
+// GetTunnelByCustomDomain retrieves a tunnel by custom domain
+func (r *TunnelRepository) GetTunnelByCustomDomain(ctx context.Context, domain string) (*Tunnel, error) {
+	query := `
+		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
+		       status, region, created_at, updated_at, last_active_at, request_count
+		FROM tunnels
+		WHERE custom_domain = $1
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	var tunnel Tunnel
+	var userID sql.NullString
+	var customDomain sql.NullString
+	var lastActive sql.NullTime
+
+	err := r.pool.QueryRow(ctx, query, domain).Scan(
+		&tunnel.ID,
+		&userID,
+		&tunnel.Subdomain,
+		&customDomain,
+		&tunnel.LocalURL,
+		&tunnel.PublicURL,
+		&tunnel.Status,
+		&tunnel.Region,
+		&tunnel.CreatedAt,
+		&tunnel.UpdatedAt,
+		&lastActive,
+		&tunnel.RequestCount,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, ErrTunnelNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if userID.Valid {
+		tunnel.UserID = userID.String
+	}
+	if customDomain.Valid {
+		tunnel.CustomDomain = customDomain.String
+	}
+	if lastActive.Valid {
+		tunnel.LastActive = lastActive.Time
+	}
+
+	return &tunnel, nil
+}
+
 // GetTunnelBySubdomain retrieves a tunnel by subdomain (regardless of status)
 // This allows resuming inactive tunnels
 func (r *TunnelRepository) GetTunnelBySubdomain(ctx context.Context, subdomain string) (*Tunnel, error) {
@@ -351,15 +402,29 @@ func (r *TunnelRepository) UpdateTunnelStatus(ctx context.Context, tunnelID, sta
 }
 
 // UpdateTunnelActivity updates tunnel last active time and request count
+// If requestCount is 0, it only updates last_active_at without changing request_count
+// If requestCount > 0, it increments the request_count by 1
 func (r *TunnelRepository) UpdateTunnelActivity(ctx context.Context, tunnelID string, requestCount int64) error {
-	query := `
-		UPDATE tunnels
-		SET last_active_at = NOW(), request_count = $1, updated_at = NOW()
-		WHERE id = $2
-	`
-
-	_, err := r.pool.Exec(ctx, query, requestCount, tunnelID)
-	return err
+	var query string
+	if requestCount == 0 {
+		// Only update last_active_at, don't touch request_count
+		query = `
+			UPDATE tunnels
+			SET last_active_at = NOW(), updated_at = NOW()
+			WHERE id = $1
+		`
+		_, err := r.pool.Exec(ctx, query, tunnelID)
+		return err
+	} else {
+		// Increment request_count by 1 (to avoid double counting)
+		query = `
+			UPDATE tunnels
+			SET last_active_at = NOW(), request_count = request_count + 1, updated_at = NOW()
+			WHERE id = $1
+		`
+		_, err := r.pool.Exec(ctx, query, tunnelID)
+		return err
+	}
 }
 
 // UpdateTunnelLocalURL updates tunnel LocalURL
@@ -371,6 +436,23 @@ func (r *TunnelRepository) UpdateTunnelLocalURL(ctx context.Context, tunnelID, l
 	`
 
 	_, err := r.pool.Exec(ctx, query, localURL, tunnelID)
+	return err
+}
+
+// UpdateTunnelCustomDomain updates tunnel custom domain
+func (r *TunnelRepository) UpdateTunnelCustomDomain(ctx context.Context, tunnelID uuid.UUID, customDomain string) error {
+	query := `
+		UPDATE tunnels
+		SET custom_domain = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+
+	var domain *string
+	if customDomain != "" {
+		domain = &customDomain
+	}
+
+	_, err := r.pool.Exec(ctx, query, domain, tunnelID)
 	return err
 }
 

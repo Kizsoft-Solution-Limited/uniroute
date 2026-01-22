@@ -194,6 +194,14 @@ else
     MIGRATIONS_TO_RUN+=("migrations/015_performance_indexes.sql")
 fi
 
+# Migration 016: Custom domains
+if check_migration "016" "SELECT 1 FROM information_schema.tables WHERE table_name = 'custom_domains' AND table_schema = 'public';"; then
+    echo -e "${GREEN}✅ 016_custom_domains.sql (already applied)${NC}"
+else
+    echo -e "${YELLOW}⏸️  016_custom_domains.sql (pending)${NC}"
+    MIGRATIONS_TO_RUN+=("migrations/016_custom_domains.sql")
+fi
+
 echo ""
 
 # Run pending migrations
