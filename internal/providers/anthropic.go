@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -196,6 +197,177 @@ func (p *AnthropicProvider) HealthCheck(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// ChatStream streams chat responses from Anthropic
+func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, <-chan error) {
+	chunkChan := make(chan StreamChunk, 10)
+	errChan := make(chan error, 1)
+
+	go func() {
+		defer close(chunkChan)
+		defer close(errChan)
+
+		if p.apiKey == "" {
+			errChan <- fmt.Errorf("Anthropic API key not configured")
+			return
+		}
+
+		// Convert to Anthropic format with stream=true
+		anthropicReq := map[string]interface{}{
+			"model":      req.Model,
+			"messages":   convertMessagesToAnthropic(req.Messages),
+			"max_tokens": 4096,
+			"stream":    true,
+		}
+
+		if req.Temperature > 0 {
+			anthropicReq["temperature"] = req.Temperature
+		}
+		if req.MaxTokens > 0 {
+			anthropicReq["max_tokens"] = req.MaxTokens
+		}
+
+		reqBody, err := json.Marshal(anthropicReq)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to marshal request: %w", err)
+			return
+		}
+
+		url := fmt.Sprintf("%s/messages", p.baseURL)
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
+		if err != nil {
+			errChan <- fmt.Errorf("failed to create request: %w", err)
+			return
+		}
+
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("x-api-key", p.apiKey)
+		httpReq.Header.Set("anthropic-version", "2023-06-01")
+
+		resp, err := p.client.Do(httpReq)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to send request: %w", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			var errorResp struct {
+				Error struct {
+					Message string `json:"message"`
+					Type    string `json:"type"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(body, &errorResp); err == nil {
+				errChan <- fmt.Errorf("Anthropic API error: %s", errorResp.Error.Message)
+			} else {
+				errChan <- fmt.Errorf("Anthropic API returned status %d: %s", resp.StatusCode, string(body))
+			}
+			return
+		}
+
+		// Read streaming SSE response
+		scanner := bufio.NewScanner(resp.Body)
+		var responseID string
+		var fullContent strings.Builder
+		var finalUsage *Usage
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+
+			// SSE format: "event: <type>" and "data: {...}"
+			if strings.HasPrefix(line, "event: ") {
+				// Skip event type line, read data on next line
+				continue
+			}
+
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+
+			data := strings.TrimPrefix(line, "data: ")
+
+			// Parse SSE event
+			var event struct {
+				Type    string `json:"type"`
+				Message struct {
+					ID string `json:"id"`
+				} `json:"message"`
+				ContentBlock struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"content_block"`
+				Delta struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"delta"`
+				Index int `json:"index"`
+				Usage struct {
+					InputTokens    int `json:"input_tokens"`
+					OutputTokens   int `json:"output_tokens"`
+					TotalTokens    int `json:"total_tokens"`
+				} `json:"usage"`
+			}
+
+			if err := json.Unmarshal([]byte(data), &event); err != nil {
+				continue
+			}
+
+			switch event.Type {
+			case "message_start":
+				if event.Message.ID != "" {
+					responseID = event.Message.ID
+				}
+
+			case "content_block_delta":
+				// Only process text deltas for the current content block
+				if event.Delta.Type == "text_delta" && event.Delta.Text != "" {
+					fullContent.WriteString(event.Delta.Text)
+					chunkChan <- StreamChunk{
+						ID:      responseID,
+						Content: event.Delta.Text,
+						Done:    false,
+					}
+				}
+
+			case "message_delta":
+				// Update usage information
+				if event.Usage.TotalTokens > 0 {
+					finalUsage = &Usage{
+						PromptTokens:     event.Usage.InputTokens,
+						CompletionTokens: event.Usage.OutputTokens,
+						TotalTokens:      event.Usage.TotalTokens,
+					}
+				}
+
+			case "message_stop":
+				// Send final chunk with usage
+				chunkChan <- StreamChunk{
+					ID:      responseID,
+					Content: "",
+					Done:    true,
+					Usage:   finalUsage,
+				}
+				return
+
+			case "error":
+				errChan <- fmt.Errorf("Anthropic streaming error: %s", data)
+				return
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			errChan <- fmt.Errorf("failed to read stream: %w", err)
+			return
+		}
+	}()
+
+	return chunkChan, errChan
 }
 
 // GetModels returns list of available Anthropic models

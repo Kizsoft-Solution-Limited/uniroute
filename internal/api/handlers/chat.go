@@ -50,6 +50,11 @@ func NewChatHandler(router *gateway.Router, requestRepo *storage.RequestReposito
 	}
 }
 
+// SetJWTService sets the JWT service for WebSocket authentication
+func (h *ChatHandler) SetJWTService(jwtService *security.JWTService) {
+	h.jwtService = jwtService
+}
+
 // ChatRequestWithConversation extends ChatRequest with optional conversation_id
 type ChatRequestWithConversation struct {
 	providers.ChatRequest

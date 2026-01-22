@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -253,6 +254,180 @@ func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 		})
 	}
 	return result
+}
+
+// ChatStream streams chat responses from Google Gemini
+func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, <-chan error) {
+	chunkChan := make(chan StreamChunk, 10)
+	errChan := make(chan error, 1)
+
+	go func() {
+		defer close(chunkChan)
+		defer close(errChan)
+
+		if p.apiKey == "" {
+			errChan <- fmt.Errorf("Google API key not configured")
+			return
+		}
+
+		// Convert to Google Gemini format
+		googleReq := map[string]interface{}{
+			"contents": convertMessagesToGoogle(req.Messages),
+		}
+
+		if req.Temperature > 0 {
+			googleReq["temperature"] = req.Temperature
+		}
+		if req.MaxTokens > 0 {
+			googleReq["maxOutputTokens"] = req.MaxTokens
+		}
+
+		reqBody, err := json.Marshal(googleReq)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to marshal request: %w", err)
+			return
+		}
+
+		// Use streamGenerateContent endpoint with alt=sse parameter
+		url := fmt.Sprintf("%s/models/%s:streamGenerateContent?key=%s&alt=sse", p.baseURL, req.Model, p.apiKey)
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
+		if err != nil {
+			errChan <- fmt.Errorf("failed to create request: %w", err)
+			return
+		}
+
+		httpReq.Header.Set("Content-Type", "application/json")
+
+		resp, err := p.client.Do(httpReq)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to send request: %w", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			var errorResp struct {
+				Error struct {
+					Message string `json:"message"`
+					Status  string `json:"status"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(body, &errorResp); err == nil {
+				errChan <- fmt.Errorf("Google API error: %s", errorResp.Error.Message)
+			} else {
+				errChan <- fmt.Errorf("Google API returned status %d: %s", resp.StatusCode, string(body))
+			}
+			return
+		}
+
+		// Read streaming SSE response
+		scanner := bufio.NewScanner(resp.Body)
+		var responseID string
+		var previousText string
+		var finalUsage *Usage
+		var isDone bool
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+
+			// SSE format: "data: {...}"
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+
+			data := strings.TrimPrefix(line, "data: ")
+
+			// Parse Gemini response
+			var geminiResp struct {
+				Candidates []struct {
+					Content struct {
+						Parts []struct {
+							Text string `json:"text"`
+						} `json:"parts"`
+					} `json:"content"`
+					FinishReason string `json:"finishReason"`
+				} `json:"candidates"`
+				UsageMetadata struct {
+					PromptTokenCount     int `json:"promptTokenCount"`
+					CandidatesTokenCount int `json:"candidatesTokenCount"`
+					TotalTokenCount      int `json:"totalTokenCount"`
+				} `json:"usageMetadata"`
+			}
+
+			if err := json.Unmarshal([]byte(data), &geminiResp); err != nil {
+				continue
+			}
+
+			// Extract text from candidates
+			if len(geminiResp.Candidates) > 0 {
+				candidate := geminiResp.Candidates[0]
+				if len(candidate.Content.Parts) > 0 {
+					// Gemini sends full text in each chunk, calculate delta
+					var currentText strings.Builder
+					for _, part := range candidate.Content.Parts {
+						if part.Text != "" {
+							currentText.WriteString(part.Text)
+						}
+					}
+
+					fullText := currentText.String()
+					// Calculate delta (new content since last chunk)
+					var delta string
+					if strings.HasPrefix(fullText, previousText) {
+						delta = fullText[len(previousText):]
+					} else {
+						// Content changed (shouldn't happen, but handle it)
+						delta = fullText
+					}
+
+					if delta != "" {
+						chunkChan <- StreamChunk{
+							ID:      responseID,
+							Content: delta,
+							Done:    candidate.FinishReason != "",
+						}
+						previousText = fullText
+					}
+
+					// Check if finished
+					if candidate.FinishReason != "" {
+						isDone = true
+					}
+				}
+			}
+
+			// Update usage if available
+			if geminiResp.UsageMetadata.TotalTokenCount > 0 {
+				finalUsage = &Usage{
+					PromptTokens:     geminiResp.UsageMetadata.PromptTokenCount,
+					CompletionTokens: geminiResp.UsageMetadata.CandidatesTokenCount,
+					TotalTokens:      geminiResp.UsageMetadata.TotalTokenCount,
+				}
+			}
+
+			// Send final chunk if done
+			if isDone {
+				chunkChan <- StreamChunk{
+					ID:      responseID,
+					Content: "",
+					Done:    true,
+					Usage:   finalUsage,
+				}
+				return
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			errChan <- fmt.Errorf("failed to read stream: %w", err)
+			return
+		}
+	}()
+
+	return chunkChan, errChan
 }
 
 // extractMediaType extracts media type from data URL

@@ -13,11 +13,7 @@ import (
 )
 
 var (
-	upgradeCmd     *cobra.Command
 	upgradeAutoYes bool
-)
-
-func init() {
 	upgradeCmd = &cobra.Command{
 		Use:   "upgrade",
 		Short: "Upgrade UniRoute CLI to the latest version",
@@ -28,6 +24,9 @@ On macOS/Linux, it uses the same installation method you used initially.
 On Windows, it downloads the latest release.`,
 		RunE: runUpgrade,
 	}
+)
+
+func init() {
 	upgradeCmd.Flags().BoolVarP(&upgradeAutoYes, "yes", "y", false, "Auto-confirm upgrade without prompting")
 }
 

@@ -73,6 +73,7 @@ type tunnelModel struct {
 	internetOnline bool
 	wasOffline     bool      // Track if we were offline to show reconnecting when back
 	reconnectTime  time.Time // Time when internet came back
+	terminated     bool      // Track if tunnel was terminated
 	ctx            context.Context
 	cancel         context.CancelFunc
 
@@ -98,6 +99,7 @@ type requestEventMsg tunnel.RequestEvent
 type statsUpdateMsg *tunnel.ConnectionStats
 type versionUpdateMsg *versioncheck.VersionInfo
 type updateProgressMsg string
+type terminateMsg struct{} // Message to signal termination
 
 // Initial model
 func initialTunnelModel(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, accountDisplay string, serverURL string, localURL string) *tunnelModel {
@@ -198,8 +200,15 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
-			// Shutdown
-			m.cancel()
+			// Shutdown - send terminate message to update status first
+			if !m.terminated {
+				// Cancel context to stop tunnel
+				m.cancel()
+				// Send terminate message which will update status and quit
+				return m, func() tea.Msg {
+					return terminateMsg{}
+				}
+			}
 			return m, tea.Quit
 		case "ctrl+u":
 			// Trigger update
@@ -216,6 +225,10 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case internetStatusMsg:
+		// Don't update if terminated
+		if m.terminated {
+			return m, nil
+		}
 		wasOfflineBefore := !m.internetOnline
 		m.internetOnline = bool(msg)
 		if !m.internetOnline {
@@ -249,6 +262,10 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.checkInternet()
 	case connectionStatusMsg:
+		// Don't update if terminated
+		if m.terminated {
+			return m, nil
+		}
 		status := string(msg)
 		// Only update if internet is online, otherwise internetStatusMsg handler will handle it
 		if m.internetOnline {
@@ -313,6 +330,17 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	case terminateMsg:
+		// Update status to terminated
+		if !m.terminated {
+			m.terminated = true
+			m.sessionStatus = fmt.Sprintf("%s %s", color.Red("●"), color.Red("terminated"))
+			m.connectionStatus = color.Red("Tunnel Terminated")
+			// Cancel context to stop tunnel
+			m.cancel()
+		}
+		// Quit after showing terminated status
+		return m, tea.Quit
 	case latencyUpdateMsg:
 		latency := int64(msg)
 		if latency > 0 {
@@ -675,7 +703,12 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 
 	go func() {
 		<-sigChan
+		// Send terminate message to update status to "terminated"
+		p.Send(terminateMsg{})
+		// Cancel context to stop tunnel
 		model.cancel()
+		// Give a moment to display terminated status
+		time.Sleep(500 * time.Millisecond)
 		p.Quit()
 	}()
 
