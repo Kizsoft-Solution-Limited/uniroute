@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/rs/zerolog"
 
@@ -31,6 +32,16 @@ func main() {
 	}
 
 	log.Info().Msg("Starting UniRoute Gateway...")
+
+	// SECURITY: Warn if using default secrets in production
+	if cfg.Environment == "production" {
+		if cfg.APIKeySecret == "change-me-in-production" {
+			log.Fatal().Msg("SECURITY ERROR: API_KEY_SECRET must be changed from default in production! Set a secure secret via environment variable.")
+		}
+		if cfg.JWTSecret == "change-me-in-production-jwt-secret-min-32-chars" {
+			log.Fatal().Msg("SECURITY ERROR: JWT_SECRET must be changed from default in production! Set a secure secret (min 32 chars) via environment variable.")
+		}
+	}
 
 	// Initialize in-memory API key service (fallback when database is not available)
 	apiKeyService := security.NewAPIKeyService(cfg.APIKeySecret)
@@ -77,12 +88,19 @@ func main() {
 	}
 
 	// Generate a default API key for testing (when database is not available)
+	// SECURITY: Only log in development mode, never in production
 	if apiKeyServiceV2 == nil {
 		defaultKey, err := apiKeyService.GenerateAPIKey()
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to generate default API key")
 		}
-		log.Info().Str("api_key", defaultKey).Msg("Generated default API key (save this!)")
+		if cfg.Environment == "development" {
+			log.Info().Str("api_key", defaultKey).Msg("Generated default API key (save this!)")
+		} else {
+			// In production, log to stderr only (not to log files)
+			fmt.Fprintf(os.Stderr, "⚠️  Generated default API key: %s (save this securely!)\n", defaultKey)
+			log.Info().Msg("Generated default API key (check stderr for the key)")
+		}
 	}
 
 	// Initialize router

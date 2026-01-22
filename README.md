@@ -39,14 +39,11 @@ UniRoute is a unified gateway platform that routes, secures, and manages traffic
 
 ### Installation
 
-**Option 1: Download Pre-built Binary (Easiest)** ⭐
+**Option 1: One-Line Install (Easiest)** ⭐
 
 ```bash
-# Download for your platform (see CLI_INSTALLATION.md for all platforms)
-# macOS (Apple Silicon):
-curl -L https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest/download/uniroute-darwin-arm64 -o uniroute
-chmod +x uniroute
-sudo mv uniroute /usr/local/bin/
+# One-line installation (auto-detects OS and architecture)
+curl -fsSL https://raw.githubusercontent.com/Kizsoft-Solution-Limited/uniroute/main/scripts/install.sh | bash
 
 # Verify
 uniroute --version
@@ -56,6 +53,16 @@ uniroute auth login
 
 # Start using UniRoute!
 uniroute projects list
+```
+
+**Option 2: Manual Download**
+
+```bash
+# Download for your platform (see CLI_INSTALLATION.md for all platforms)
+# macOS (Apple Silicon):
+curl -L https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest/download/uniroute-darwin-arm64 -o uniroute
+chmod +x uniroute
+sudo mv uniroute /usr/local/bin/
 ```
 
 **CLI Environment Variables** (Recommended for local development):

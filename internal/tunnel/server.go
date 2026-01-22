@@ -1552,7 +1552,6 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 	// Get total tunnel count from database if available
 	activeTunnels := activeTunnelsInMemory
 	totalTunnels := activeTunnelsInMemory
-	dbStatus := "Not Connected"
 	
 	if ts.repository != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -1561,7 +1560,6 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 		tunnels, err := ts.repository.ListAllTunnels(ctx)
 		if err != nil {
 			ts.logger.Debug().Err(err).Msg("Failed to fetch tunnels from database for root page")
-			dbStatus = "Error: " + err.Error()
 			// Continue with in-memory counts if database query fails
 		} else {
 			totalTunnels = len(tunnels)
@@ -1574,7 +1572,6 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 			}
 			// Use database active count (more accurate than in-memory)
 			activeTunnels = activeCount
-			dbStatus = "Connected"
 			
 			ts.logger.Debug().
 				Int("total_tunnels", totalTunnels).
@@ -1584,7 +1581,6 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 		}
 	} else {
 		ts.logger.Debug().Msg("Root page: repository not available, using in-memory counts only")
-		dbStatus = "Not Configured"
 	}
 
 	// Add security headers
@@ -1802,14 +1798,6 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 				<span class="info-value">Operational</span>
 			</div>
 			<div class="info-item">
-				<span class="info-label">Port</span>
-				<span class="info-value">%d</span>
-			</div>
-			<div class="info-item">
-				<span class="info-label">Database</span>
-				<span class="info-value">%s</span>
-			</div>
-			<div class="info-item">
 				<span class="info-label">Health Check</span>
 				<span class="info-value"><a href="/health" style="color: #60a5fa;">/health</a></span>
 			</div>
@@ -1827,7 +1815,7 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 		}, 5000);
 	</script>
 </body>
-</html>`, activeTunnels, totalTunnels, ts.port, dbStatus)
+</html>`, activeTunnels, totalTunnels)
 
 	w.Write([]byte(html))
 }

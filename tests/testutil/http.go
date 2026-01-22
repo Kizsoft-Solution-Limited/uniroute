@@ -66,7 +66,10 @@ func MakeRequest(t *testing.T, method, url string, body interface{}, token strin
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	}
 
-	client := &http.Client{}
+	// Use timeout for test client to prevent hanging tests
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("Failed to make request: %v", err)

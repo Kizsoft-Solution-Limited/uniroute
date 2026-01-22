@@ -99,7 +99,7 @@ func NewTunnelClientWithOptions(serverURL, localURL, protocol, host string, logg
 		if savedServer == currentServer && protocolMatches {
 			client.subdomain = state.Subdomain
 			client.tunnelID = state.TunnelID
-			logger.Info().
+			logger.Debug().
 				Str("subdomain", state.Subdomain).
 				Str("tunnel_id", state.TunnelID).
 				Str("public_url", state.PublicURL).
@@ -296,13 +296,56 @@ func (tc *TunnelClient) handleMessages() {
 		
 		var msg TunnelMessage
 		if err := conn.ReadJSON(&msg); err != nil {
-			tc.logger.Error().Err(err).Msg("Connection lost")
-			tc.mu.Lock()
-			tc.isConnected = false
-			tc.mu.Unlock()
-			// Attempt to reconnect
-			tc.reconnect()
-			return
+			errStr := err.Error()
+			
+			// Check if this is a normal shutdown (close 1000) - don't log or reconnect
+			if strings.Contains(errStr, "websocket: close 1000") || strings.Contains(errStr, "close 1000 (normal)") {
+				// Normal shutdown - just return without logging
+				return
+			}
+			
+			// Check if this is a real connection error that requires reconnection
+			// "close 1006" (abnormal closure) with "unexpected EOF" indicates the server closed the connection
+			// This should only happen on actual network disconnections, not when local server is down
+			isConnectionError := false
+			
+			// WebSocket close codes indicate actual connection closure (but not normal 1000)
+			if strings.Contains(errStr, "websocket: close") {
+				// All WebSocket close codes indicate connection was closed (except 1000 which we already handled)
+				isConnectionError = true
+			}
+			
+			// Network-level errors that indicate connection is broken
+			if strings.Contains(errStr, "connection reset") ||
+				strings.Contains(errStr, "broken pipe") ||
+				strings.Contains(errStr, "use of closed network connection") ||
+				strings.Contains(errStr, "connection refused") && !strings.Contains(errStr, "localhost") {
+				// "connection refused" for localhost is from local server being down, not network issue
+				isConnectionError = true
+			}
+			
+			// Timeout errors after read deadline - connection is likely dead
+			if strings.Contains(errStr, "i/o timeout") || strings.Contains(errStr, "deadline exceeded") {
+				isConnectionError = true
+			}
+			
+			// Only reconnect on actual connection errors (network disconnection)
+			// Errors from local server being down should NOT trigger reconnection
+			if isConnectionError {
+				tc.logger.Debug().Err(err).Msg("Connection lost - attempting to reconnect")
+				tc.mu.Lock()
+				tc.isConnected = false
+				tc.mu.Unlock()
+				// Attempt to reconnect
+				tc.reconnect()
+				return
+			} else {
+				// Log other errors (like unexpected EOF without close code) at debug level
+				// These might be temporary or related to local server issues, not network disconnection
+				tc.logger.Debug().Err(err).Msg("Read error (not a connection failure) - continuing")
+				// Continue reading - connection might still be alive
+				continue
+			}
 		}
 		
 		// Reset read deadline after successful read (connection is alive)
@@ -393,7 +436,8 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 	
 	resp, err := tc.httpClient.Do(httpReq)
 	if err != nil {
-		tc.logger.Error().
+		// Log at debug level to avoid cluttering CLI output
+		tc.logger.Debug().
 			Err(err).
 			Str("request_id", req.RequestID).
 			Str("local_url", localURL).
@@ -646,7 +690,7 @@ func (tc *TunnelClient) reconnect() {
 	maxBackoff := 60 * time.Second
 
 	for {
-		tc.logger.Info().
+		tc.logger.Debug().
 			Dur("backoff", backoff).
 			Str("subdomain", tc.subdomain).
 			Msg("Attempting to reconnect...")

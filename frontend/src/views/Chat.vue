@@ -616,7 +616,7 @@
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import Card from '@/components/ui/Card.vue'
 import { MessageSquare, Send, Settings, Image as ImageIcon, X } from 'lucide-vue-next'
-import { chatApi, type Message, type ChatResponse, type ContentPart } from '@/services/api/chat'
+import { chatApi, type Message, type ChatResponse, type ContentPart, type StreamChunk } from '@/services/api/chat'
 import { conversationsApi, type Conversation } from '@/services/api/conversations'
 import { useToast } from '@/composables/useToast'
 
@@ -805,48 +805,73 @@ const handleSend = async () => {
       chatRequestData.conversation_id = currentConversationId.value
     }
 
-    const response: ChatResponse = await chatApi.chat(chatRequestData, true) // Use JWT auth for frontend
-
-    // Extract content from response (can be string or ContentPart[])
-    const responseContent = response.choices[0].message.content
-    let contentStr = ''
-    if (typeof responseContent === 'string') {
-      contentStr = responseContent
-    } else if (Array.isArray(responseContent)) {
-      // Extract text from multimodal response
-      contentStr = responseContent
-        .filter(part => part.type === 'text')
-        .map(part => part.text || '')
-        .join('')
-    }
-
-    const assistantMessage: ChatMessage = {
+    // Use streaming for better UX (real-time response)
+    let assistantMessage: ChatMessage = {
       role: 'assistant',
-      content: contentStr,
-      metadata: {
-        tokens: response.usage.total_tokens,
-        cost: response.cost,
-        provider: response.provider,
-        latency: response.latency_ms
-      }
+      content: '',
+      metadata: {}
     }
-
     messages.value.push(assistantMessage)
+    const assistantMessageIndex = messages.value.length - 1
 
-    // Speak the response if text-to-speech is available
-    if (speechSynthesis.value && typeof responseContent === 'string') {
-      speakText(responseContent)
-    } else if (speechSynthesis.value && Array.isArray(responseContent)) {
-      const textContent = responseContent
-        .filter(part => part.type === 'text')
-        .map(part => part.text || '')
-        .join('')
-      if (textContent) {
-        speakText(textContent)
+    try {
+      await chatApi.chatStream(
+        chatRequestData,
+        (chunk) => {
+          // Append chunk content to assistant message
+          if (chunk.content) {
+            assistantMessage.content += chunk.content
+            messages.value[assistantMessageIndex] = { ...assistantMessage }
+            scrollToBottom()
+          }
+
+          // Update metadata when stream completes
+          if (chunk.done && chunk.usage) {
+            assistantMessage.metadata = {
+              tokens: chunk.usage.total_tokens,
+              cost: 0, // Cost calculation can be added later
+              provider: chunk.provider || 'unknown',
+              latency: 0 // Latency tracking can be added later
+            }
+            messages.value[assistantMessageIndex] = { ...assistantMessage }
+          }
+
+          // Handle errors
+          if (chunk.error) {
+            throw new Error(chunk.error)
+          }
+        },
+        (error) => {
+          // Remove incomplete message on error
+          messages.value.splice(assistantMessageIndex, 1)
+          showToast('Failed to get response: ' + error.message, 'error')
+        },
+        (usage) => {
+          // Stream completed successfully
+          if (usage) {
+            assistantMessage.metadata = {
+              ...assistantMessage.metadata,
+              tokens: usage.total_tokens
+            }
+            messages.value[assistantMessageIndex] = { ...assistantMessage }
+          }
+        },
+        true // Use JWT auth for frontend
+      )
+    } catch (error: any) {
+      // Remove incomplete message on error
+      if (messages.value[assistantMessageIndex]?.content === '') {
+        messages.value.splice(assistantMessageIndex, 1)
       }
+      showToast('Failed to get response: ' + (error.message || 'Unknown error'), 'error')
     }
 
-    showToast('Message sent successfully', 'success')
+    // Speak the response if text-to-speech is available (after streaming completes)
+    if (speechSynthesis.value && assistantMessage.content) {
+      speakText(assistantMessage.content)
+    }
+
+    // Note: Success toast is shown in the streaming callback
     await loadConversations() // Refresh conversation list
   } catch (error: any) {
     console.error('Chat error:', error)

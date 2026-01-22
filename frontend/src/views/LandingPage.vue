@@ -170,7 +170,8 @@
               <span class="ml-2 md:ml-4 text-[10px] md:text-xs lg:text-sm text-slate-400 whitespace-nowrap">One API for all AI models</span>
             </div>
             <div class="overflow-x-auto -mx-3 md:mx-0 px-3 md:px-0">
-              <pre class="text-[10px] sm:text-xs md:text-sm text-slate-300 whitespace-pre overflow-x-auto scrollbar-thin"><code class="block min-w-max"><span class="text-purple-400">const</span> <span class="text-blue-400">response</span> = <span class="text-purple-400">await</span> <span class="text-yellow-400">fetch</span>(<span class="text-green-400">'https://api.uniroute.co/v1/chat'</span>, {
+              <pre class="text-[10px] sm:text-xs md:text-sm text-slate-300 whitespace-pre overflow-x-auto scrollbar-thin"><code class="block min-w-max"><span class="text-slate-500">// Standard API (or use /v1/chat/stream for SSE, /v1/chat/ws for WebSocket)</span>
+<span class="text-purple-400">const</span> <span class="text-blue-400">response</span> = <span class="text-purple-400">await</span> <span class="text-yellow-400">fetch</span>(<span class="text-green-400">'https://api.uniroute.co/v1/chat'</span>, {
   <span class="text-blue-400">method</span>: <span class="text-green-400">'POST'</span>,
   <span class="text-blue-400">headers</span>: {
     <span class="text-green-400">'Authorization'</span>: <span class="text-green-400">'Bearer ur_your-key'</span>,
@@ -189,6 +190,11 @@
     }]
   })
 });</code></pre>
+            </div>
+            <div class="mt-3 md:mt-4 pt-3 md:pt-4 border-t border-slate-700/50">
+              <p class="text-[9px] sm:text-[10px] md:text-xs text-slate-400">
+                <span class="text-green-400">✓</span> Streaming support: <span class="text-slate-300">SSE</span> (<code class="text-cyan-400">/v1/chat/stream</code>) and <span class="text-slate-300">WebSocket</span> (<code class="text-cyan-400">/v1/chat/ws</code>)
+              </p>
             </div>
           </div>
 
@@ -902,6 +908,12 @@
                       <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
                     </svg>
                     <span>Try it out functionality</span>
+                  </li>
+                  <li class="flex items-start">
+                    <svg class="w-5 h-5 text-green-400 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                    </svg>
+                    <span>Streaming support (SSE & WebSocket)</span>
                   </li>
                   <li class="flex items-start">
                     <svg class="w-5 h-5 text-green-400 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">

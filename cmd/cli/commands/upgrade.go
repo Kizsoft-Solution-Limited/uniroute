@@ -12,15 +12,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var upgradeCmd = &cobra.Command{
-	Use:   "upgrade",
-	Short: "Upgrade UniRoute CLI to the latest version",
-	Long: `Upgrade UniRoute CLI to the latest version.
+var (
+	upgradeCmd     *cobra.Command
+	upgradeAutoYes bool
+)
+
+func init() {
+	upgradeCmd = &cobra.Command{
+		Use:   "upgrade",
+		Short: "Upgrade UniRoute CLI to the latest version",
+		Long: `Upgrade UniRoute CLI to the latest version.
 
 This command checks for updates and upgrades the CLI tool.
 On macOS/Linux, it uses the same installation method you used initially.
 On Windows, it downloads the latest release.`,
-	RunE: runUpgrade,
+		RunE: runUpgrade,
+	}
+	upgradeCmd.Flags().BoolVarP(&upgradeAutoYes, "yes", "y", false, "Auto-confirm upgrade without prompting")
 }
 
 func runUpgrade(cmd *cobra.Command, args []string) error {
@@ -70,7 +78,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		
 		// If not Homebrew, check if installed via go install
 		if upgradeCmd == nil {
-			upgradeInstructions = fmt.Sprintf("Run: go install github.com/Kizsoft-Solution-Limited/uniroute/cmd/cli@latest")
+			upgradeInstructions = "Run: go install github.com/Kizsoft-Solution-Limited/uniroute/cmd/cli@latest"
 		}
 		
 	case "linux":
@@ -93,7 +101,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 				upgradeInstructions = "Run: sudo yum update uniroute"
 			} else {
 				// Default to go install
-				upgradeInstructions = fmt.Sprintf("Run: go install github.com/Kizsoft-Solution-Limited/uniroute/cmd/cli@latest")
+				upgradeInstructions = "Run: go install github.com/Kizsoft-Solution-Limited/uniroute/cmd/cli@latest"
 			}
 		}
 		
@@ -109,10 +117,17 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	if upgradeCmd != nil {
 		fmt.Printf("   %s\n", color.Bold(strings.Join(upgradeCmd, " ")))
 		fmt.Println()
-		fmt.Print("Run the command above? (y/n): ")
-		var response string
-		fmt.Scanln(&response)
-		if strings.ToLower(response) == "y" || strings.ToLower(response) == "yes" {
+		
+		// Auto-confirm if --yes flag is set (used when called from tunnel UI)
+		shouldRun := upgradeAutoYes
+		if !shouldRun {
+			fmt.Print("Run the command above? (y/n): ")
+			var response string
+			fmt.Scanln(&response)
+			shouldRun = strings.ToLower(response) == "y" || strings.ToLower(response) == "yes"
+		}
+		
+		if shouldRun {
 			cmd := exec.Command(upgradeCmd[0], upgradeCmd[1:]...)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr

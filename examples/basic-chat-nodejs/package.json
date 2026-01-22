@@ -1,0 +1,17 @@
+{
+  "name": "uniroute-basic-chat-example",
+  "version": "1.0.0",
+  "description": "Basic chat example using UniRoute API",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "uniroute",
+    "ai",
+    "llm",
+    "chat"
+  ],
+  "author": "",
+  "license": "MIT"
+}

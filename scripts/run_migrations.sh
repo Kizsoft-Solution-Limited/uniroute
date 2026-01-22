@@ -186,6 +186,14 @@ else
     MIGRATIONS_TO_RUN+=("migrations/014_conversations.sql")
 fi
 
+# Migration 015: Performance indexes
+if check_migration "015" "SELECT 1 FROM pg_indexes WHERE indexname = 'idx_requests_user_id_created_at' AND schemaname = 'public';"; then
+    echo -e "${GREEN}✅ 015_performance_indexes.sql (already applied)${NC}"
+else
+    echo -e "${YELLOW}⏸️  015_performance_indexes.sql (pending)${NC}"
+    MIGRATIONS_TO_RUN+=("migrations/015_performance_indexes.sql")
+fi
+
 echo ""
 
 # Run pending migrations

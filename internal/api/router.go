@@ -167,7 +167,10 @@ func SetupRouter(
 		// Frontend chat endpoint (JWT authentication for direct UI usage)
 		// This allows users to chat directly without creating an API key first
 		chatHandler := handlers.NewChatHandler(router, requestRepo, convRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		chatHandler.SetJWTService(jwtService) // Set JWT service for WebSocket auth
 		authProtected.POST("/chat", chatHandler.HandleChat)
+		authProtected.POST("/chat/stream", chatHandler.HandleChatStream) // SSE streaming endpoint
+		authProtected.GET("/chat/ws", chatHandler.HandleChatWebSocket)    // WebSocket streaming endpoint
 
 		// Frontend analytics endpoints (JWT authentication for direct UI usage)
 		if requestRepo != nil {
@@ -245,6 +248,8 @@ func SetupRouter(
 
 	chatHandler := handlers.NewChatHandler(router, requestRepo, nil, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 	api.POST("/chat", chatHandler.HandleChat)
+	api.POST("/chat/stream", chatHandler.HandleChatStream) // SSE streaming endpoint
+	api.GET("/chat/ws", chatHandler.HandleChatWebSocket)  // WebSocket streaming endpoint
 
 	// Analytics endpoints for usage tracking
 	if requestRepo != nil {

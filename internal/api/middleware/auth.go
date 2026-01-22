@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
 	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/errors"
@@ -9,18 +10,37 @@ import (
 )
 
 // AuthMiddleware creates middleware for API key authentication (database-backed)
+// Supports both Authorization header and query parameter (for WebSocket connections)
 func AuthMiddleware(apiKeyService *security.APIKeyServiceV2) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var apiKey string
+
+		// Check Authorization header first (standard HTTP)
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": errors.ErrUnauthorized.Error(),
-			})
-			c.Abort()
-			return
+		if authHeader != "" {
+			apiKey = security.ExtractAPIKey(authHeader)
 		}
 
-		apiKey := security.ExtractAPIKey(authHeader)
+		// For WebSocket connections, also check query parameter
+		// WebSocket upgrade requests may not include Authorization header easily
+		if apiKey == "" {
+			// Check if this is a WebSocket upgrade request
+			isWebSocket := c.GetHeader("Upgrade") == "websocket" ||
+				strings.ToLower(c.GetHeader("Connection")) == "upgrade" ||
+				c.Query("token") != ""
+
+			if isWebSocket {
+				// Try query parameter for WebSocket connections
+				token := c.Query("token")
+				if token != "" {
+					// Check if it's an API key (starts with "ur_")
+					if strings.HasPrefix(token, "ur_") {
+						apiKey = token
+					}
+				}
+			}
+		}
+
 		if apiKey == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": errors.ErrUnauthorized.Error(),

@@ -6,6 +6,12 @@ bin/
 *.so
 *.dylib
 
+# Compiled binaries (should not be committed)
+main
+gateway
+cli
+tunnel-server
+
 # Test binary
 *.test
 

@@ -344,6 +344,134 @@ func (r *Router) Route(ctx context.Context, req providers.ChatRequest, userID *u
 	return nil, fmt.Errorf("no providers available")
 }
 
+// RouteStream routes a streaming request to the appropriate provider
+// Returns channels for streaming chunks and errors
+func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, userID *uuid.UUID) (<-chan providers.StreamChunk, <-chan error) {
+	chunkChan := make(chan providers.StreamChunk, 10)
+	errChan := make(chan error, 1)
+
+	go func() {
+		defer close(chunkChan)
+		defer close(errChan)
+
+		if len(r.providers) == 0 {
+			errChan <- fmt.Errorf("no providers available")
+			return
+		}
+
+		// Get available providers (healthy ones)
+		availableProviders := r.getAvailableProviders(ctx, userID)
+
+		if len(availableProviders) == 0 {
+			errChan <- fmt.Errorf("no healthy providers available")
+			return
+		}
+
+		// Use routing strategy to select provider (user-specific if available)
+		strategy := r.GetStrategyInstanceForUser(ctx, userID)
+		selectedProvider, err := strategy.SelectProvider(ctx, req, availableProviders)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to select provider: %w", err)
+			return
+		}
+
+		// Check if selected provider supports streaming
+		_, ok := selectedProvider.(providers.StreamingProvider)
+		if !ok {
+			// Fallback to non-streaming: make a regular request and stream it as a single chunk
+			resp, err := selectedProvider.Chat(ctx, req)
+			if err != nil {
+				errChan <- err
+				return
+			}
+
+			// Send response as single chunk
+			if len(resp.Choices) > 0 {
+				content := ""
+				switch c := resp.Choices[0].Message.Content.(type) {
+				case string:
+					content = c
+				default:
+					content = fmt.Sprintf("%v", c)
+				}
+
+				chunkChan <- providers.StreamChunk{
+					ID:      resp.ID,
+					Content: content,
+					Done:    true,
+					Usage:   &resp.Usage,
+				}
+			}
+			return
+		}
+
+		// Try selected provider with failover
+		providersToTry := []providers.Provider{selectedProvider}
+
+		// Add other providers as fallbacks
+		for _, provider := range availableProviders {
+			if provider.Name() != selectedProvider.Name() {
+				providersToTry = append(providersToTry, provider)
+			}
+		}
+
+		// Try each provider until one succeeds
+		var lastErr error
+		for _, provider := range providersToTry {
+			streamingProvider, ok := provider.(providers.StreamingProvider)
+			if !ok {
+				// Skip non-streaming providers
+				continue
+			}
+
+			streamChunks, streamErrs := streamingProvider.ChatStream(ctx, req)
+
+			// Forward chunks and errors
+			done := false
+			for !done {
+				select {
+				case chunk, ok := <-streamChunks:
+					if !ok {
+						done = true
+						break
+					}
+					// Add provider name to chunk
+					chunk.Provider = provider.Name()
+					chunkChan <- chunk
+					if chunk.Done {
+						return
+					}
+				case err, ok := <-streamErrs:
+					if !ok {
+						done = true
+						break
+					}
+					lastErr = err
+					// Try next provider
+					break
+				case <-ctx.Done():
+					errChan <- ctx.Err()
+					return
+				}
+			}
+
+			if lastErr == nil {
+				// Success
+				return
+			}
+		}
+
+		// All providers failed
+		if lastErr != nil {
+			errChan <- fmt.Errorf("all providers failed, last error: %w", lastErr)
+		} else {
+			errChan <- fmt.Errorf("no streaming providers available")
+		}
+	}()
+
+	return chunkChan, errChan
+}
+
 // getAvailableProviders returns list of healthy providers
 // If userID is provided, uses user's provider keys (BYOK), otherwise uses server-level keys
 func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) []providers.Provider {

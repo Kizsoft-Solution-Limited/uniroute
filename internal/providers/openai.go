@@ -1,12 +1,14 @@
 package providers
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -193,6 +195,161 @@ func (p *OpenAIProvider) HealthCheck(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// ChatStream streams chat responses from OpenAI
+func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, <-chan error) {
+	chunkChan := make(chan StreamChunk, 10)
+	errChan := make(chan error, 1)
+
+	go func() {
+		defer close(chunkChan)
+		defer close(errChan)
+
+		if p.apiKey == "" {
+			errChan <- fmt.Errorf("OpenAI API key not configured")
+			return
+		}
+
+		// Convert to OpenAI format with stream=true
+		openAIReq := map[string]interface{}{
+			"model":    req.Model,
+			"messages": convertMessagesToOpenAI(req.Messages),
+			"stream":   true,
+		}
+
+		if req.Temperature > 0 {
+			openAIReq["temperature"] = req.Temperature
+		}
+		if req.MaxTokens > 0 {
+			openAIReq["max_tokens"] = req.MaxTokens
+		}
+
+		reqBody, err := json.Marshal(openAIReq)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to marshal request: %w", err)
+			return
+		}
+
+		url := fmt.Sprintf("%s/chat/completions", p.baseURL)
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
+		if err != nil {
+			errChan <- fmt.Errorf("failed to create request: %w", err)
+			return
+		}
+
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", p.apiKey))
+
+		resp, err := p.client.Do(httpReq)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to send request: %w", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			var errorResp struct {
+				Error struct {
+					Message string `json:"message"`
+					Type    string `json:"type"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(body, &errorResp); err == nil {
+				errChan <- fmt.Errorf("OpenAI API error: %s", errorResp.Error.Message)
+			} else {
+				errChan <- fmt.Errorf("OpenAI API returned status %d: %s", resp.StatusCode, string(body))
+			}
+			return
+		}
+
+		// Read streaming response
+		scanner := bufio.NewScanner(resp.Body)
+		var responseID string
+		var fullContent strings.Builder
+		var finalUsage *Usage
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+
+			// SSE format: "data: {...}"
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "[DONE]" {
+				// Send final chunk with usage
+				chunkChan <- StreamChunk{
+					ID:      responseID,
+					Content: "",
+					Done:    true,
+					Usage:   finalUsage,
+				}
+				return
+			}
+
+			// Parse SSE data
+			var streamResp struct {
+				ID      string `json:"id"`
+				Model   string `json:"model"`
+				Choices []struct {
+					Delta struct {
+						Content string `json:"content"`
+						Role    string `json:"role"`
+					} `json:"delta"`
+					FinishReason string `json:"finish_reason"`
+				} `json:"choices"`
+				Usage struct {
+					PromptTokens     int `json:"prompt_tokens"`
+					CompletionTokens int `json:"completion_tokens"`
+					TotalTokens      int `json:"total_tokens"`
+				} `json:"usage"`
+			}
+
+			if err := json.Unmarshal([]byte(data), &streamResp); err != nil {
+				p.logger.Debug().Err(err).Str("data", data).Msg("Failed to parse stream chunk")
+				continue
+			}
+
+			if responseID == "" && streamResp.ID != "" {
+				responseID = streamResp.ID
+			}
+
+			// Extract content delta
+			if len(streamResp.Choices) > 0 {
+				delta := streamResp.Choices[0].Delta.Content
+				if delta != "" {
+					fullContent.WriteString(delta)
+					chunkChan <- StreamChunk{
+						ID:      responseID,
+						Content: delta,
+						Done:    false,
+					}
+				}
+
+				// Check if finished
+				if streamResp.Choices[0].FinishReason != "" {
+					finalUsage = &Usage{
+						PromptTokens:     streamResp.Usage.PromptTokens,
+						CompletionTokens: streamResp.Usage.CompletionTokens,
+						TotalTokens:      streamResp.Usage.TotalTokens,
+					}
+				}
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			errChan <- fmt.Errorf("failed to read stream: %w", err)
+			return
+		}
+	}()
+
+	return chunkChan, errChan
 }
 
 // GetModels returns list of available OpenAI models

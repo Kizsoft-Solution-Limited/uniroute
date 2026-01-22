@@ -92,6 +92,10 @@ func main() {
 				})
 				log.Info().Msg("JWT validator configured - tunnels will be auto-associated with authenticated users")
 			} else {
+				// SECURITY: In production, fail if JWT_SECRET is not set
+				if cfg.Environment == "production" {
+					log.Fatal().Msg("SECURITY ERROR: JWT_SECRET must be set in production! Tunnels require JWT validation for user association. Set JWT_SECRET environment variable.")
+				}
 				log.Warn().Msg("JWT_SECRET not configured or using default - tunnels will NOT be auto-associated with users. Set JWT_SECRET environment variable to enable.")
 			}
 		}

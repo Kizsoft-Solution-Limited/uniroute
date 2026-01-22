@@ -58,6 +58,23 @@ type Usage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
+// StreamChunk represents a streaming chunk of the response
+type StreamChunk struct {
+	ID        string `json:"id,omitempty"`
+	Content   string `json:"content"`   // Delta content (incremental text)
+	Done      bool   `json:"done"`       // True when stream is complete
+	Usage     *Usage `json:"usage,omitempty"` // Final usage stats (only in last chunk)
+	Error     string `json:"error,omitempty"` // Error message if any
+	Provider  string `json:"provider,omitempty"` // Provider name (for tracking)
+}
+
+// StreamingProvider defines optional interface for providers that support streaming
+type StreamingProvider interface {
+	// ChatStream streams chat responses from the provider
+	// Returns a channel of StreamChunk and an error channel
+	ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, <-chan error)
+}
+
 // Provider defines the interface for all LLM providers
 type Provider interface {
 	// Name returns the provider's name (e.g., "local", "openai", "anthropic")
