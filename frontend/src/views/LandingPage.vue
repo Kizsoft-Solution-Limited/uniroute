@@ -174,13 +174,13 @@
 <span class="text-purple-400">const</span> <span class="text-blue-400">response</span> = <span class="text-purple-400">await</span> <span class="text-yellow-400">fetch</span>(<span class="text-green-400">'https://api.uniroute.co/v1/chat'</span>, {
   <span class="text-blue-400">method</span>: <span class="text-green-400">'POST'</span>,
   <span class="text-blue-400">headers</span>: {
-    <span class="text-green-400">'Authorization'</span>: <span class="text-green-400">'Bearer ur_your-key'</span>,
+    <span class="text-green-400">'Authorization'</span>: <span class="text-green-400">'Bearer ur_your-key'</span>, <span class="text-slate-500">// Auth identifies WHO is making the request</span>
     <span class="text-green-400">'Content-Type'</span>: <span class="text-green-400">'application/json'</span>
   },
   <span class="text-blue-400">body</span>: <span class="text-yellow-400">JSON</span>.<span class="text-yellow-400">stringify</span>({
     <span class="text-blue-400">model</span>: <span class="text-green-400">'gpt-4o'</span>, <span class="text-slate-500">// or 'claude-3', 'gemini', 'llama2'</span>
     <span class="text-blue-400">messages</span>: [{
-      <span class="text-blue-400">role</span>: <span class="text-green-400">'user'</span>,
+      <span class="text-blue-400">role</span>: <span class="text-green-400">'user'</span>, <span class="text-slate-500">// Required: 'user' | 'assistant' | 'system' - identifies message type in conversation</span>
       <span class="text-blue-400">content</span>: [
         { <span class="text-blue-400">type</span>: <span class="text-green-400">'text'</span>, <span class="text-blue-400">text</span>: <span class="text-green-400">'Analyze these images and audio'</span> },
         { <span class="text-blue-400">type</span>: <span class="text-green-400">'image_url'</span>, <span class="text-blue-400">image_url</span>: { <span class="text-blue-400">url</span>: <span class="text-green-400">'data:image/...'</span> } },
