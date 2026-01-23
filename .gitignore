@@ -9,8 +9,8 @@ bin/
 # Compiled binaries (should not be committed)
 main
 gateway
-cli
-tunnel-server
+/cli$
+/tunnel-server$
 
 # Test binary
 *.test
