@@ -1887,26 +1887,25 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 	if exists && tunnel != nil {
 		tunnel.mu.RLock()
 		tunnelID := tunnel.ID
-		tunnelLocalURL := tunnel.LocalURL
 		tunnelProtocol := tunnel.Protocol
-		wsConn := tunnel.WSConn
-		handlerReady := tunnel.handlerReady
 		tunnel.mu.RUnlock()
 
-		ts.logger.Info().
-			Str("subdomain", lookupSubdomain).
-			Str("tunnel_id", tunnelID).
-			Str("tunnel_local_url", tunnelLocalURL).
-			Str("tunnel_protocol", tunnelProtocol).
-			Bool("ws_conn_nil", wsConn == nil).
-			Bool("handler_ready", handlerReady).
-			Msg("Tunnel found in memory - checking readiness")
+		// Only HTTP tunnels are handled through HTTP requests
+		// TCP/TLS/UDP tunnels are handled through their respective listeners
+		if tunnelProtocol != ProtocolHTTP {
+			ts.logger.Warn().
+				Str("subdomain", lookupSubdomain).
+				Str("tunnel_id", tunnelID).
+				Str("protocol", tunnelProtocol).
+				Msg("HTTP request received for non-HTTP tunnel - protocol mismatch")
+			ts.writeErrorPage(w, r, tunnel, http.StatusBadRequest, "Protocol Mismatch", "This tunnel is not an HTTP tunnel.", fmt.Sprintf("The tunnel '%s' is configured for %s protocol, not HTTP.", html.EscapeString(lookupSubdomain), tunnelProtocol))
+			return
+		}
 
 		// Check if tunnel is actually connected (WebSocket must be active)
 		// Re-check connection state to avoid race conditions
 		tunnel.mu.RLock()
-		wsConn = tunnel.WSConn
-		handlerReady = tunnel.handlerReady
+		wsConn := tunnel.WSConn
 		tunnel.mu.RUnlock()
 
 		if wsConn == nil {
