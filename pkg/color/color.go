@@ -18,6 +18,11 @@ const (
 	WhiteColor = "\033[37m"
 	GrayColor  = "\033[90m"
 	BoldCode   = "\033[1m"
+	// Background colors
+	GreenBg   = "\033[42m"
+	PurpleBg  = "\033[45m"
+	RedBg     = "\033[41m"
+	YellowBg  = "\033[43m"
 )
 
 // IsColorEnabled checks if colors should be enabled
@@ -93,6 +98,22 @@ func Gray(text string) string {
 	return fmt.Sprintf("%s%s%s", GrayColor, text, Reset)
 }
 
+// White returns white colored text
+func White(text string) string {
+	if !colorEnabled {
+		return text
+	}
+	return fmt.Sprintf("%s%s%s", WhiteColor, text, Reset)
+}
+
+// Purple returns purple colored text
+func Purple(text string) string {
+	if !colorEnabled {
+		return text
+	}
+	return fmt.Sprintf("%s%s%s", PurpleColor, text, Reset)
+}
+
 // Bold returns bold text
 func Bold(text string) string {
 	if !colorEnabled {
@@ -119,5 +140,37 @@ func Info(text string) string {
 // Warning returns yellow text with warning icon
 func Warning(text string) string {
 	return Yellow("⚠ " + text)
+}
+
+// StatusGreen returns white text on green background (for 200 OK status)
+func StatusGreen(text string) string {
+	if !colorEnabled {
+		return text
+	}
+	return fmt.Sprintf("%s%s%s%s%s", GreenBg, WhiteColor, text, Reset, Reset)
+}
+
+// StatusPurple returns white text on purple background (for 201 Created status)
+func StatusPurple(text string) string {
+	if !colorEnabled {
+		return text
+	}
+	return fmt.Sprintf("%s%s%s%s%s", PurpleBg, WhiteColor, text, Reset, Reset)
+}
+
+// StatusRed returns white text on red background (for error status)
+func StatusRed(text string) string {
+	if !colorEnabled {
+		return text
+	}
+	return fmt.Sprintf("%s%s%s%s%s", RedBg, WhiteColor, text, Reset, Reset)
+}
+
+// StatusYellow returns white text on yellow background (for warning status)
+func StatusYellow(text string) string {
+	if !colorEnabled {
+		return text
+	}
+	return fmt.Sprintf("%s%s%s%s%s", YellowBg, WhiteColor, text, Reset, Reset)
 }
 

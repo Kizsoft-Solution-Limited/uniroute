@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,7 +33,11 @@ Commands:
 var authLoginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Login to UniRoute",
-	Long: `Login to your UniRoute account using email and password.
+	Long: `Login to your UniRoute account using email/password or API key.
+
+Login Methods:
+  • Email/Password: Standard login with session expiration
+  • API Key: Longer session, no expiration (recommended for automation)
 
 The server URL is determined by (in priority order):
   1. --server flag (if provided)
@@ -42,9 +47,13 @@ The server URL is determined by (in priority order):
   5. Default production server (https://api.uniroute.co)
 
 Examples:
-  # Use environment variable (recommended)
-  export UNIROUTE_API_URL=http://localhost:8084
+  # Email/password login
   uniroute auth login
+  uniroute auth login --email user@example.com
+
+  # API key login (longer session, no expiration)
+  uniroute auth login --api-key ur_xxxxxxxxxxxxx
+  uniroute auth login -k ur_xxxxxxxxxxxxx
 
   # Explicit server flag
   uniroute auth login --server http://localhost:8084
@@ -71,6 +80,7 @@ var authStatusCmd = &cobra.Command{
 var (
 	authEmail    string
 	authPassword string
+	authAPIKey   string
 	authServer   string
 )
 
@@ -81,6 +91,7 @@ func init() {
 
 	authLoginCmd.Flags().StringVarP(&authEmail, "email", "e", "", "Email address")
 	authLoginCmd.Flags().StringVarP(&authPassword, "password", "p", "", "Password")
+	authLoginCmd.Flags().StringVarP(&authAPIKey, "api-key", "k", "", "API key for authentication (longer session, no expiration)")
 	authLoginCmd.Flags().StringVarP(&authServer, "server", "s", "", "UniRoute server URL (overrides UNIROUTE_API_URL env var)")
 }
 
@@ -177,6 +188,118 @@ func clearExpiredToken() {
 		return
 	}
 	_ = os.Remove(configPath) // Ignore errors
+}
+
+// loginWithAPIKey authenticates using an API key (longer session, no expiration)
+func loginWithAPIKey(apiKey, serverURL string) error {
+	// Determine server URL
+	if serverURL == "" {
+		serverURL = getServerURL()
+	}
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	// Validate API key by trying to use it with a /v1 endpoint
+	// Use /v1/analytics/usage as it requires API key auth and returns user-specific data
+	validateURL := fmt.Sprintf("%s/v1/analytics/usage", serverURL)
+	req, err := http.NewRequest("GET", validateURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set API key in Authorization header
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
+
+	// Send request to validate API key
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to connect to server: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		// Try alternative: use /v1/tunnels endpoint
+		validateURL = fmt.Sprintf("%s/v1/tunnels", serverURL)
+		req, err = http.NewRequest("GET", validateURL, nil)
+		if err != nil {
+			return fmt.Errorf("API key validation failed: %s", string(respBody))
+		}
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
+		
+		resp, err = client.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to connect to server: %w", err)
+		}
+		defer resp.Body.Close()
+		
+		respBody, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read response: %w", err)
+		}
+		
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("API key authentication failed: %s", string(respBody))
+		}
+	}
+
+	// API key is valid - try to get user info from /v1/user endpoint
+	email := "api-key-user" // Default email
+	
+	// Try to get user email from /v1/user endpoint
+	userURL := fmt.Sprintf("%s/v1/user", serverURL)
+	userReq, err := http.NewRequest("GET", userURL, nil)
+	if err == nil {
+		userReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
+		userResp, err := client.Do(userReq)
+		if err == nil {
+			defer userResp.Body.Close()
+			if userResp.StatusCode == http.StatusOK {
+				userBody, err := io.ReadAll(userResp.Body)
+				if err == nil {
+					var userData map[string]interface{}
+					if err := json.Unmarshal(userBody, &userData); err == nil {
+						if userEmail, ok := userData["email"].(string); ok && userEmail != "" {
+							email = userEmail
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	// Save config with API key as token (API keys don't expire)
+	config := &AuthConfig{
+		Token:     apiKey, // Store API key as token
+		Email:     email,
+		ServerURL: serverURL,
+		// No ExpiresAt - API keys don't expire
+	}
+
+	if err := saveAuthConfig(config); err != nil {
+		return fmt.Errorf("failed to save credentials: %w", err)
+	}
+
+	fmt.Println("✅ Successfully logged in with API key!")
+	// Show masked API key (first 8 chars and last 4 chars)
+	if len(apiKey) > 12 {
+		fmt.Printf("   API Key: %s...%s\n", apiKey[:8], apiKey[len(apiKey)-4:])
+	} else {
+		fmt.Printf("   API Key: %s\n", strings.Repeat("*", len(apiKey)))
+	}
+	if email != "api-key-user" {
+		fmt.Printf("   Email: %s\n", email)
+	}
+	fmt.Printf("   Session: No expiration (API key)\n")
+	fmt.Printf("   💡 Note: API keys provide longer sessions without expiration\n")
+	
+	return nil
 }
 
 // getServerURL returns the configured server URL
@@ -279,7 +402,14 @@ func getTunnelServerURL() string {
 }
 
 func runAuthLogin(cmd *cobra.Command, args []string) error {
-	// Check if user is already logged in
+	// Support API key login (longer session, no expiration)
+	// If API key is provided, always allow login (even if already logged in)
+	// This allows users to switch from JWT to API key or vice versa
+	if authAPIKey != "" {
+		return loginWithAPIKey(authAPIKey, authServer)
+	}
+
+	// Check if user is already logged in (only for email/password login)
 	if isAuthenticated() {
 		config, err := loadAuthConfig()
 		if err == nil && config != nil {
@@ -315,6 +445,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 				}
 				fmt.Println()
 				fmt.Println("   To log in with a different account, run 'uniroute auth logout' first")
+				fmt.Println("   Or use 'uniroute auth login -k <api-key>' to login with API key")
 				return nil
 			}
 		}
@@ -323,7 +454,12 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 	// Get email if not provided
 	if authEmail == "" {
 		fmt.Print("Email: ")
-		fmt.Scanln(&authEmail)
+		reader := bufio.NewReader(os.Stdin)
+		emailInput, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read email: %w", err)
+		}
+		authEmail = strings.TrimSpace(emailInput)
 		if authEmail == "" {
 			return fmt.Errorf("email is required")
 		}
@@ -418,6 +554,11 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("✅ Successfully logged in!")
 	fmt.Printf("   Email: %s\n", authEmail)
+	if config.ExpiresAt != "" {
+		fmt.Printf("   Session expires: %s\n", config.ExpiresAt)
+	} else {
+		fmt.Printf("   Session: No expiration (persistent)\n")
+	}
 	
 	// Show helpful message about environment variables if using default
 	if os.Getenv("UNIROUTE_API_URL") == "" && serverURL == "https://api.uniroute.co" {

@@ -21,28 +21,36 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Funny quotes to display
-var tunnelQuotes = []string{
-	"💬 Your app is now accessible worldwide!",
-	"🚀 Your local server just went global!",
-	"🌍 Breaking down firewalls, one request at a time!",
-	"⚡ Your code is now faster than your WiFi!",
-	"🎯 Tunnel vision? More like tunnel success!",
-	"🔥 Your app is so hot, it's breaking the internet!",
-	"💪 Local development, global domination!",
-	"🎉 Congratulations! Your app just got a passport!",
-	"🌟 From localhost to everywhere!",
-	"🚦 Green light! Your tunnel is live!",
-	"🎪 Welcome to the greatest show on the internet!",
-	"🎸 Your app is now rockin' the web!",
-	"🏆 You've just won the tunnel lottery!",
-	"🎨 Your app is now a masterpiece on display!",
-	"🎭 The show must go on, and it's going global!",
-	"🎯 Bullseye! Your tunnel is perfectly aimed!",
-	"🎪 Step right up! Your app is now on stage!",
-	"🎊 Party time! Your tunnel is celebrating!",
-	"🎁 Your app just got the best gift: global access!",
-	"🎪 The circus is in town, and your app is the star!",
+// Quote with weight for weighted random selection
+type weightedQuote struct {
+	quote string
+	weight int // Higher weight = more likely to appear
+}
+
+// Funny quotes to display (with weights - donation link appears much less frequently)
+var tunnelQuotes = []weightedQuote{
+	{quote: "💬 Your app is now accessible worldwide!", weight: 100},
+	{quote: "🚀 Your local server just went global!", weight: 100},
+	{quote: "🌍 Breaking down firewalls, one request at a time!", weight: 100},
+	{quote: "⚡ Your code is now faster than your WiFi!", weight: 100},
+	{quote: "🎯 Tunnel vision? More like tunnel success!", weight: 100},
+	{quote: "🔥 Your app is so hot, it's breaking the internet!", weight: 100},
+	{quote: "💪 Local development, global domination!", weight: 100},
+	{quote: "🎉 Congratulations! Your app just got a passport!", weight: 100},
+	{quote: "🌟 From localhost to everywhere!", weight: 100},
+	{quote: "🚦 Green light! Your tunnel is live!", weight: 100},
+	{quote: "🎪 Welcome to the greatest show on the internet!", weight: 100},
+	{quote: "🎸 Your app is now rockin' the web!", weight: 100},
+	{quote: "🏆 You've just won the tunnel lottery!", weight: 100},
+	{quote: "🎨 Your app is now a masterpiece on display!", weight: 100},
+	{quote: "🎭 The show must go on, and it's going global!", weight: 100},
+	{quote: "🎯 Bullseye! Your tunnel is perfectly aimed!", weight: 100},
+	{quote: "🎪 Step right up! Your app is now on stage!", weight: 100},
+	{quote: "🎊 Party time! Your tunnel is celebrating!", weight: 100},
+	{quote: "🎁 Your app just got the best gift: global access!", weight: 100},
+	{quote: "🎪 The circus is in town, and your app is the star!", weight: 100},
+	// Donation link - very low weight so it appears rarely (only 1/2000 chance vs 100/2000 for others = ~0.05% vs 5% each)
+	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 1},
 }
 
 // Bubble Tea model for tunnel UI
@@ -60,8 +68,11 @@ type tunnelModel struct {
 	quote            string // Random funny quote
 
 	// Scrolling content
-	viewport viewport.Model
-	logs     []string
+	viewport            viewport.Model
+	logs                []string
+	logsMu              sync.Mutex // Mutex for thread-safe log access
+	viewportNeedsUpdate bool       // Flag to track if viewport needs updating
+	userHasScrolled     bool       // Track if user has manually scrolled (don't auto-scroll if true)
 
 	// State
 	client         *tunnel.TunnelClient
@@ -113,9 +124,33 @@ func initialTunnelModel(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, ac
 	// Get initial version
 	currentVersion := GetVersion()
 
-	// Pick a random quote
+	// Pick a random quote using weighted selection (donation link appears much less frequently)
 	rand.Seed(time.Now().UnixNano())
-	randomQuote := tunnelQuotes[rand.Intn(len(tunnelQuotes))]
+	
+	// Calculate total weight
+	totalWeight := 0
+	for _, q := range tunnelQuotes {
+		totalWeight += q.weight
+	}
+	
+	// Pick random number in range [0, totalWeight)
+	randomNum := rand.Intn(totalWeight)
+	
+	// Find which quote this corresponds to
+	var randomQuote string
+	currentWeight := 0
+	for _, q := range tunnelQuotes {
+		currentWeight += q.weight
+		if randomNum < currentWeight {
+			randomQuote = q.quote
+			break
+		}
+	}
+	
+	// Fallback (should never happen, but safety check)
+	if randomQuote == "" {
+		randomQuote = tunnelQuotes[0].quote
+	}
 
 	// Initialize styles
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39")) // Cyan
@@ -266,51 +301,62 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.terminated {
 			return m, nil
 		}
+		// Don't update status if tunnel is terminated
+		if m.terminated {
+			return m, nil
+		}
+		
 		status := string(msg)
 		// Only update if internet is online, otherwise internetStatusMsg handler will handle it
 		if m.internetOnline {
-			// If we just reconnected (within last 2 seconds), stay in reconnecting state
-			// to give the tunnel time to fully establish
-			if !m.reconnectTime.IsZero() && time.Since(m.reconnectTime) < 2*time.Second {
-				// Still in reconnecting window, check if tunnel is actually online
-				if status == "online" {
-					// Wait a bit more to ensure stable connection
-					m.connectionStatus = color.Yellow("Reconnecting...")
-					m.sessionStatus = fmt.Sprintf("%s %s", color.Yellow("●"), color.Yellow("reconnecting"))
-				} else {
-					m.connectionStatus = color.Yellow("Reconnecting...")
-					m.sessionStatus = fmt.Sprintf("%s %s", color.Yellow("●"), color.Yellow("reconnecting"))
-				}
-			} else {
-				// Reconnecting window passed, update based on actual status
-				if !m.reconnectTime.IsZero() {
-					m.reconnectTime = time.Time{} // Clear reconnect time
-				}
-				switch status {
-				case "online":
+			// Check if client is actually reconnecting (but only trust it if status also says reconnecting)
+			// This prevents false positives where isReconnecting might be temporarily true
+			isReconnecting := m.client.IsReconnecting()
+			isConnected := m.client.IsConnected()
+			
+			// Trust the status from GetConnectionStatus() - it's the source of truth
+			// Only show reconnecting if BOTH status says reconnecting AND client confirms it
+			// This prevents showing reconnecting when connection is actually fine
+			if status == "online" {
+				// Connection is online - clear any reconnect flags and show connected
+				// Only update if we're actually connected (prevent false positives)
+				if isConnected {
+					if !m.reconnectTime.IsZero() {
+						m.reconnectTime = time.Time{}
+					}
 					m.connectionStatus = color.Green("Tunnel Connected Successfully!")
-				case "reconnecting":
-					m.connectionStatus = color.Yellow("Reconnecting...")
-				default:
-					m.connectionStatus = color.Red("No Internet - Connection Lost")
+					m.sessionStatus = fmt.Sprintf("%s %s", color.Green("●"), color.Green("online"))
 				}
+				// If status says "online" but client says not connected, don't update (might be stale)
+			} else if status == "reconnecting" && isReconnecting && !isConnected {
+				// Only show reconnecting if:
+				// 1. Status says reconnecting
+				// 2. Client confirms it's reconnecting
+				// 3. Client confirms it's NOT connected
+				// This prevents false positives
+				m.connectionStatus = color.Yellow("Reconnecting...")
+				m.sessionStatus = fmt.Sprintf("%s %s", color.Yellow("●"), color.Yellow("reconnecting"))
+			} else if status == "offline" {
+				// Offline status
+				m.connectionStatus = color.Red("No Internet - Connection Lost")
+				m.sessionStatus = fmt.Sprintf("%s %s", color.Red("●"), color.Red("offline"))
+			} else {
+				// Unknown status or status doesn't match client state - don't update
+				// This prevents showing incorrect status
 			}
 		}
-		// Update related fields and continue polling
-		currentStatus := m.client.GetConnectionStatus()
-		latency := m.client.GetLatency()
-		var stats *tunnel.ConnectionStats
-		if currentStatus == "online" && m.info != nil {
-			stats, _ = m.client.GetConnectionStats(m.serverURL, m.info.ID)
+		// Continue polling for latency and stats (only if not terminated)
+		// Don't send status updates here - they're handled by the status change handler
+		if !m.terminated {
+			return m, m.updateStatus() // Continue polling for latency/stats only
 		}
-		// Send updates for related fields
-		return m, tea.Batch(
-			func() tea.Msg { return sessionStatusMsg(currentStatus) },
-			func() tea.Msg { return latencyUpdateMsg(latency) },
-			func() tea.Msg { return statsUpdateMsg(stats) },
-			m.updateStatus(), // Continue polling
-		)
+		return m, nil
 	case sessionStatusMsg:
+		// Don't update status if tunnel is terminated
+		if m.terminated {
+			return m, nil
+		}
+		
 		status := string(msg)
 		// Only update session status if internet is online
 		// If internet is offline, it's already handled by internetStatusMsg
@@ -351,7 +397,15 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case requestEventMsg:
 		event := tunnel.RequestEvent(msg)
-		m.addRequestLog(event)
+
+		// Update model state (logs array) - this is the correct pattern
+		m.addRequestToLogs(event)
+
+		// Rebuild viewport content from updated logs
+		// This ensures the viewport always shows all accumulated requests
+		m.updateViewportContent()
+
+		// Return updated model - Bubble Tea will re-render
 		return m, nil
 	case statsUpdateMsg:
 		stats := msg
@@ -383,21 +437,54 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.WindowSizeMsg:
 		// Update viewport size
-		// Calculate actual header height: connection status (1) + blank (1) + session (1) + account (1) + version (1) + blank (1) + region (1) + latency (1) + blank (1) + connections header (1) + connections data (1) + blank (1) + public url label (1) + public url (1) + blank (1) + forwarding label (1) + forwarding (1) + blank (1) + http requests header (2) = ~20 lines
-		headerHeight := 20
-		if msg.Height > headerHeight {
-			m.viewport.Width = msg.Width
-			m.viewport.Height = msg.Height - headerHeight - 3 // -3 for footer message
+		// Calculate actual header height: padding (1) + title (1) + blank (1) + connection status (1) + session (1) + account (1) + blank (1) + version (1) + blank (1) + region (1) + latency (1) + blank (1) + connections header (1) + connections data (1) + blank (1) + public url label (1) + public url (1) + blank (1) + forwarding label (1) + forwarding (1) + blank (1) + quote (1) + blank (1) + ctrl+c (1) + blank (1) + http requests header (2) = ~28 lines
+		headerHeight := 28
+
+		// Calculate available height for viewport (must leave room for header)
+		// Quote and Ctrl+C are now part of the header, so no separate footer
+		availableHeight := msg.Height - headerHeight
+
+		// Ensure viewport height never exceeds available space
+		// This guarantees the header will always be visible
+		// Use most of the available space so users can see more requests
+		var viewportHeight int
+		if availableHeight < 1 {
+			// Terminal is too small - show at least 1 line for viewport
+			viewportHeight = 1
 		} else {
-			m.viewport.Width = msg.Width
-			m.viewport.Height = 5 // Minimum height
+			// Use all available height (viewport will scroll if content exceeds it)
+			// This ensures maximum visibility of requests
+			viewportHeight = availableHeight
 		}
-		return m, nil
+
+		// Update viewport dimensions properly
+		// Use SetSize to ensure viewport recalculates its internal state
+		m.viewport.Width = msg.Width
+		m.viewport.Height = viewportHeight
+
+		// Update viewport with the window size message so it can handle resize internally
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+
+		// Rebuild viewport content after size change to ensure it's correct
+		m.updateViewportContent()
+
+		return m, cmd
 	}
 
 	// Handle viewport scrolling
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
+
+	// Detect if user manually scrolled away from top
+	// If user scrolls down (not at top), mark that they've scrolled so we don't auto-scroll
+	if m.viewport.YOffset > 0 {
+		m.userHasScrolled = true
+	} else {
+		// User is at top, allow auto-scrolling
+		m.userHasScrolled = false
+	}
+
 	return m, cmd
 }
 
@@ -406,15 +493,22 @@ func (m *tunnelModel) View() string {
 	// Fixed header section
 	header := strings.Builder{}
 
-	// Connection status
-	header.WriteString(m.connectionStatus)
+	// Add some top padding to ensure header is visible (prevents cut-off)
+	header.WriteString("\n")
+
+	// Add title at the top
+	header.WriteString(color.Cyan("Starting UniRoute Tunnel..."))
 	header.WriteString("\n\n")
+
+	// Connection Status (with label to match other fields)
+	header.WriteString(fmt.Sprintf("Connection Status             %s\n", m.connectionStatus))
 
 	// Session Status
 	header.WriteString(fmt.Sprintf("Session Status                %s\n", m.sessionStatus))
 
 	// Account
 	header.WriteString(fmt.Sprintf("Account                       %s\n", color.Gray(m.account)))
+	header.WriteString("\n")
 
 	// Version
 	header.WriteString(fmt.Sprintf("Version                       %s\n", m.version))
@@ -441,12 +535,21 @@ func (m *tunnelModel) View() string {
 	header.WriteString(fmt.Sprintf("   %s\n", m.forwarding))
 	header.WriteString("\n")
 
+	// Quote and Ctrl+C message (before HTTP Requests)
+	header.WriteString(color.Yellow(m.quote))
+	header.WriteString("\n\nPress Ctrl+C to stop\n\n")
+
 	// HTTP Requests header
 	header.WriteString("HTTP Requests\n")
 	header.WriteString("-------------\n")
 
-	// Combine header with scrolling viewport
-	return header.String() + m.viewport.View() + "\n\n" + color.Yellow(m.quote) + "\n\nPress Ctrl+C to stop"
+	// View() should be pure - just render, don't modify state
+	// The viewport content is already updated in updateViewportContent()
+
+	// Combine header (with quote/Ctrl+C) with scrolling viewport
+	// HTTP Requests section is at the bottom and can scroll properly
+	// View() should be pure - don't modify state here, just render
+	return header.String() + m.viewport.View()
 }
 
 // Commands
@@ -470,19 +573,21 @@ func (m *tunnelModel) checkInternet() tea.Cmd {
 }
 
 func (m *tunnelModel) updateStatus() tea.Cmd {
-	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
-		// Check connection status
-		status := m.client.GetConnectionStatus()
-		if status == "" {
+	// Poll more frequently (1 second) for latency and stats updates
+	// Connection status is handled by the status change handler to avoid duplicates
+	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
+		// Don't poll if tunnel is terminated
+		// This prevents duplicate status messages after termination
+		if m.terminated {
 			return nil
 		}
-
-		// Send connection status update
-		// Send session status update
-		// Send latency update
+		
+		// Only update latency and stats - connection status is handled by status change handler
+		// This prevents duplicate status messages
 		latency := m.client.GetLatency()
 
 		// Fetch stats if connected
+		status := m.client.GetConnectionStatus()
 		var stats *tunnel.ConnectionStats
 		if status == "online" && m.info != nil {
 			statsChan := make(chan *tunnel.ConnectionStats, 1)
@@ -492,14 +597,13 @@ func (m *tunnelModel) updateStatus() tea.Cmd {
 			}()
 			select {
 			case stats = <-statsChan:
-			case <-time.After(2 * time.Second):
+			case <-time.After(1 * time.Second): // Reduced timeout for faster updates
 			}
 		}
 
-		// Return batch of messages
+		// Only return latency and stats updates - NOT connection status
+		// Connection status is handled by the status change handler
 		return tea.Batch(
-			func() tea.Msg { return connectionStatusMsg(status) },
-			func() tea.Msg { return sessionStatusMsg(status) },
 			func() tea.Msg { return latencyUpdateMsg(latency) },
 			func() tea.Msg { return statsUpdateMsg(stats) },
 		)()
@@ -557,111 +661,183 @@ func (m *tunnelModel) runUpgrade() tea.Cmd {
 	}
 }
 
-func (m *tunnelModel) addRequestLog(event tunnel.RequestEvent) {
-	// Get timezone abbreviation (WAT, EST, etc.)
-	loc, _ := time.LoadLocation("Africa/Lagos") // Default to WAT, can be made configurable
-	eventTime := event.Time.In(loc)
-	timeStr := eventTime.Format("15:04:05.000 MST")
+// addRequestToLogs adds a request to the logs array (model state update)
+// This follows Bubble Tea best practices: update state in Update, render in View
+func (m *tunnelModel) addRequestToLogs(event tunnel.RequestEvent) {
+	// Format request log entry
 
-	// Truncate path if too long (max 50 chars for display)
-	path := event.Path
-	if len(path) > 50 {
-		path = path[:47] + "..."
-	}
+	// Format: STATUS METHOD PATH LATENCY
+	// Example: 200 OK GET /auth/tunnels/stats 11ms
+	// Every request is unique and should be added, even if same path/method
+	// NO DEDUPLICATION - each request gets its own entry
 
-	// Format status code and text
-	statusCodeStr := fmt.Sprintf("%d", event.StatusCode)
+	// Format status code and text together
 	statusText := event.StatusText
-	// Extract status text (e.g., "200 OK" -> "OK")
-	if strings.Contains(statusText, " ") {
-		parts := strings.SplitN(statusText, " ", 2)
-		if len(parts) > 1 {
-			statusText = parts[1]
+	if statusText == "" {
+		// Generate status text from code if not provided
+		switch event.StatusCode {
+		case 200:
+			statusText = "OK"
+		case 201:
+			statusText = "Created"
+		case 204:
+			statusText = "No Content"
+		case 400:
+			statusText = "Bad Request"
+		case 401:
+			statusText = "Unauthorized"
+		case 403:
+			statusText = "Forbidden"
+		case 404:
+			statusText = "Not Found"
+		case 405:
+			statusText = "Method Not Allowed"
+		case 500:
+			statusText = "Internal Server Error"
+		case 502:
+			statusText = "Bad Gateway"
+		default:
+			statusText = fmt.Sprintf("Status %d", event.StatusCode)
 		}
-	}
-	// Truncate status text if too long (max 10 chars)
-	if len(statusText) > 10 {
-		statusText = statusText[:7] + "..."
-	}
-
-	// Color code based on status
-	var statusColor func(string) string
-	if event.StatusCode >= 200 && event.StatusCode < 300 {
-		statusColor = color.Green
-	} else if event.StatusCode >= 300 && event.StatusCode < 400 {
-		statusColor = color.Yellow
-	} else if event.StatusCode >= 400 && event.StatusCode < 500 {
-		statusColor = color.Red
-	} else if event.StatusCode >= 500 {
-		statusColor = color.Red
 	} else {
-		statusColor = color.Gray
-	}
-
-	// Helper function to strip ANSI escape sequences
-	stripANSI := func(s string) int {
-		var result strings.Builder
-		inEscape := false
-		for i := 0; i < len(s); i++ {
-			if s[i] == '\033' {
-				inEscape = true
-			} else if inEscape {
-				if s[i] == 'm' {
-					inEscape = false
-				}
-			} else {
-				result.WriteByte(s[i])
+		// Extract status text if full status line provided (e.g., "200 OK" -> "OK")
+		if strings.Contains(statusText, " ") {
+			parts := strings.SplitN(statusText, " ", 2)
+			if len(parts) > 1 {
+				statusText = parts[1]
 			}
 		}
-		return len(result.String())
 	}
 
-	// Helper function to pad colored string to fixed display width
-	padColored := func(s string, width int) string {
-		displayWidth := stripANSI(s)
-		if displayWidth >= width {
-			return s
-		}
-		// Add padding spaces to reach target width
-		padding := strings.Repeat(" ", width-displayWidth)
-		return s + padding
+	statusFull := fmt.Sprintf("%d %s", event.StatusCode, statusText)
+
+	// Color code based on status (text color, not background)
+	var statusColored string
+	if event.StatusCode == 200 {
+		statusColored = color.Green(statusFull) // Green text for 200 OK
+	} else if event.StatusCode == 201 {
+		statusColored = color.Purple(statusFull) // Purple text for 201 Created
+	} else if event.StatusCode >= 200 && event.StatusCode < 300 {
+		statusColored = color.Green(statusFull) // Green text for 2xx
+	} else if event.StatusCode >= 300 && event.StatusCode < 400 {
+		statusColored = color.Yellow(statusFull) // Yellow text for 3xx
+	} else if event.StatusCode >= 400 {
+		statusColored = color.Red(statusFull) // Red text for 4xx/5xx
+	} else {
+		statusColored = color.Gray(statusFull)
 	}
 
-	// Apply colors first
-	timeColored := color.Gray(timeStr)
-	methodColored := color.Cyan(event.Method)
-	pathColored := path
-	statusCodeColored := statusColor(statusCodeStr)
-	statusTextColored := statusColor(statusText)
+	// Format method (white text)
+	methodColored := color.White(event.Method)
 
-	// Pad each field to its target width (accounting for ANSI codes)
-	// Format: TIME(20) METHOD(7) PATH(50) STATUS(3) TEXT(variable)
-	timePadded := padColored(timeColored, 20)
-	methodPadded := padColored(methodColored, 7)
-	pathPadded := padColored(pathColored, 50)
-	statusCodePadded := padColored(statusCodeColored, 3)
+	// Format path (white text) - ensure root path is shown as "/"
+	path := event.Path
+	if path == "" {
+		path = "/"
+	}
+	pathColored := color.White(path)
 
-	// Format the request line with proper spacing between fields
-	requestLine := fmt.Sprintf("%s %s %s %s %s",
-		timePadded,
-		methodPadded,
-		pathPadded,
-		statusCodePadded,
-		statusTextColored)
+	// Format latency in milliseconds
+	latencyStr := fmt.Sprintf("%dms", event.LatencyMs)
+	latencyColored := color.White(latencyStr)
 
-	// Add to logs
-	m.logs = append(m.logs, requestLine)
-	if len(m.logs) > 100 {
-		m.logs = m.logs[len(m.logs)-100:]
+	// Format the request line: STATUS METHOD PATH LATENCY
+	// Each request is unique - even same path/method gets a new entry
+	// We prepend to ensure newest requests appear at the top
+	// NOTE: Even if two requests have identical method/path/status/latency,
+	// they are still TWO SEPARATE ENTRIES in the logs array
+	// CRITICAL: Build the line properly - each colored segment already has Reset codes
+	// Use very generous spacing between elements for better readability
+	requestLine := fmt.Sprintf("%s          %s          %s          %s",
+		statusColored,
+		methodColored,
+		pathColored,
+		latencyColored)
+
+	// IMPORTANT: This requestLine will be prepended to m.logs
+	// Even if it's identical to an existing entry, it's a NEW entry
+	// The logs array grows with EVERY request, no deduplication
+
+	// CRITICAL: ALWAYS prepend new request at the top (streaming behavior - newest at top)
+	// No deduplication - every request gets its own entry, even if identical
+	// This function is called for EVERY request event, no filtering
+	m.logsMu.Lock()
+
+	// IMPORTANT: Prepend new request to the FRONT of the slice
+	// This ensures newest requests appear at the top, pushing old ones down
+	// Even if path/method/status are identical, this is a NEW entry
+	m.logs = append([]string{requestLine}, m.logs...)
+
+	// Limit to latest 100 requests (allows scrolling to see older requests)
+	// When a new request comes in, it's added at the top and the oldest is removed from the bottom
+	// This keeps the header fixed at the top and new requests appear below it
+	// Users can scroll down to see older requests
+	const maxRequests = 100
+	if len(m.logs) > maxRequests {
+		// Keep only the first 100 (newest) requests, remove oldest from the end
+		m.logs = m.logs[:maxRequests]
 	}
 
-	// Update viewport content (only the request logs, header is separate)
-	content := ""
-	for _, log := range m.logs {
-		content += log + "\n"
+	m.logsMu.Unlock()
+
+	// State update complete - logs array is updated
+	// Viewport content will be rebuilt in updateViewportContent()
+}
+
+// updateViewportContent rebuilds viewport content from the logs array
+// This implements a fixed-size window showing the latest 10 requests
+// Following best practices for streaming request displays
+func (m *tunnelModel) updateViewportContent() {
+	m.logsMu.Lock()
+	logsCopy := make([]string, len(m.logs))
+	copy(logsCopy, m.logs)
+	m.logsMu.Unlock()
+
+	// Show all accumulated requests (up to 100)
+	// Users can scroll through all requests to see older ones
+	// Newest requests are at the top, oldest at the bottom
+	displayLogs := logsCopy
+
+	// Build content from all requests
+	// Newest requests are first in the array, oldest at the end
+	var contentBuilder strings.Builder
+	for _, log := range displayLogs {
+		// Write the log entry (already includes ANSI codes)
+		contentBuilder.WriteString(log)
+		// Add newline after each entry
+		contentBuilder.WriteByte('\n')
 	}
+	content := contentBuilder.String()
+
+	// Ensure viewport has minimum dimensions (only if not set)
+	// DO NOT grow the viewport height here - it's set in WindowSizeMsg handler
+	// Growing it here would push the header up
+	if m.viewport.Height == 0 {
+		m.viewport.Height = 10 // Small default, will be set properly by WindowSizeMsg
+	}
+	if m.viewport.Width == 0 {
+		m.viewport.Width = 80
+	}
+
+	// Check if user is at top before updating content (for smart auto-scroll)
+	wasAtTop := m.viewport.YOffset == 0
+
+	// Update viewport with all requests
+	// Newest requests are at the top of the content, oldest at bottom
+	// The viewport has a FIXED height and scrolls internally
+	// This keeps the header fixed at the top while requests scroll within the viewport
 	m.viewport.SetContent(content)
-	m.viewport.GotoBottom()
+
+	// Smart auto-scroll: only scroll to top if user was already at top
+	// This allows users to scroll down to see older requests without being snapped back
+	if wasAtTop {
+		// User was at top, so auto-scroll to show newest requests
+		m.viewport.GotoTop()
+		m.userHasScrolled = false // Reset since we auto-scrolled
+	}
+
+	// Mark that viewport has been updated
+	m.viewportNeedsUpdate = false
 }
 
 // Refactored tunnel command using Bubble Tea
@@ -670,27 +846,116 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 	model := initialTunnelModel(client, info, accountDisplay, serverURL, localURL)
 
 	// Channel to send request events to Bubble Tea
-	requestChan := make(chan tunnel.RequestEvent, 100)
+	// Large buffer to prevent dropping events - we want ALL requests logged
+	requestChan := make(chan tunnel.RequestEvent, 1000)
+	
+	// Channel to send connection status changes to Bubble Tea for real-time updates
+	statusChangeChan := make(chan string, 10)
 
 	// Set up request handler that sends to channel
+	// ALWAYS send every request event - no filtering or dropping
 	requestHandler := func(event tunnel.RequestEvent) {
+		// Non-blocking send - if channel is full, wait briefly then try again
+		// This ensures we don't lose any requests
 		select {
 		case requestChan <- event:
+			// Successfully sent
 		default:
-			// Channel full, drop event
+			// Channel full - wait a bit and try again (non-blocking)
+			// This is rare but ensures we don't lose requests
+			go func() {
+				time.Sleep(10 * time.Millisecond)
+				select {
+				case requestChan <- event:
+					// Successfully sent on retry
+				default:
+					// Still full after wait - drop event (should be extremely rare with 1000 buffer)
+				}
+			}()
 		}
 	}
 	client.SetRequestHandler(requestHandler)
+	
+	// Set up connection status change handler for real-time updates
+	// This provides immediate status updates when connection state changes
+	// Use a debounce mechanism to prevent rapid status changes from causing duplicates
+	lastStatus := ""
+	lastStatusTime := time.Time{}
+	statusChangeHandler := func(status string) {
+		now := time.Now()
+		
+		// Only send if status actually changed AND enough time has passed (debounce)
+		// This prevents rapid toggling between statuses
+		if status != lastStatus {
+			// If status changed, check if enough time has passed since last change
+			if lastStatusTime.IsZero() || time.Since(lastStatusTime) > 500*time.Millisecond {
+				lastStatus = status
+				lastStatusTime = now
+				// Non-blocking send to status change channel
+				select {
+				case statusChangeChan <- status:
+					// Successfully sent
+				default:
+					// Channel full - drop (should be rare with 10 buffer)
+				}
+			} else {
+				// Status changed too quickly - debounce by scheduling a delayed check
+				go func() {
+					time.Sleep(500 * time.Millisecond)
+					// Re-check status after delay
+					currentStatus := client.GetConnectionStatus()
+					if currentStatus == status && currentStatus != lastStatus {
+						lastStatus = currentStatus
+						lastStatusTime = time.Now()
+						select {
+						case statusChangeChan <- currentStatus:
+						default:
+						}
+					}
+				}()
+			}
+		}
+	}
+	client.SetConnectionStatusChangeHandler(statusChangeHandler)
+
+	// Clear screen and move cursor to top to ensure header is visible
+	// Do this right before starting Bubble Tea to prevent duplicate output
+	fmt.Print("\033[2J\033[H") // Clear screen and move to top-left
+	time.Sleep(50 * time.Millisecond) // Small delay to ensure screen is cleared
 
 	// Create program without alt screen to ensure header is always visible
 	p := tea.NewProgram(model)
 
-	// Goroutine to forward request events to Bubble Tea
+	// Goroutine to forward request events and status changes to Bubble Tea
 	go func() {
 		for {
 			select {
 			case event := <-requestChan:
+				// Send request event to Bubble Tea
 				p.Send(requestEventMsg(event))
+			case status := <-statusChangeChan:
+				// Send connection status change immediately for real-time updates
+				// Only send if model is not terminated
+				// Double-check the actual connection status before updating to prevent false positives
+				if !model.terminated {
+					// Verify the status is still accurate before sending
+					actualIsConnected := model.client.IsConnected()
+					actualIsReconnecting := model.client.IsReconnecting()
+					
+					// Only update if the status matches the actual connection state
+					// This prevents showing "reconnecting" when connection is actually stable
+					if status == "online" && actualIsConnected && !actualIsReconnecting {
+						p.Send(connectionStatusMsg(status))
+						p.Send(sessionStatusMsg(status))
+					} else if status == "reconnecting" && actualIsReconnecting && !actualIsConnected {
+						p.Send(connectionStatusMsg(status))
+						p.Send(sessionStatusMsg(status))
+					} else if status == "offline" && !actualIsConnected && !actualIsReconnecting {
+						p.Send(connectionStatusMsg(status))
+						p.Send(sessionStatusMsg(status))
+					}
+					// If status doesn't match actual state, ignore it (prevents false positives)
+				}
 			case <-model.ctx.Done():
 				return
 			}
@@ -705,10 +970,10 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 		<-sigChan
 		// Send terminate message to update status to "terminated"
 		p.Send(terminateMsg{})
-		// Cancel context to stop tunnel
+		// Cancel context to stop tunnel and goroutines
 		model.cancel()
-		// Give a moment to display terminated status
-		time.Sleep(500 * time.Millisecond)
+		// Give a brief moment to display terminated status, then quit
+		time.Sleep(200 * time.Millisecond)
 		p.Quit()
 	}()
 
@@ -717,12 +982,28 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 		return err
 	}
 
-	// Cleanup
+	// Cleanup - close tunnel with timeout to prevent hanging
 	fmt.Println()
 	fmt.Println(color.Yellow("Shutting down tunnel..."))
-	if err := client.Close(); err != nil {
-		return err
+	
+	// Close tunnel with timeout to prevent hanging
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- client.Close()
+	}()
+	
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			// Log error but don't fail - connection might already be closed
+			fmt.Println(color.Yellow(fmt.Sprintf("Tunnel close warning: %v", err)))
+		} else {
+			fmt.Println(color.Green("Tunnel closed successfully"))
+		}
+	case <-time.After(2 * time.Second):
+		// Timeout - connection might be stuck, but we'll exit anyway
+		fmt.Println(color.Yellow("Tunnel shutdown timed out, exiting..."))
 	}
-	fmt.Println(color.Green("Tunnel closed successfully"))
+	
 	return nil
 }

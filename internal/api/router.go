@@ -244,10 +244,11 @@ func SetupRouter(
 	if apiKeyServiceV2 != nil {
 		api.Use(middleware.AuthMiddleware(apiKeyServiceV2))
 
-		// Add rate limiting
+		// Add rate limiting - use API key's rate limits from context
 		api.Use(middleware.RateLimitMiddleware(rateLimiter, func(identifier string) (int, int) {
-			// Get limits from API key record in context
-			// Default limits if not found
+			// Default limits - actual limits are extracted from context in the middleware itself
+			// The middleware checks for "rate_limit_per_minute" and "rate_limit_per_day" in context
+			// which are set by a wrapper that reads from "api_key_record"
 			return 60, 10000
 		}))
 	} else {
@@ -271,6 +272,12 @@ func SetupRouter(
 		analyticsHandler := handlers.NewAnalyticsHandler(requestRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 		api.GET("/analytics/usage", analyticsHandler.GetUsageStats)
 		api.GET("/analytics/requests", analyticsHandler.GetRequests)
+	}
+
+	// User info endpoint (works with API key authentication)
+	if postgresClient != nil && userRepo != nil {
+		userHandler := handlers.NewUserHandler(userRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		api.GET("/user", userHandler.HandleGetUser) // Get user info from API key
 	}
 
 	// Tunnel endpoints (require API key authentication)

@@ -25,12 +25,11 @@ type RequestTracker struct {
 	defaultTimeout  time.Duration
 }
 
-// NewRequestTracker creates a new request tracker
 func NewRequestTracker(logger zerolog.Logger) *RequestTracker {
 	return &RequestTracker{
 		pendingRequests: make(map[string]*PendingRequest),
 		logger:          logger,
-		defaultTimeout: 30 * time.Second,
+		defaultTimeout: 120 * time.Second,
 	}
 }
 
@@ -157,6 +156,11 @@ func (rt *RequestTracker) GetPendingCount() int {
 
 // WaitForResponse waits for a response to a pending request
 func (req *PendingRequest) WaitForResponse(ctx context.Context) (*HTTPResponse, error) {
+	timeout := req.Timeout
+	if timeout > 120*time.Second {
+		timeout = 120 * time.Second
+	}
+	
 	select {
 	case response := <-req.ResponseChan:
 		return response, nil
@@ -164,7 +168,7 @@ func (req *PendingRequest) WaitForResponse(ctx context.Context) (*HTTPResponse, 
 		return nil, err
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-time.After(req.Timeout):
+	case <-time.After(timeout):
 		return nil, ErrRequestTimeout
 	}
 }

@@ -278,6 +278,17 @@ func startTunnelFromConfig(tc tunnel.TunnelConfig) error {
 
 	// Connect to tunnel server
 	if err := client.Connect(); err != nil {
+		errStr := err.Error()
+		// Check if this is an authentication error - automatically log out
+		if strings.Contains(strings.ToLower(errStr), "token") ||
+		   strings.Contains(strings.ToLower(errStr), "authentication") ||
+		   strings.Contains(strings.ToLower(errStr), "expired") ||
+		   strings.Contains(strings.ToLower(errStr), "invalid") {
+			// Clear expired/invalid token
+			clearExpiredToken()
+			log.Warn().Msg("Authentication failed - token cleared. Please run 'uniroute auth login' to authenticate again")
+			return fmt.Errorf("authentication failed: %w\n\nPlease run 'uniroute auth login' to authenticate again", err)
+		}
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 
@@ -341,9 +352,7 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 
 	// Use Bubble Tea for UI if available, otherwise fall back to ANSI approach
 	// For now, we'll use Bubble Tea
-	fmt.Println()
-	fmt.Println(color.Cyan("Starting UniRoute Tunnel..."))
-	fmt.Println()
+	// Note: "Starting UniRoute Tunnel..." is now shown in the Bubble Tea header
 
 	// Create tunnel client with protocol and host
 	client := tunnel.NewTunnelClientWithOptions(tunnelServerURL, localURL, tunnelProtocol, tunnelHost, log)
@@ -357,10 +366,11 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 	
 	// Request handler is set up in Bubble Tea model
 
-	// If --new flag is set, clear resume info to force new tunnel
+	// If --new flag is set, clear resume info and set forceNew flag to force new tunnel
 	if forceNew {
-		client.ClearResumeInfo()
-		log.Info().Msg("--new flag set: forcing new tunnel creation (not resuming)")
+		client.ClearResumeInfo() // This also sets forceNew = true internally
+		client.SetForceNew(true)  // Explicitly set forceNew flag
+		log.Info().Msg("--new flag set: forcing new tunnel creation (not resuming or auto-finding)")
 	}
 
 	// If --resume flag is set, use that subdomain instead of saved state
@@ -393,6 +403,17 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 
 	// Connect to tunnel server
 	if err := client.Connect(); err != nil {
+		errStr := err.Error()
+		// Check if this is an authentication error - automatically log out
+		if strings.Contains(strings.ToLower(errStr), "token") ||
+		   strings.Contains(strings.ToLower(errStr), "authentication") ||
+		   strings.Contains(strings.ToLower(errStr), "expired") ||
+		   strings.Contains(strings.ToLower(errStr), "invalid") {
+			// Clear expired/invalid token
+			clearExpiredToken()
+			log.Warn().Msg("Authentication failed - token cleared. Please run 'uniroute auth login' to authenticate again")
+			return fmt.Errorf("authentication failed: %w\n\nPlease run 'uniroute auth login' to authenticate again", err)
+		}
 		return fmt.Errorf("failed to connect to tunnel server: %w", err)
 	}
 

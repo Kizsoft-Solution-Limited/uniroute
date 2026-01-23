@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
+/// <reference types="vitest" />
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -12,6 +13,15 @@ export default defineConfig({
   },
   server: {
     port: 3002,
+    host: '0.0.0.0', // Allow external connections (needed for tunneling)
+    allowedHosts: [
+      '.ngrok-free.app', // Allow all ngrok-free.app subdomains
+      '.ngrok.io',       // Allow all ngrok.io subdomains
+      '.ngrok.app',      // Allow all ngrok.app subdomains
+      '.localhost',      // Allow all localhost subdomains (for UniRoute tunnels)
+      'localhost',
+      '127.0.0.1'
+    ],
     headers: {
       'X-Frame-Options': 'DENY',
       'X-Content-Type-Options': 'nosniff',

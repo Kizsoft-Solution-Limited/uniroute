@@ -142,6 +142,50 @@ func (h *UserHandler) HandleChangePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
 }
 
+// HandleGetUser handles GET /v1/user (works with API key authentication)
+// Returns user information for the authenticated API key
+func (h *UserHandler) HandleGetUser(c *gin.Context) {
+	// Get user ID from context (set by API key middleware)
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	// Get user from database
+	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
+	if err != nil {
+		if err == storage.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		h.logger.Error().Err(err).Msg("Failed to get user")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user"})
+		return
+	}
+
+	// Get user roles (default to ["user"] if not set)
+	roles := user.Roles
+	if len(roles) == 0 {
+		roles = []string{"user"}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":             user.ID.String(),
+		"email":          user.Email,
+		"name":           user.Name,
+		"email_verified": user.EmailVerified,
+		"roles":          roles,
+		"created_at":     user.CreatedAt,
+	})
+}
+
 // UpdateUserRolesRequest represents a request to update user roles (admin only)
 type UpdateUserRolesRequest struct {
 	Roles []string `json:"roles" binding:"required,min=1,dive,oneof=user admin"`

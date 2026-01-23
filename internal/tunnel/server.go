@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -51,7 +52,10 @@ type TunnelServer struct {
 	security        *SecurityMiddleware
 	domainManager   *DomainManager
 	requireAuth     bool
-	jwtValidator    func(tokenString string) (userID string, err error) // JWT validator function (optional)
+	jwtValidator    func(tokenString string) (userID string, err error)                 // JWT validator function (optional)
+	apiKeyValidator func(ctx context.Context, apiKey string) (userID string, err error) // API key validator function (optional) - DEPRECATED: use apiKeyValidatorWithLimits
+	// API key validator that returns rate limits - preferred when available
+	apiKeyValidatorWithLimits func(ctx context.Context, apiKey string) (userID string, rateLimitPerMinute, rateLimitPerDay int, err error)
 }
 
 // TCPConnection represents an active TCP/TLS connection
@@ -85,6 +89,7 @@ type TunnelConnection struct {
 	RequestCount int64
 	handlerReady bool // Flag to indicate handler goroutine is ready
 	mu           sync.RWMutex
+	writeMu      sync.Mutex // Mutex to serialize WebSocket writes (WebSocket is not thread-safe for concurrent writes)
 }
 
 // TunnelConnection is used (Tunnel is in types.go for database model)
@@ -184,14 +189,24 @@ func (ts *TunnelServer) SetJWTValidator(validator func(tokenString string) (user
 	ts.jwtValidator = validator
 }
 
+// SetAPIKeyValidator sets an API key validator function for extracting user ID from API keys
+// This allows tunnels created via API key authentication to be automatically associated with users
+// DEPRECATED: Use SetAPIKeyValidatorWithLimits to also get rate limits
+func (ts *TunnelServer) SetAPIKeyValidator(validator func(ctx context.Context, apiKey string) (userID string, err error)) {
+	ts.apiKeyValidator = validator
+}
+
+// SetAPIKeyValidatorWithLimits sets an API key validator that returns user ID and rate limits
+// This allows tunnels to use the API key's configured rate limits
+func (ts *TunnelServer) SetAPIKeyValidatorWithLimits(validator func(ctx context.Context, apiKey string) (userID string, rateLimitPerMinute, rateLimitPerDay int, err error)) {
+	ts.apiKeyValidatorWithLimits = validator
+}
+
 // Start starts the tunnel server
 func (ts *TunnelServer) Start() error {
 	mux := http.NewServeMux()
 
-	// WebSocket endpoint for tunnel connections
 	mux.HandleFunc("/tunnel", ts.handleTunnelConnection)
-
-	// HTTP endpoint for forwarding requests
 	mux.HandleFunc("/", ts.handleHTTPRequest)
 
 	// Web interface endpoint
@@ -216,8 +231,11 @@ func (ts *TunnelServer) Start() error {
 	})
 
 	ts.httpServer = &http.Server{
-		Addr:    fmt.Sprintf(":%d", ts.port),
-		Handler: mux,
+		Addr:         fmt.Sprintf(":%d", ts.port),
+		Handler:      mux,
+		ReadTimeout:  120 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	ts.logger.Info().Int("port", ts.port).Msg("Tunnel server starting")
@@ -254,6 +272,78 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 	var initMsg InitMessage
 	if err := ws.ReadJSON(&initMsg); err != nil {
 		ts.logger.Error().Err(err).Msg("Failed to read init message")
+		return
+	}
+
+	// Always require authentication for tunnel operations
+	if initMsg.Token == "" {
+		ts.logger.Warn().
+			Str("protocol", initMsg.Protocol).
+			Str("local_url", initMsg.LocalURL).
+			Msg("Tunnel connection rejected - authentication required")
+		ws.WriteJSON(map[string]string{
+			"error":   "authentication required",
+			"message": "Please run 'uniroute auth login' to authenticate before creating tunnels",
+		})
+		ws.Close()
+		return
+	}
+
+	// Validate token - check if it's an API key or JWT token
+	var authenticatedUserID string
+	var authErr error
+	var apiKeyRateLimitPerMinute, apiKeyRateLimitPerDay int
+	var isAPIKey bool // Track if this is an API key for rate limit application
+
+	if strings.HasPrefix(initMsg.Token, "ur_") {
+		isAPIKey = true
+		if ts.apiKeyValidatorWithLimits != nil {
+			authenticatedUserID, apiKeyRateLimitPerMinute, apiKeyRateLimitPerDay, authErr = ts.apiKeyValidatorWithLimits(r.Context(), initMsg.Token)
+			if authErr == nil && authenticatedUserID != "" {
+				ts.logger.Info().
+					Str("user_id", authenticatedUserID).
+					Int("rate_limit_per_minute", apiKeyRateLimitPerMinute).
+					Int("rate_limit_per_day", apiKeyRateLimitPerDay).
+					Msg("API key validated with rate limits")
+			} else {
+				ts.logger.Warn().
+					Err(authErr).
+					Str("user_id", authenticatedUserID).
+					Msg("API key validation failed")
+			}
+		} else if ts.apiKeyValidator != nil {
+			authenticatedUserID, authErr = ts.apiKeyValidator(r.Context(), initMsg.Token)
+		} else {
+			ts.logger.Warn().Msg("API key validator not configured")
+			ws.WriteJSON(map[string]string{
+				"error":   "authentication not configured",
+				"message": "Tunnel server requires API key validation but API key validator is not configured",
+			})
+			ws.Close()
+			return
+		}
+	} else {
+		if ts.jwtValidator == nil {
+			ts.logger.Warn().Msg("JWT validator not configured")
+			ws.WriteJSON(map[string]string{
+				"error":   "authentication not configured",
+				"message": "Tunnel server requires JWT validation but JWT validator is not configured",
+			})
+			ws.Close()
+			return
+		}
+		authenticatedUserID, authErr = ts.jwtValidator(initMsg.Token)
+	}
+
+	if authErr != nil || authenticatedUserID == "" {
+		ts.logger.Warn().
+			Err(authErr).
+			Msg("Tunnel connection rejected - invalid or expired token")
+		ws.WriteJSON(map[string]string{
+			"error":   "invalid or expired token",
+			"message": "Please run 'uniroute auth login' to authenticate again",
+		})
+		ws.Close()
 		return
 	}
 
@@ -301,14 +391,57 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 	var subdomain string
 	var tunnelID string
 	var isResume bool
+	var autoFoundTunnel bool // Track if tunnel was auto-found (to preserve isResume flag)
+	// authenticatedUserID is already extracted above and will be used in resume logic
 
-	ts.logger.Info().
-		Str("init_subdomain", initMsg.Subdomain).
-		Str("init_tunnel_id", initMsg.TunnelID).
-		Str("init_protocol", initMsg.Protocol).
-		Msg("Received tunnel connection request - checking for resume")
+	if initMsg.ForceNew {
+		isResume = false
+		subdomain = ""
+		tunnelID = ""
+	} else if initMsg.Subdomain == "" && initMsg.TunnelID == "" && initMsg.Host == "" && authenticatedUserID != "" && ts.repository != nil {
 
-	if initMsg.Subdomain != "" || initMsg.TunnelID != "" {
+		userUUID, parseErr := uuid.Parse(authenticatedUserID)
+		if parseErr == nil {
+			userTunnels, err := ts.repository.ListTunnelsByUser(r.Context(), userUUID)
+			if err == nil && len(userTunnels) > 0 {
+				// Query already returns tunnels ordered by: active first, then most recent (created_at DESC)
+				// So the first tunnel in the list is already the best one to resume
+				// This works for all protocols (HTTP, TCP, TLS, UDP) - protocol is not filtered
+				// The database query uses: ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, created_at DESC
+				bestTunnel := userTunnels[0] // First tunnel is already the best (active first, then most recent)
+
+				if bestTunnel != nil && bestTunnel.UserID == authenticatedUserID {
+					subdomain = bestTunnel.Subdomain
+					tunnelID = bestTunnel.ID
+					isResume = true
+					autoFoundTunnel = true
+				} else if bestTunnel != nil {
+					ts.logger.Warn().
+						Str("tunnel_id", bestTunnel.ID).
+						Str("tunnel_user_id", bestTunnel.UserID).
+						Str("authenticated_user_id", authenticatedUserID).
+						Msg("Found tunnel but user_id mismatch - will create new tunnel")
+				}
+			} else if err != nil {
+				ts.logger.Debug().
+					Err(err).
+					Str("user_id", authenticatedUserID).
+					Msg("Failed to list tunnels for user")
+			} else {
+				ts.logger.Debug().
+					Str("user_id", authenticatedUserID).
+					Msg("No existing tunnels found for user - will create new tunnel")
+			}
+		} else {
+			ts.logger.Debug().
+				Err(parseErr).
+				Str("user_id", authenticatedUserID).
+				Msg("Failed to parse user_id as UUID - cannot look up user tunnels")
+		}
+	}
+
+	if autoFoundTunnel && isResume && subdomain != "" && tunnelID != "" {
+	} else if initMsg.Subdomain != "" || initMsg.TunnelID != "" {
 		// Try to resume existing tunnel
 		// First check in-memory tunnels (active connections)
 		ts.tunnelsMu.RLock()
@@ -329,7 +462,6 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 
 		if existingTunnel != nil {
 			// Resume existing in-memory tunnel
-			// CRITICAL FIX: Don't update the existing tunnel's WebSocket here
 			// Instead, let the unified resume path (below) create a fresh tunnel
 			// This ensures consistent behavior and prevents race conditions
 			subdomain = existingTunnel.Subdomain
@@ -367,6 +499,7 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 						Str("tunnel_id", dbTunnel.ID).
 						Str("subdomain", dbTunnel.Subdomain).
 						Str("status", dbTunnel.Status).
+						Str("user_id", dbTunnel.UserID).
 						Msg("Found tunnel in database by subdomain")
 				}
 			} else if initMsg.TunnelID != "" {
@@ -387,52 +520,150 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 							Str("tunnel_id", dbTunnel.ID).
 							Str("subdomain", dbTunnel.Subdomain).
 							Str("status", dbTunnel.Status).
+							Str("user_id", dbTunnel.UserID).
 							Msg("Found tunnel in database by ID")
 					}
 				} else {
-					err = parseErr
+					// Tunnel ID is not a valid UUID (might be hex-formatted old ID)
+					// Try to extract subdomain from the hex ID and look up by subdomain
+					// Hex IDs are typically 12 characters, and subdomains are derived from them
 					ts.logger.Debug().
 						Err(parseErr).
 						Str("tunnel_id", initMsg.TunnelID).
-						Msg("Failed to parse tunnel ID as UUID")
+						Msg("Failed to parse tunnel ID as UUID - trying to look up by subdomain")
+
+					// If the tunnel ID looks like a hex ID (12 chars), try to use it as subdomain
+					if len(initMsg.TunnelID) == 12 {
+						ts.logger.Debug().
+							Str("tunnel_id", initMsg.TunnelID).
+							Str("subdomain", initMsg.TunnelID).
+							Msg("Treating hex tunnel ID as subdomain for lookup")
+						dbTunnel, err = ts.repository.GetTunnelBySubdomain(context.Background(), initMsg.TunnelID)
+						if err != nil {
+							ts.logger.Debug().
+								Err(err).
+								Str("tunnel_id", initMsg.TunnelID).
+								Msg("Tunnel not found by subdomain (from hex ID)")
+						} else if dbTunnel != nil {
+							ts.logger.Debug().
+								Str("tunnel_id", dbTunnel.ID).
+								Str("subdomain", dbTunnel.Subdomain).
+								Str("status", dbTunnel.Status).
+								Str("user_id", dbTunnel.UserID).
+								Msg("Found tunnel in database by subdomain (from hex ID)")
+						}
+					} else {
+						err = parseErr
+						ts.logger.Debug().
+							Err(parseErr).
+							Str("tunnel_id", initMsg.TunnelID).
+							Msg("Tunnel ID is not a valid UUID and not a 12-char hex ID - cannot look up")
+					}
 				}
 			}
 
 			if err == nil && dbTunnel != nil {
-				// Found tunnel in database, resume it (regardless of status - inactive tunnels can be resumed)
-				// Use the subdomain from database (this is the authoritative source)
-				// But verify it matches what client requested (for security/validation)
-				if initMsg.Subdomain != "" && dbTunnel.Subdomain != initMsg.Subdomain {
-					ts.logger.Warn().
-						Str("requested_subdomain", initMsg.Subdomain).
-						Str("database_subdomain", dbTunnel.Subdomain).
-						Msg("Subdomain mismatch - using database subdomain (authoritative)")
-				}
-				subdomain = dbTunnel.Subdomain
-				tunnelID = dbTunnel.ID
-				isResume = true
+				// authenticatedUserID was already validated and extracted above (line 289)
+				// Skip tunnels with null user_id or belonging to other users
+				// authenticatedUserID is in scope from the auth check above
+				if authenticatedUserID != "" {
+					if dbTunnel.UserID == "" || dbTunnel.UserID == "null" {
+						ts.logger.Warn().
+							Str("tunnel_id", dbTunnel.ID).
+							Str("subdomain", dbTunnel.Subdomain).
+							Str("authenticated_user_id", authenticatedUserID).
+							Str("db_user_id", dbTunnel.UserID).
+							Msg("Tunnel has null/empty user_id - REJECTING resume (will create new tunnel)")
+						// Don't set resume variables - will create new tunnel below
+						dbTunnel = nil
+						isResume = false
+					} else if dbTunnel.UserID != authenticatedUserID {
+						ts.logger.Info().
+							Str("tunnel_id", dbTunnel.ID).
+							Str("subdomain", dbTunnel.Subdomain).
+							Str("tunnel_user_id", dbTunnel.UserID).
+							Str("authenticated_user_id", authenticatedUserID).
+							Msg("Tunnel belongs to different user - skipping resume (will create new tunnel)")
+						// Don't set resume variables - will create new tunnel below
+						dbTunnel = nil
+						isResume = false
+					} else {
+						// Tunnel belongs to authenticated user - proceed with resume
+						if initMsg.Subdomain != "" && dbTunnel.Subdomain != initMsg.Subdomain {
+							ts.logger.Warn().
+								Str("requested_subdomain", initMsg.Subdomain).
+								Str("database_subdomain", dbTunnel.Subdomain).
+								Msg("Subdomain mismatch - using database subdomain (authoritative)")
+						}
+						subdomain = dbTunnel.Subdomain
+						tunnelID = dbTunnel.ID
+						isResume = true
 
-				ts.logger.Info().
-					Str("tunnel_id", tunnelID).
-					Str("subdomain", subdomain).
-					Str("previous_status", dbTunnel.Status).
-					Str("requested_subdomain", initMsg.Subdomain).
-					Str("requested_tunnel_id", initMsg.TunnelID).
-					Str("database_subdomain", dbTunnel.Subdomain).
-					Msg("Resuming existing tunnel (from database) - will mark as active")
+						ts.logger.Info().
+							Str("tunnel_id", tunnelID).
+							Str("subdomain", subdomain).
+							Str("previous_status", dbTunnel.Status).
+							Str("user_id", dbTunnel.UserID).
+							Str("requested_subdomain", initMsg.Subdomain).
+							Str("requested_tunnel_id", initMsg.TunnelID).
+							Str("database_subdomain", dbTunnel.Subdomain).
+							Msg("Resuming existing tunnel (from database) - tunnel belongs to authenticated user")
+					}
+				} else {
+					// This should not happen since auth is required, but handle it gracefully
+					ts.logger.Warn().
+						Str("tunnel_id", dbTunnel.ID).
+						Str("subdomain", dbTunnel.Subdomain).
+						Msg("Tunnel found but user is not authenticated - skipping resume (will create new tunnel)")
+					// Don't set resume variables - will create new tunnel below
+					dbTunnel = nil
+				}
+			}
+
+			// If dbTunnel was set to nil (skipped), ensure we don't resume
+			// UNLESS it was auto-found and validated (in which case we trust the auto-find)
+			if dbTunnel == nil {
+				// If tunnel was auto-found and validated, preserve isResume = true
+				// The auto-find already validated the tunnel belongs to the user
+				if autoFoundTunnel && isResume && subdomain != "" && tunnelID != "" {
+					// Tunnel was auto-found and validated - keep isResume = true
+					// The lookup might have failed due to timing or other issues, but we trust the auto-find
+					ts.logger.Info().
+						Str("subdomain", subdomain).
+						Str("tunnel_id", tunnelID).
+						Str("authenticated_user_id", authenticatedUserID).
+						Msg("Auto-found tunnel validated - preserving resume flag even though lookup didn't find it (will resume auto-found tunnel)")
+					// Keep isResume = true, subdomain, and tunnelID as set by auto-find
+				} else {
+					// Tunnel was not auto-found, or was rejected - create new tunnel
+					isResume = false
+					// Only clear subdomain/tunnelID if they weren't set by auto-find
+					if !autoFoundTunnel {
+						subdomain = ""
+						tunnelID = ""
+					}
+					ts.logger.Info().
+						Str("requested_subdomain", initMsg.Subdomain).
+						Str("requested_tunnel_id", initMsg.TunnelID).
+						Str("authenticated_user_id", authenticatedUserID).
+						Bool("auto_found", autoFoundTunnel).
+						Msg("No tunnel found with matching user_id - creating new tunnel")
+				}
 			} else {
 				// Tunnel not found in memory or database, create new one
 				if err != nil {
-					ts.logger.Warn().
+					ts.logger.Info().
 						Err(err).
 						Str("requested_subdomain", initMsg.Subdomain).
 						Str("requested_tunnel_id", initMsg.TunnelID).
-						Msg("Tunnel not found in database - will create new tunnel")
+						Str("authenticated_user_id", authenticatedUserID).
+						Msg("Tunnel not found in database - creating new tunnel")
 				} else {
 					ts.logger.Info().
 						Str("requested_subdomain", initMsg.Subdomain).
 						Str("requested_tunnel_id", initMsg.TunnelID).
-						Msg("Requested tunnel not found in memory or database, creating new tunnel")
+						Str("authenticated_user_id", authenticatedUserID).
+						Msg("No tunnel found in memory or database - creating new tunnel")
 				}
 			}
 		} else {
@@ -442,6 +673,16 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 				Str("requested_tunnel_id", initMsg.TunnelID).
 				Msg("Requested tunnel not found in memory (no database), creating new tunnel")
 		}
+	}
+
+	// Log the current state before deciding to create new tunnel or resume
+	if autoFoundTunnel {
+		ts.logger.Info().
+			Bool("is_resume", isResume).
+			Str("subdomain", subdomain).
+			Str("tunnel_id", tunnelID).
+			Str("authenticated_user_id", authenticatedUserID).
+			Msg("Auto-found tunnel state - proceeding to resume logic")
 	}
 
 	// Create new tunnel if not resuming
@@ -460,38 +701,51 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 				return
 			}
 
-			// Check if subdomain is available
-			available := true
-			if ts.domainManager != nil && ts.repository != nil {
-				available, err = ts.domainManager.CheckSubdomainAvailability(context.Background(), ts.repository, initMsg.Host)
-				if err != nil {
-					ts.logger.Error().Err(err).Str("requested_host", initMsg.Host).Msg("Failed to check subdomain availability")
-					ws.WriteJSON(map[string]string{"error": "failed to check subdomain availability"})
+			// If ForceNew is set, we'll create a new tunnel with this subdomain
+			// But we still need to check if it's available (unless it's the user's own tunnel)
+			if !initMsg.ForceNew {
+				// Check if subdomain is available
+				available := true
+				if ts.domainManager != nil && ts.repository != nil {
+					available, err = ts.domainManager.CheckSubdomainAvailability(context.Background(), ts.repository, initMsg.Host)
+					if err != nil {
+						ts.logger.Error().Err(err).Str("requested_host", initMsg.Host).Msg("Failed to check subdomain availability")
+						ws.WriteJSON(map[string]string{"error": "failed to check subdomain availability"})
+						ws.Close()
+						return
+					}
+				}
+
+				// Also check if subdomain is already in use by an active tunnel
+				ts.tunnelsMu.RLock()
+				_, existsInMemory := ts.tunnels[initMsg.Host]
+				ts.tunnelsMu.RUnlock()
+
+				if !available || existsInMemory {
+					ts.logger.Warn().
+						Str("requested_host", initMsg.Host).
+						Bool("available_in_db", available).
+						Bool("exists_in_memory", existsInMemory).
+						Msg("Requested subdomain is not available")
+					ws.WriteJSON(map[string]string{"error": "subdomain '" + initMsg.Host + "' is not available"})
 					ws.Close()
 					return
 				}
-			}
-
-			// Also check if subdomain is already in use by an active tunnel
-			ts.tunnelsMu.RLock()
-			_, existsInMemory := ts.tunnels[initMsg.Host]
-			ts.tunnelsMu.RUnlock()
-
-			if !available || existsInMemory {
-				ts.logger.Warn().
+			} else {
+				// ForceNew is set - we'll create a new tunnel, but if the subdomain exists and belongs to this user,
+				// we might want to reuse it. For now, we'll create a new tunnel with a different subdomain if needed.
+				// But actually, with ForceNew, the user wants a NEW tunnel, so we should allow reusing their own subdomain
+				ts.logger.Info().
 					Str("requested_host", initMsg.Host).
-					Bool("available_in_db", available).
-					Bool("exists_in_memory", existsInMemory).
-					Msg("Requested subdomain is not available")
-				ws.WriteJSON(map[string]string{"error": "subdomain '" + initMsg.Host + "' is not available"})
-				ws.Close()
-				return
+					Bool("force_new", initMsg.ForceNew).
+					Msg("ForceNew is set - will create new tunnel with requested subdomain (may replace existing)")
 			}
 
 			// Use requested subdomain
 			subdomain = initMsg.Host
 			ts.logger.Info().
 				Str("requested_subdomain", subdomain).
+				Bool("force_new", initMsg.ForceNew).
 				Msg("Using requested subdomain")
 		} else {
 			// Allocate random subdomain using domain manager
@@ -514,49 +768,65 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		// If client sent an old hex-format ID, we need to use the one from database
 		if tunnelID != "" {
 			if _, err := uuid.Parse(tunnelID); err != nil {
-				ts.logger.Warn().
-					Err(err).
-					Str("invalid_tunnel_id", tunnelID).
-					Msg("Resume tunnel ID is not a valid UUID - using database ID instead")
-				// If we found the tunnel in database, use its ID
-				if ts.repository != nil {
-					var dbTunnel *Tunnel
-					if subdomain != "" {
-						dbTunnel, err = ts.repository.GetTunnelBySubdomain(context.Background(), subdomain)
-					}
-					if err == nil && dbTunnel != nil {
-						tunnelID = dbTunnel.ID
+				// Only try to fix invalid IDs if tunnel was NOT auto-found
+				// Auto-found tunnels should already have valid UUIDs from database
+				if !autoFoundTunnel {
+					ts.logger.Warn().
+						Err(err).
+						Str("invalid_tunnel_id", tunnelID).
+						Msg("Resume tunnel ID is not a valid UUID - using database ID instead")
+					// If we found the tunnel in database, use its ID
+					if ts.repository != nil {
+						var dbTunnel *Tunnel
+						if subdomain != "" {
+							dbTunnel, err = ts.repository.GetTunnelBySubdomain(context.Background(), subdomain)
+						}
+						if err == nil && dbTunnel != nil {
+							tunnelID = dbTunnel.ID
+						} else {
+							// Can't resume with invalid ID, create new tunnel
+							ts.logger.Warn().Msg("Cannot resume tunnel with invalid ID - creating new tunnel")
+							isResume = false
+							tunnelID = generateID()
+						}
 					} else {
-						// Can't resume with invalid ID, create new tunnel
-						ts.logger.Warn().Msg("Cannot resume tunnel with invalid ID - creating new tunnel")
+						// No database, can't validate - create new tunnel
+						ts.logger.Warn().Msg("Cannot validate tunnel ID without database - creating new tunnel")
 						isResume = false
 						tunnelID = generateID()
 					}
 				} else {
-					// No database, can't validate - create new tunnel
-					ts.logger.Warn().Msg("Cannot validate tunnel ID without database - creating new tunnel")
-					isResume = false
-					tunnelID = generateID()
+					// Auto-found tunnel with invalid ID - this shouldn't happen, but log it
+					ts.logger.Error().
+						Err(err).
+						Str("tunnel_id", tunnelID).
+						Str("subdomain", subdomain).
+						Msg("CRITICAL: Auto-found tunnel has invalid UUID - this should not happen")
+					// Don't clear isResume for auto-found tunnels - trust the auto-find
 				}
 			}
+		} else if autoFoundTunnel {
+			// Auto-found tunnel but tunnelID is empty - this shouldn't happen
+			ts.logger.Error().
+				Str("subdomain", subdomain).
+				Msg("CRITICAL: Auto-found tunnel but tunnelID is empty - this should not happen")
+			// Don't clear isResume - trust the auto-find, it will be handled in resume logic
 		}
 	}
 
 	// Create or update tunnel connection
 	var tunnel *TunnelConnection
-	// Ensure subdomain is set (critical for registration)
 	if subdomain == "" {
 		ts.logger.Error().Msg("CRITICAL: subdomain is empty - cannot create tunnel")
 		ws.WriteJSON(map[string]string{"error": "subdomain is required"})
 		return
 	}
-	
+
 	if isResume {
 		// SIMPLIFIED: Always create a fresh tunnel connection for resume, just like new tunnel
 		// This ensures resume works exactly the same way as new tunnel creation
-		// CRITICAL: Create the new tunnel FIRST, then atomically replace the old one
 		// This minimizes the window where no tunnel is registered (prevents 404 errors)
-		
+
 		// Double-check subdomain is not empty before proceeding
 		if subdomain == "" {
 			ts.logger.Error().
@@ -566,9 +836,8 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			ws.WriteJSON(map[string]string{"error": "subdomain is required for resume"})
 			return
 		}
-		
+
 		// Create fresh tunnel connection
-		// CRITICAL: Always use LocalURL from client's init message, not from database
 		// This ensures the tunnel forwards to the port the user specified
 		tunnel = &TunnelConnection{
 			ID:           tunnelID,
@@ -583,61 +852,52 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			handlerReady: false, // Will be set to true when handler starts
 		}
 
-		// CRITICAL: Atomically replace old tunnel with new one
-		// This ensures there's no gap where HTTP requests would get 404
+		// Configure rate limits from API key BEFORE registering tunnel
+		// This ensures rate limits are set before any requests can come in
+		// ALWAYS apply rate limits if API key was used (even if values are 0, we should still set them)
+		if isAPIKey {
+			if apiKeyRateLimitPerMinute > 0 || apiKeyRateLimitPerDay > 0 {
+				// Calculate hourly limit from daily (more accurate than dividing by 24)
+				// If daily is very high, set a reasonable hourly limit
+				hourlyLimit := apiKeyRateLimitPerDay / 24
+				if hourlyLimit < apiKeyRateLimitPerMinute*60 {
+					// Hourly should be at least 60x the per-minute limit
+					hourlyLimit = apiKeyRateLimitPerMinute * 60
+				}
+
+				rateLimitConfig := &RateLimitConfig{
+					RequestsPerMinute: apiKeyRateLimitPerMinute,
+					RequestsPerHour:   hourlyLimit,
+					RequestsPerDay:    apiKeyRateLimitPerDay,
+					BurstSize:         50, // Higher burst for high-limit API keys
+				}
+				ts.rateLimiter.SetRateLimit(tunnelID, rateLimitConfig)
+			}
+		}
+
 		ts.tunnelsMu.Lock()
 		existingTunnel := ts.tunnels[subdomain]
-		
-		// CRITICAL: Register new tunnel FIRST (with valid WSConn)
-		// This ensures HTTP requests always see a valid tunnel
 		ts.tunnels[subdomain] = tunnel
 		registeredCount := len(ts.tunnels)
 		ts.tunnelsMu.Unlock()
-		
-		ts.logger.Debug().
-			Str("tunnel_id", tunnelID).
-			Str("subdomain", subdomain).
-			Int("total_tunnels", registeredCount).
-			Bool("is_resume", isResume).
-			Msg("Registered tunnel in memory")
-		
-		// NOW mark old tunnel as replaced and close its connection
-		// This must happen AFTER new tunnel is registered to avoid 404s
+
 		if existingTunnel != nil && existingTunnel != tunnel {
-			// Get old WebSocket connection before marking as replaced
 			existingTunnel.mu.RLock()
 			oldWSConn := existingTunnel.WSConn
-			oldTunnelID := existingTunnel.ID
 			existingTunnel.mu.RUnlock()
-			
-			// Mark old tunnel's WebSocket as replaced
-			// This signals the old handler to exit immediately when it checks
+
 			existingTunnel.mu.Lock()
 			existingTunnel.WSConn = nil
 			existingTunnel.mu.Unlock()
-			
-			ts.logger.Info().
-				Str("tunnel_id", tunnelID).
-				Str("subdomain", subdomain).
-				Str("old_tunnel_id", oldTunnelID).
-				Msg("Marked old tunnel connection as replaced - old handler will exit")
-			
-			// Close old WebSocket connection after marking as replaced
-			// This will cause the old handler's ReadJSON to fail and exit
 			if oldWSConn != nil && oldWSConn != ws {
 				go func() {
 					// Give old handler a moment to detect the replacement
 					time.Sleep(50 * time.Millisecond)
 					oldWSConn.Close()
-					ts.logger.Debug().
-						Str("tunnel_id", tunnelID).
-						Str("subdomain", subdomain).
-						Str("old_tunnel_id", oldTunnelID).
-						Msg("Closed old WebSocket connection")
 				}()
 			}
 		}
-		
+
 		if existingTunnel != nil && existingTunnel != tunnel {
 			ts.logger.Info().
 				Str("tunnel_id", tunnelID).
@@ -645,12 +905,12 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 				Str("old_tunnel_id", existingTunnel.ID).
 				Msg("Atomically replaced old tunnel with fresh tunnel for resume")
 		}
-		
+
 		// Verify registration succeeded immediately
 		ts.tunnelsMu.RLock()
 		verifyTunnel, verifyExists := ts.tunnels[subdomain]
 		ts.tunnelsMu.RUnlock()
-		
+
 		if !verifyExists || verifyTunnel != tunnel {
 			// Emergency re-registration
 			ts.logger.Error().
@@ -669,7 +929,7 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 				Int("total_tunnels", registeredCount).
 				Msg("Successfully registered resumed tunnel in memory - ready to accept requests")
 		}
-		
+
 		// Allocate TCP port for TCP/TLS tunnels if needed (resumed tunnels might need port allocation)
 		if protocol == ProtocolTCP || protocol == ProtocolTLS {
 			tcpPort := ts.allocateTCPPort(tunnel)
@@ -681,7 +941,7 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 					Msg("Allocated TCP port for resumed tunnel")
 			}
 		}
-		
+
 		// Allocate UDP port for UDP tunnels if needed
 		if protocol == ProtocolUDP {
 			udpPort := ts.allocateUDPPort(tunnel)
@@ -699,7 +959,25 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				
+
+				// Get existing tunnel from database to check user_id
+				// Try to parse as UUID first, if that fails, try to find by subdomain
+				var existingTunnel *Tunnel
+				tunnelUUID, parseErr := uuid.Parse(tunnelID)
+				if parseErr == nil {
+					existingTunnel, _ = ts.repository.GetTunnelByID(ctx, tunnelUUID)
+				} else {
+					// Tunnel ID might be in hex format, try to find by subdomain instead
+					ts.logger.Debug().
+						Err(parseErr).
+						Str("tunnel_id", tunnelID).
+						Str("subdomain", subdomain).
+						Msg("Tunnel ID is not a valid UUID, trying to find tunnel by subdomain")
+					if subdomain != "" {
+						existingTunnel, _ = ts.repository.GetTunnelBySubdomain(ctx, subdomain)
+					}
+				}
+
 				// Update LocalURL first (in case it changed, e.g., different port)
 				if err := ts.repository.UpdateTunnelLocalURL(ctx, tunnelID, initMsg.LocalURL); err != nil {
 					ts.logger.Error().
@@ -708,14 +986,78 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 						Str("local_url", initMsg.LocalURL).
 						Msg("Failed to update tunnel LocalURL on resume")
 				}
-				
-				// Update status to active
+
+				// If tunnel doesn't have user_id and token is provided, try to associate it
+				if existingTunnel != nil && existingTunnel.UserID == "" && initMsg.Token != "" {
+					if ts.jwtValidator != nil {
+						if extractedUserID, err := ts.jwtValidator(initMsg.Token); err == nil && extractedUserID != "" {
+							if userUUID, parseErr := uuid.Parse(extractedUserID); parseErr == nil {
+								// Use the tunnel ID from the database (which is a valid UUID)
+								associateTunnelID := existingTunnel.ID
+								if err := ts.repository.AssociateTunnelWithUser(ctx, uuid.MustParse(associateTunnelID), userUUID); err != nil {
+									ts.logger.Warn().
+										Err(err).
+										Str("tunnel_id", tunnelID).
+										Str("db_tunnel_id", associateTunnelID).
+										Str("user_id", extractedUserID).
+										Msg("Failed to associate tunnel with user on resume")
+								} else {
+									ts.logger.Info().
+										Str("tunnel_id", tunnelID).
+										Str("db_tunnel_id", associateTunnelID).
+										Str("subdomain", subdomain).
+										Str("user_id", extractedUserID).
+										Msg("Associated tunnel with user on resume (tunnel was created without user_id)")
+								}
+							}
+						} else {
+							ts.logger.Warn().
+								Err(err).
+								Str("tunnel_id", tunnelID).
+								Msg("Failed to extract user ID from token when trying to associate tunnel on resume")
+						}
+					} else {
+						ts.logger.Debug().
+							Str("tunnel_id", tunnelID).
+							Msg("Token provided but JWT validator not configured - cannot associate tunnel with user on resume")
+					}
+				} else if existingTunnel != nil && existingTunnel.UserID != "" {
+					ts.logger.Debug().
+						Str("tunnel_id", tunnelID).
+						Str("user_id", existingTunnel.UserID).
+						Msg("Tunnel already has user_id - preserving it on resume")
+				} else if existingTunnel == nil {
+					ts.logger.Warn().
+						Str("tunnel_id", tunnelID).
+						Str("subdomain", subdomain).
+						Msg("Could not find tunnel in database to check user_id - association skipped")
+				}
+
+				// Update status to active (this preserves existing user_id)
 				if err := ts.repository.UpdateTunnelStatus(ctx, tunnelID, "active"); err != nil {
 					ts.logger.Error().
 						Err(err).
 						Str("tunnel_id", tunnelID).
 						Msg("Failed to update tunnel status to active on resume from database")
 				} else {
+					// Verify user_id and custom domain are preserved after status update
+					if existingTunnel != nil {
+						logEntry := ts.logger.Info().
+							Str("tunnel_id", tunnelID).
+							Str("subdomain", subdomain).
+							Str("user_id", existingTunnel.UserID)
+
+						if existingTunnel.CustomDomain != "" {
+							logEntry = logEntry.Str("custom_domain", existingTunnel.CustomDomain)
+						}
+
+						logEntry.Msg("Updated tunnel status to active - user_id and custom domain preserved")
+					} else {
+						ts.logger.Info().
+							Str("tunnel_id", tunnelID).
+							Str("subdomain", subdomain).
+							Msg("Updated tunnel status to active")
+					}
 					// Update last_active_at when resuming
 					if err := ts.repository.UpdateTunnelActivity(ctx, tunnelID, 0); err != nil {
 						ts.logger.Error().
@@ -727,10 +1069,28 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			}()
 		}
 
-		ts.logger.Info().
-			Str("tunnel_id", tunnelID).
-			Str("subdomain", subdomain).
-			Msg("Created fresh tunnel connection for resume (same code path as new tunnel)")
+		// Configure rate limits from API key BEFORE registering tunnel
+		// This ensures rate limits are set before any requests can come in
+		// ALWAYS apply rate limits if API key was used (even if values are 0, we should still set them)
+		if isAPIKey {
+			if apiKeyRateLimitPerMinute > 0 || apiKeyRateLimitPerDay > 0 {
+				// Calculate hourly limit from daily (more accurate than dividing by 24)
+				// If daily is very high, set a reasonable hourly limit
+				hourlyLimit := apiKeyRateLimitPerDay / 24
+				if hourlyLimit < apiKeyRateLimitPerMinute*60 {
+					// Hourly should be at least 60x the per-minute limit
+					hourlyLimit = apiKeyRateLimitPerMinute * 60
+				}
+
+				rateLimitConfig := &RateLimitConfig{
+					RequestsPerMinute: apiKeyRateLimitPerMinute,
+					RequestsPerHour:   hourlyLimit,
+					RequestsPerDay:    apiKeyRateLimitPerDay,
+					BurstSize:         50, // Higher burst for high-limit API keys
+				}
+				ts.rateLimiter.SetRateLimit(tunnelID, rateLimitConfig)
+			}
+		}
 	} else {
 		// Create new tunnel connection
 		tunnel = &TunnelConnection{
@@ -746,32 +1106,20 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			handlerReady: false, // Will be set to true when handler starts
 		}
 
-		// Register tunnel
-		ts.tunnelsMu.Lock()
-		ts.tunnels[subdomain] = tunnel
-		ts.tunnelsMu.Unlock()
+		if isAPIKey {
+			if apiKeyRateLimitPerMinute > 0 || apiKeyRateLimitPerDay > 0 {
+				hourlyLimit := apiKeyRateLimitPerDay / 24
+				if hourlyLimit < apiKeyRateLimitPerMinute*60 {
+					hourlyLimit = apiKeyRateLimitPerMinute * 60
+				}
 
-		// Allocate TCP port for TCP/TLS tunnels
-		if protocol == ProtocolTCP || protocol == ProtocolTLS {
-			tcpPort := ts.allocateTCPPort(tunnel)
-			if tcpPort > 0 {
-				ts.logger.Info().
-					Str("tunnel_id", tunnelID).
-					Str("protocol", protocol).
-					Int("tcp_port", tcpPort).
-					Msg("Allocated TCP port for tunnel")
-			}
-		}
-		
-		// Allocate UDP port for UDP tunnels
-		if protocol == ProtocolUDP {
-			udpPort := ts.allocateUDPPort(tunnel)
-			if udpPort > 0 {
-				ts.logger.Info().
-					Str("tunnel_id", tunnelID).
-					Str("protocol", protocol).
-					Int("udp_port", udpPort).
-					Msg("Allocated UDP port for tunnel")
+				rateLimitConfig := &RateLimitConfig{
+					RequestsPerMinute: apiKeyRateLimitPerMinute,
+					RequestsPerHour:   hourlyLimit,
+					RequestsPerDay:    apiKeyRateLimitPerDay,
+					BurstSize:         50,
+				}
+				ts.rateLimiter.SetRateLimit(tunnelID, rateLimitConfig)
 			}
 		}
 	}
@@ -874,30 +1222,67 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 
 	if ts.repository != nil && !isResume {
 		// Try to extract user ID from auth token if provided
+		// Use authenticatedUserID that was already validated above (works for both JWT and API keys)
 		var userID string
-		if initMsg.Token != "" {
-			if ts.jwtValidator != nil {
-				if extractedUserID, err := ts.jwtValidator(initMsg.Token); err == nil && extractedUserID != "" {
-					userID = extractedUserID
-					ts.logger.Info().
-						Str("tunnel_id", tunnelID).
-						Str("user_id", userID).
-						Msg("Extracted user ID from auth token - tunnel will be associated with user")
+		if authenticatedUserID != "" {
+			// authenticatedUserID was already extracted and validated during authentication
+			// This works for both JWT tokens and API keys
+			userID = authenticatedUserID
+			ts.logger.Info().
+				Str("tunnel_id", tunnelID).
+				Str("user_id", userID).
+				Str("subdomain", subdomain).
+				Bool("is_api_key", strings.HasPrefix(initMsg.Token, "ur_")).
+				Msg("Using authenticated user ID - tunnel will be associated with user")
+		} else {
+			// authenticatedUserID should always be set if authentication succeeded
+			// This is a fallback in case something went wrong
+			ts.logger.Warn().
+				Str("tunnel_id", tunnelID).
+				Str("subdomain", subdomain).
+				Str("has_token", fmt.Sprintf("%v", initMsg.Token != "")).
+				Msg("authenticatedUserID is empty but creating tunnel - attempting to extract from token")
+
+			if initMsg.Token != "" {
+				// Fallback: try to extract from token if authenticatedUserID wasn't set (shouldn't happen)
+				if ts.jwtValidator != nil {
+					if extractedUserID, err := ts.jwtValidator(initMsg.Token); err == nil && extractedUserID != "" {
+						userID = extractedUserID
+						ts.logger.Info().
+							Str("tunnel_id", tunnelID).
+							Str("user_id", userID).
+							Msg("Extracted user ID from JWT token - tunnel will be associated with user")
+					} else {
+						ts.logger.Warn().
+							Err(err).
+							Str("tunnel_id", tunnelID).
+							Msg("Failed to extract user ID from JWT token (tunnel will be unassociated)")
+					}
+				} else if ts.apiKeyValidator != nil && strings.HasPrefix(initMsg.Token, "ur_") {
+					// Try API key validator as fallback
+					if extractedUserID, err := ts.apiKeyValidator(r.Context(), initMsg.Token); err == nil && extractedUserID != "" {
+						userID = extractedUserID
+						ts.logger.Info().
+							Str("tunnel_id", tunnelID).
+							Str("user_id", userID).
+							Msg("Extracted user ID from API key - tunnel will be associated with user")
+					} else {
+						ts.logger.Warn().
+							Err(err).
+							Str("tunnel_id", tunnelID).
+							Msg("Failed to extract user ID from API key (tunnel will be unassociated)")
+					}
 				} else {
 					ts.logger.Warn().
-						Err(err).
 						Str("tunnel_id", tunnelID).
-						Msg("Failed to extract user ID from token (tunnel will be unassociated) - JWT validator may not be configured or token invalid")
+						Msg("Auth token provided but validators not configured - tunnel will be unassociated. Set JWT_SECRET or API_KEY_SECRET in tunnel server config.")
 				}
 			} else {
 				ts.logger.Warn().
 					Str("tunnel_id", tunnelID).
-					Msg("Auth token provided but JWT validator not configured - tunnel will be unassociated. Set JWT_SECRET in tunnel server config.")
+					Str("subdomain", subdomain).
+					Msg("No auth token provided and authenticatedUserID is empty - tunnel will be unassociated")
 			}
-		} else {
-			ts.logger.Debug().
-				Str("tunnel_id", tunnelID).
-				Msg("No auth token provided - tunnel will be unassociated")
 		}
 
 		dbTunnel := &Tunnel{
@@ -975,7 +1360,7 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 	ts.tunnelsMu.RLock()
 	registeredTunnel, isRegistered := ts.tunnels[subdomain]
 	ts.tunnelsMu.RUnlock()
-	
+
 	if !isRegistered || registeredTunnel != tunnel {
 		ts.logger.Error().
 			Str("subdomain", subdomain).
@@ -986,7 +1371,7 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.tunnels[subdomain] = tunnel
 		ts.tunnelsMu.Unlock()
 	}
-	
+
 	// Verify WebSocket connection is set
 	if tunnel.WSConn == nil {
 		ts.logger.Error().
@@ -997,13 +1382,12 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// CRITICAL: Start handler BEFORE sending success response
 	// This ensures the tunnel is fully ready when client receives "Tunnel Connected Successfully!"
 	// Verify tunnel is registered and WebSocket is set before starting handler
 	ts.tunnelsMu.RLock()
 	finalTunnel, finalExists := ts.tunnels[subdomain]
 	ts.tunnelsMu.RUnlock()
-	
+
 	if !finalExists || finalTunnel != tunnel {
 		ts.logger.Error().
 			Str("subdomain", subdomain).
@@ -1014,11 +1398,11 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.tunnels[subdomain] = tunnel
 		ts.tunnelsMu.Unlock()
 	}
-	
+
 	tunnel.mu.RLock()
 	wsConnCheck := tunnel.WSConn
 	tunnel.mu.RUnlock()
-	
+
 	if wsConnCheck == nil {
 		ts.logger.Error().
 			Str("subdomain", subdomain).
@@ -1026,7 +1410,7 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			Msg("CRITICAL: WebSocket connection is nil before starting handler")
 		return
 	}
-	
+
 	ts.logger.Info().
 		Str("tunnel_id", tunnelID).
 		Str("subdomain", subdomain).
@@ -1035,13 +1419,9 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		Bool("ws_conn_set", wsConnCheck != nil).
 		Msg("Tunnel ready - starting message handler")
 
-	// CRITICAL: Start handler immediately - it will be ready to process requests
 	// The handler starts its message loop immediately, so it's ready as soon as goroutine starts
 	go ts.handleTunnelMessages(tunnel)
-	
-	// CRITICAL: Wait for handler to be ready BEFORE sending success response
-	// This ensures HTTP requests won't arrive before handler is initialized
-	// For resume, this is especially important to prevent 404s
+
 	maxWait := 100 // Wait up to 1 second (increased for resume reliability)
 	for i := 0; i < maxWait; i++ {
 		tunnel.mu.RLock()
@@ -1053,12 +1433,12 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	
+
 	// Final check
 	tunnel.mu.RLock()
 	handlerReady := tunnel.handlerReady
 	tunnel.mu.RUnlock()
-	
+
 	if !handlerReady {
 		ts.logger.Warn().
 			Str("tunnel_id", tunnelID).
@@ -1072,13 +1452,13 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			Bool("is_resume", isResume).
 			Msg("Handler confirmed ready - sending success response to client")
 	}
-	
+
 	// Final verification: ensure tunnel is still registered and ready
 	ts.tunnelsMu.RLock()
 	finalVerify, finalVerifyExists := ts.tunnels[subdomain]
 	tunnelReady := finalVerifyExists && finalVerify == tunnel
 	ts.tunnelsMu.RUnlock()
-	
+
 	if !tunnelReady {
 		ts.logger.Error().
 			Str("tunnel_id", tunnelID).
@@ -1089,14 +1469,14 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.tunnelsMu.Unlock()
 		tunnelReady = true // Update after re-registering
 	}
-	
+
 	// CRITICAL: Final verification that tunnel is accessible via handleHTTPRequest
 	// This ensures that when the client receives success, HTTP requests will definitely find the tunnel
 	ts.tunnelsMu.RLock()
 	verifyAccessible, accessibleExists := ts.tunnels[subdomain]
 	accessible := accessibleExists && verifyAccessible == tunnel && verifyAccessible.WSConn != nil
 	ts.tunnelsMu.RUnlock()
-	
+
 	if !accessible {
 		ts.logger.Error().
 			Str("tunnel_id", tunnelID).
@@ -1121,20 +1501,20 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.logger.Error().Err(err).Msg("Failed to send tunnel creation response")
 		return
 	}
-	
+
 	ts.logger.Info().
 		Str("tunnel_id", tunnelID).
 		Str("subdomain", subdomain).
 		Bool("is_resume", isResume).
 		Msg("Tunnel connected and ready")
-	
+
 	// Final verification after a brief moment to ensure tunnel stayed registered
 	go func() {
 		time.Sleep(200 * time.Millisecond)
 		ts.tunnelsMu.RLock()
 		stillThere, stillExists := ts.tunnels[subdomain]
 		ts.tunnelsMu.RUnlock()
-		
+
 		if !stillExists || stillThere != tunnel {
 			ts.logger.Error().
 				Str("tunnel_id", tunnelID).
@@ -1166,7 +1546,7 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 	tunnelSubdomain := tunnel.Subdomain
 	tunnelID := tunnel.ID
 	tunnel.mu.RUnlock()
-	
+
 	if ourWSConn == nil {
 		ts.logger.Error().
 			Str("tunnel_id", tunnelID).
@@ -1174,24 +1554,24 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 			Msg("CRITICAL: handleTunnelMessages started with nil WebSocket connection - exiting")
 		return
 	}
-	
+
 	ts.logger.Info().
 		Str("tunnel_id", tunnelID).
 		Str("subdomain", tunnelSubdomain).
 		Msg("handleTunnelMessages started - beginning message loop and ready to process requests")
-	
+
 	// Mark handler as ready
 	tunnel.mu.Lock()
 	tunnel.handlerReady = true
 	tunnel.mu.Unlock()
-	
+
 	// Verify tunnel is still registered after a brief moment (catch any immediate removal)
 	// Minimal sleep to make handler ready as fast as possible
 	time.Sleep(20 * time.Millisecond)
 	ts.tunnelsMu.RLock()
 	stillRegistered, stillExists := ts.tunnels[tunnelSubdomain]
 	ts.tunnelsMu.RUnlock()
-	
+
 	if !stillExists || stillRegistered != tunnel {
 		ts.logger.Error().
 			Str("tunnel_id", tunnelID).
@@ -1207,13 +1587,13 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 			Str("subdomain", tunnelSubdomain).
 			Msg("Re-registered tunnel after immediate removal")
 	}
-	
+
 	defer func() {
 		// Only close if this is still our connection (hasn't been replaced)
 		tunnel.mu.RLock()
 		currentWSConn := tunnel.WSConn
 		tunnel.mu.RUnlock()
-		
+
 		if currentWSConn == ourWSConn {
 			ourWSConn.Close()
 		} else {
@@ -1234,7 +1614,7 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 		tunnel.mu.RLock()
 		currentWSConn := tunnel.WSConn
 		tunnel.mu.RUnlock()
-		
+
 		// Exit if connection is nil (marked as replaced) or different (replaced with new connection)
 		if currentWSConn == nil || currentWSConn != ourWSConn {
 			// Connection has been replaced or marked as replaced - our goroutine is obsolete, exit silently
@@ -1246,17 +1626,16 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 				Msg("WebSocket connection replaced or marked as replaced - old handler exiting (tunnel resumed)")
 			return // Don't call removeTunnel - new connection is already active
 		}
-		
-		// Set read deadline before each read to detect stale connections
+
 		ourWSConn.SetReadDeadline(time.Now().Add(readDeadline))
-		
+
 		var msg TunnelMessage
 		if err := ourWSConn.ReadJSON(&msg); err != nil {
 			// Check again if connection was replaced during ReadJSON
 			tunnel.mu.RLock()
 			currentWSConn = tunnel.WSConn
 			tunnel.mu.RUnlock()
-			
+
 			if currentWSConn != ourWSConn {
 				// Connection was replaced during read - don't remove tunnel
 				ts.logger.Debug().
@@ -1265,7 +1644,7 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 					Msg("WebSocket connection replaced during read - old handler exiting (tunnel resumed)")
 				return
 			}
-			
+
 			// Check if this is a normal close (client shutdown) vs. unexpected error
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				ts.logger.Info().
@@ -1279,18 +1658,18 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 					Err(err).
 					Msg("Tunnel disconnected (unexpected error)")
 			}
-			
+
 			ts.removeTunnel(tunnelSubdomain)
 			return
 		}
-		
+
 		// Reset read deadline after successful read (connection is alive)
 		tunnel.WSConn.SetReadDeadline(time.Time{}) // Clear deadline
 
 		tunnel.mu.Lock()
 		tunnel.LastActive = time.Now()
 		tunnel.mu.Unlock()
-		
+
 		// Periodically update database last_active_at (every 30 seconds or on ping)
 		// This ensures the database reflects that the tunnel is still alive
 		// We do this on ping messages to avoid too frequent DB updates
@@ -1302,7 +1681,7 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 					tunnel.mu.RLock()
 					tunnelID := tunnel.ID
 					tunnel.mu.RUnlock()
-					
+
 					// Update last_active_at in database (don't change request count on ping)
 					if err := ts.repository.UpdateTunnelActivity(ctx, tunnelID, 0); err != nil {
 						ts.logger.Debug().
@@ -1317,7 +1696,22 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 		// Handle different message types
 		switch msg.Type {
 		case MsgTypePing:
-			tunnel.WSConn.WriteJSON(TunnelMessage{Type: MsgTypePong})
+			tunnel.mu.RLock()
+			wsConn := tunnel.WSConn
+			tunnel.mu.RUnlock()
+			if wsConn != nil {
+				pongMsg := TunnelMessage{Type: MsgTypePong}
+				tunnel.writeMu.Lock()
+				tunnel.mu.RLock()
+				currentWSConn := tunnel.WSConn
+				tunnel.mu.RUnlock()
+				if currentWSConn == wsConn && currentWSConn != nil {
+					if err := currentWSConn.WriteJSON(pongMsg); err != nil {
+						ts.logger.Warn().Err(err).Msg("Failed to send pong response")
+					}
+				}
+				tunnel.writeMu.Unlock()
+			}
 		case MsgTypeHTTPResponse:
 			// Complete pending HTTP request with response
 			if msg.Response != nil {
@@ -1389,47 +1783,15 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 
 // handleHTTPRequest handles incoming HTTP requests and forwards to tunnel
 func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
-	// Filter out static asset requests (favicon, images, etc.) - don't log or process them
-	staticAssetPaths := []string{
-		"/favicon.ico",
-		"/favicon.png",
-		"/robots.txt",
-		"/.well-known/",
+	if r.URL.Path == "/tunnel" {
+		return
 	}
-	
+
 	path := r.URL.Path
-	isStaticAsset := false
-	for _, staticPath := range staticAssetPaths {
-		if path == staticPath || strings.HasPrefix(path, staticPath) {
-			isStaticAsset = true
-			break
-		}
-	}
-	
-	// Also check for image/icon file extensions
-	if !isStaticAsset {
-		lowerPath := strings.ToLower(path)
-		staticExtensions := []string{".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg", ".webp", ".woff", ".woff2", ".ttf", ".eot"}
-		for _, ext := range staticExtensions {
-			if strings.HasSuffix(lowerPath, ext) {
-				isStaticAsset = true
-				break
-			}
-		}
-	}
-	
-	if isStaticAsset {
-		// Return 404 for static assets without logging
+	if path == "/favicon.ico" || path == "/favicon.png" {
 		http.NotFound(w, r)
 		return
 	}
-	
-	ts.logger.Debug().
-		Str("method", r.Method).
-		Str("path", r.URL.Path).
-		Str("host", r.Host).
-		Str("remote_addr", r.RemoteAddr).
-		Msg("Received HTTP request")
 
 	// Add security headers
 	ts.security.AddSecurityHeaders(w, r)
@@ -1454,7 +1816,7 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		hostname = host
 	}
-	
+
 	subdomain := extractSubdomain(host)
 	var tunnel *TunnelConnection
 	var exists bool
@@ -1483,7 +1845,7 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 			ts.tunnelsMu.RLock()
 			tunnel, exists = ts.tunnels[lookupSubdomain]
 			ts.tunnelsMu.RUnlock()
-			
+
 			ts.logger.Info().
 				Str("custom_domain", hostname).
 				Str("tunnel_subdomain", lookupSubdomain).
@@ -1499,6 +1861,7 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		return
 	}
 	// Log all available tunnels for debugging
+	ts.tunnelsMu.RLock()
 	availableSubdomains := make([]string, 0, len(ts.tunnels))
 	tunnelDetails := make(map[string]string)
 	for sub, t := range ts.tunnels {
@@ -1520,8 +1883,7 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		Str("request_host", r.Host).
 		Bool("has_repository", ts.repository != nil).
 		Msg("HTTP request received - checking tunnel in memory")
-	
-	// CRITICAL DEBUG: Log if tunnel exists but we might still return 404
+
 	if exists && tunnel != nil {
 		tunnel.mu.RLock()
 		tunnelID := tunnel.ID
@@ -1530,7 +1892,7 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		wsConn := tunnel.WSConn
 		handlerReady := tunnel.handlerReady
 		tunnel.mu.RUnlock()
-		
+
 		ts.logger.Info().
 			Str("subdomain", lookupSubdomain).
 			Str("tunnel_id", tunnelID).
@@ -1539,8 +1901,14 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 			Bool("ws_conn_nil", wsConn == nil).
 			Bool("handler_ready", handlerReady).
 			Msg("Tunnel found in memory - checking readiness")
-		
+
 		// Check if tunnel is actually connected (WebSocket must be active)
+		// Re-check connection state to avoid race conditions
+		tunnel.mu.RLock()
+		wsConn = tunnel.WSConn
+		handlerReady = tunnel.handlerReady
+		tunnel.mu.RUnlock()
+
 		if wsConn == nil {
 			ts.logger.Warn().
 				Str("subdomain", lookupSubdomain).
@@ -1550,7 +1918,7 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 			if ts.repository != nil {
 				dbTunnel, err := ts.repository.GetTunnelBySubdomain(context.Background(), lookupSubdomain)
 				if err == nil && dbTunnel != nil {
-					ts.writeErrorPage(w, r, nil, http.StatusServiceUnavailable, "Tunnel Disconnected", "The tunnel exists but is not currently connected.", fmt.Sprintf("The tunnel '%s' is associated with a tunnel, but the tunnel client is not connected. Please start the tunnel client to resume this tunnel.", html.EscapeString(lookupSubdomain)))
+					ts.writeErrorPage(w, r, nil, http.StatusServiceUnavailable, "The endpoint is offline", "The tunnel exists but is not currently connected.", fmt.Sprintf("The endpoint '%s' is associated with a tunnel, but the tunnel client is not connected. Please start the tunnel client to resume this tunnel.", html.EscapeString(lookupSubdomain)))
 					return
 				}
 			}
@@ -1562,7 +1930,7 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 			tunnel.mu.RLock()
 			handlerReady := tunnel.handlerReady
 			tunnel.mu.RUnlock()
-			
+
 			if !handlerReady {
 				ts.logger.Debug().
 					Str("tunnel_id", tunnel.ID).
@@ -1597,8 +1965,6 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 
 	if !exists {
 		// Tunnel not in memory - check database to see if it exists but is disconnected
-		// CRITICAL: Also check if a resume might be in progress (tunnel was just created)
-		// Give it a brief moment in case resume is happening right now
 		if ts.repository != nil {
 			// First, wait longer in case resume is in progress (max 1 second)
 			// This is important because resume can take a moment to register the tunnel
@@ -1612,13 +1978,12 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 						Str("subdomain", lookupSubdomain).
 						Int("wait_iterations", i+1).
 						Msg("Tunnel appeared in memory during wait - resume likely in progress")
-					
-					// CRITICAL: Also wait for handler to be ready
+
 					tunnel.mu.RLock()
 					handlerReady := tunnel.handlerReady
 					wsConn := tunnel.WSConn
 					tunnel.mu.RUnlock()
-					
+
 					if wsConn != nil && !handlerReady {
 						ts.logger.Debug().
 							Str("subdomain", lookupSubdomain).
@@ -1641,7 +2006,7 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 					break
 				}
 			}
-			
+
 			// If still not in memory, check database
 			if !exists {
 				dbTunnel, err := ts.repository.GetTunnelBySubdomain(context.Background(), lookupSubdomain)
@@ -1655,12 +2020,12 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 						Str("status", dbTunnel.Status).
 						Str("local_url", dbTunnel.LocalURL).
 						Msg("Tunnel exists in database but not in memory - showing disconnected page (503)")
-					ts.writeErrorPage(w, r, nil, http.StatusServiceUnavailable, "Tunnel Disconnected", "The tunnel exists but is not currently connected.", fmt.Sprintf("The subdomain '%s' is associated with a tunnel, but the tunnel client is not connected. Please start the tunnel client to resume this tunnel.", html.EscapeString(subdomain)))
+					ts.writeErrorPage(w, r, nil, http.StatusServiceUnavailable, "The endpoint is offline", "The tunnel exists but is not currently connected.", fmt.Sprintf("The endpoint '%s' is associated with a tunnel, but the tunnel client is not connected. Please start the tunnel client to resume this tunnel.", html.EscapeString(subdomain)))
 					return
 				}
 			}
 		}
-		
+
 		// If still not exists after checking database and waiting, return 404
 		// BUT: Only return 404 if we're sure the tunnel doesn't exist
 		// If repository is nil or database check failed, we can't be sure, so log it
@@ -1705,11 +2070,45 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 	}
 
 	if wsConn == nil {
-		ts.logger.Error().
+		ts.logger.Warn().
 			Str("subdomain", subdomain).
 			Str("tunnel_id", tunnel.ID).
-			Msg("CRITICAL: WebSocket connection is nil when forwarding - returning 503")
-		ts.writeErrorPage(w, r, tunnel, http.StatusServiceUnavailable, "Tunnel Connection Lost", "The tunnel connection was lost.", "The WebSocket connection is not available. Please reconnect the tunnel client.")
+			Msg("WebSocket connection is nil - tunnel may be reconnecting, waiting briefly")
+
+		for i := 0; i < 10; i++ {
+			time.Sleep(100 * time.Millisecond)
+			tunnel.mu.RLock()
+			wsConn = tunnel.WSConn
+			tunnel.mu.RUnlock()
+			if wsConn != nil {
+				ts.logger.Info().
+					Str("subdomain", subdomain).
+					Msg("Tunnel reconnected, proceeding with request")
+				break
+			}
+		}
+
+		if wsConn == nil {
+			ts.logger.Error().
+				Str("subdomain", subdomain).
+				Str("tunnel_id", tunnel.ID).
+				Msg("WebSocket connection still nil after wait - returning 503")
+			ts.writeErrorPage(w, r, tunnel, http.StatusServiceUnavailable, "Tunnel Connection Lost", "The tunnel connection was lost.", "The WebSocket connection is not available. Please reconnect the tunnel client.")
+			return
+		}
+	}
+
+	if r.URL.Path == "/tunnel" {
+		return
+	}
+
+	connectionHeader := strings.ToLower(r.Header.Get("Connection"))
+	upgradeHeader := strings.ToLower(r.Header.Get("Upgrade"))
+	isWebSocketUpgrade := strings.Contains(connectionHeader, "upgrade") &&
+		upgradeHeader == "websocket"
+
+	if isWebSocketUpgrade {
+		ts.proxyWebSocket(tunnel, w, r)
 		return
 	}
 
@@ -1722,7 +2121,150 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		Msg("Forwarding HTTP request to tunnel client")
 
 	// Forward request to tunnel client
+	// Pass tunnel subdomain to writeResponse for correct redirect rewriting
 	ts.forwardHTTPRequest(tunnel, w, r)
+}
+
+func (ts *TunnelServer) proxyWebSocket(tunnel *TunnelConnection, w http.ResponseWriter, r *http.Request) {
+	requestPath := r.URL.Path
+	defer func() {
+		if p := recover(); p != nil {
+			ts.logger.Error().Interface("panic", p).Str("path", requestPath).Msg("WebSocket proxy panic recovered")
+		}
+	}()
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+
+	clientConn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		ts.logger.Error().
+			Err(err).
+			Str("path", r.URL.Path).
+			Str("query", r.URL.RawQuery).
+			Msg("Failed to upgrade client WebSocket connection")
+		return
+	}
+	defer clientConn.Close()
+
+	ts.logger.Info().
+		Str("path", r.URL.Path).
+		Str("query", r.URL.RawQuery).
+		Str("local_url", tunnel.LocalURL).
+		Msg("WebSocket connection upgraded, connecting to local server")
+
+	localURL, err := url.Parse(tunnel.LocalURL)
+	if err != nil {
+		ts.logger.Error().Err(err).Str("local_url", tunnel.LocalURL).Msg("Failed to parse local URL")
+		clientConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "Invalid tunnel configuration"))
+		return
+	}
+
+	wsScheme := "ws"
+	if localURL.Scheme == "https" {
+		wsScheme = "wss"
+	}
+
+	wsPath := r.URL.Path
+	if wsPath == "" || wsPath == "/" {
+		wsPath = "/"
+	}
+	wsURL := fmt.Sprintf("%s://%s%s", wsScheme, localURL.Host, wsPath)
+	if r.URL.RawQuery != "" {
+		wsURL += "?" + r.URL.RawQuery
+	}
+
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+	}
+
+	headers := make(http.Header)
+	for k, v := range r.Header {
+		lowerKey := strings.ToLower(k)
+		if lowerKey == "connection" ||
+			lowerKey == "upgrade" ||
+			lowerKey == "sec-websocket-key" ||
+			lowerKey == "sec-websocket-version" ||
+			lowerKey == "sec-websocket-extensions" ||
+			lowerKey == "sec-websocket-protocol" {
+			continue
+		}
+		headers[k] = v
+	}
+
+	headers.Set("Host", localURL.Host)
+
+	if origin := r.Header.Get("Origin"); origin != "" {
+		headers.Set("Origin", origin)
+	}
+
+	remoteConn, resp, err := dialer.Dial(wsURL, headers)
+	if err != nil {
+		ts.logger.Warn().
+			Err(err).
+			Str("ws_url", wsURL).
+			Str("local_url", tunnel.LocalURL).
+			Str("origin", r.Header.Get("Origin")).
+			Int("status_code", func() int {
+				if resp != nil {
+					return resp.StatusCode
+				}
+				return 0
+			}()).
+			Msg("Failed to connect to local server WebSocket - local server may not support WebSocket or may be down")
+
+		closeMsg := websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, "Failed to connect to local server")
+		clientConn.WriteMessage(websocket.CloseMessage, closeMsg)
+		clientConn.Close()
+		return
+	}
+
+	ts.logger.Info().
+		Str("ws_url", wsURL).
+		Str("path", r.URL.Path).
+		Msg("Successfully connected to local server WebSocket, starting proxy")
+	defer remoteConn.Close()
+
+	done := make(chan struct{}, 2)
+
+	go func() {
+		defer func() { done <- struct{}{} }()
+		for {
+			messageType, data, err := clientConn.ReadMessage()
+			if err != nil {
+				if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+					ts.logger.Debug().Err(err).Msg("Client WebSocket read error")
+				}
+				return
+			}
+			if err := remoteConn.WriteMessage(messageType, data); err != nil {
+				ts.logger.Debug().Err(err).Msg("Remote WebSocket write error")
+				return
+			}
+		}
+	}()
+
+	go func() {
+		defer func() { done <- struct{}{} }()
+		for {
+			messageType, data, err := remoteConn.ReadMessage()
+			if err != nil {
+				if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+					ts.logger.Debug().Err(err).Msg("Remote WebSocket read error")
+				}
+				return
+			}
+			if err := clientConn.WriteMessage(messageType, data); err != nil {
+				ts.logger.Debug().Err(err).Msg("Client WebSocket write error")
+				return
+			}
+		}
+	}()
+
+	<-done
+	ts.logger.Debug().Str("path", requestPath).Msg("WebSocket proxy connection closed")
 }
 
 // handleRootRequest handles requests to root domain
@@ -1735,7 +2277,7 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 	// Get total tunnel count from database if available
 	activeTunnels := activeTunnelsInMemory
 	totalTunnels := activeTunnelsInMemory
-	
+
 	if ts.repository != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -1755,7 +2297,7 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 			}
 			// Use database active count (more accurate than in-memory)
 			activeTunnels = activeCount
-			
+
 			ts.logger.Debug().
 				Int("total_tunnels", totalTunnels).
 				Int("active_tunnels", activeTunnels).
@@ -2016,12 +2558,25 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 	requestID := generateID()
 
 	// Check rate limit
+	// Note: Rate limits are per-tunnel, not per-user or per-API-key
+	// This ensures each tunnel has its own rate limit bucket
 	allowed, err := ts.rateLimiter.CheckRateLimit(r.Context(), tunnel.ID)
 	if err != nil {
 		ts.logger.Error().Err(err).Str("tunnel_id", tunnel.ID).Msg("Rate limit check failed")
 		// Allow request if rate limit check fails (fail open)
 	} else if !allowed {
-		ts.logger.Warn().Str("tunnel_id", tunnel.ID).Msg("Rate limit exceeded")
+		// Get current config for logging
+		currentConfig := ts.rateLimiter.GetRateLimit(tunnel.ID)
+		ts.logger.Warn().
+			Str("tunnel_id", tunnel.ID).
+			Str("subdomain", tunnel.Subdomain).
+			Str("local_url", tunnel.LocalURL).
+			Str("method", r.Method).
+			Str("path", r.URL.Path).
+			Int("current_limit_per_minute", currentConfig.RequestsPerMinute).
+			Int("current_limit_per_hour", currentConfig.RequestsPerHour).
+			Int("current_limit_per_day", currentConfig.RequestsPerDay).
+			Msg("Rate limit exceeded for tunnel - request blocked (if using API key, ensure tunnel was created after API key login)")
 		http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
 		return
 	}
@@ -2041,7 +2596,7 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 		http.Error(w, "Failed to serialize request", http.StatusInternalServerError)
 		return
 	}
-	
+
 	ts.logger.Info().
 		Str("request_id", requestID).
 		Str("method", reqData.Method).
@@ -2062,8 +2617,10 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 	}
 
 	// Check if WebSocket connection is still valid before sending
+	// Re-check connection state right before writing to avoid race conditions
 	tunnel.mu.RLock()
 	wsConn := tunnel.WSConn
+	handlerReady := tunnel.handlerReady
 	tunnel.mu.RUnlock()
 
 	if wsConn == nil {
@@ -2072,15 +2629,87 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 		return
 	}
 
-	if err := wsConn.WriteJSON(msg); err != nil {
-		ts.requestTracker.FailRequest(requestID, err)
-		ts.logger.Error().Err(err).Str("request_id", requestID).Str("tunnel_id", tunnel.ID).Msg("Failed to send request to tunnel client - connection may be broken")
-		ts.writeErrorPage(w, r, tunnel, http.StatusBadGateway, "Tunnel Connection Error", "Failed to forward request to tunnel client.", html.EscapeString(err.Error()))
+	// Check if handler is ready (for resumed tunnels)
+	if !handlerReady {
+		ts.logger.Debug().
+			Str("request_id", requestID).
+			Str("tunnel_id", tunnel.ID).
+			Msg("Tunnel handler not ready yet - waiting briefly")
+		// Wait up to 200ms for handler to be ready
+		for i := 0; i < 20; i++ {
+			time.Sleep(10 * time.Millisecond)
+			tunnel.mu.RLock()
+			handlerReady = tunnel.handlerReady
+			wsConn = tunnel.WSConn // Re-check connection
+			tunnel.mu.RUnlock()
+			if handlerReady && wsConn != nil {
+				break
+			}
+			if wsConn == nil {
+				// Connection was closed during wait
+				ts.requestTracker.FailRequest(requestID, fmt.Errorf("tunnel connection lost during handler wait"))
+				ts.writeErrorPage(w, r, tunnel, http.StatusBadGateway, "Tunnel Connection Lost", "The tunnel connection was lost while processing your request.", "The tunnel client disconnected. Please reconnect the tunnel client.")
+				return
+			}
+		}
+		if !handlerReady {
+			ts.logger.Warn().
+				Str("request_id", requestID).
+				Str("tunnel_id", tunnel.ID).
+				Msg("Tunnel handler still not ready after wait - proceeding anyway")
+		}
+	}
+
+	tunnel.writeMu.Lock()
+
+	tunnel.mu.RLock()
+	finalWSConn := tunnel.WSConn
+	tunnel.mu.RUnlock()
+
+	if finalWSConn == nil {
+		tunnel.writeMu.Unlock()
+		ts.requestTracker.FailRequest(requestID, fmt.Errorf("tunnel connection lost"))
+		ts.writeErrorPage(w, r, tunnel, http.StatusServiceUnavailable, "Tunnel Connection Lost", "The tunnel connection was lost while processing your request.", "The tunnel client disconnected. Please reconnect the tunnel client.")
 		return
 	}
 
-	// Wait for response using request tracker
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	finalWSConn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	err = finalWSConn.WriteJSON(msg)
+	finalWSConn.SetWriteDeadline(time.Time{})
+	tunnel.writeMu.Unlock()
+
+	if err != nil {
+		// Check if this is a "write closed" error - connection was closed during write
+		errStr := err.Error()
+		isWriteClosed := strings.Contains(errStr, "write closed") ||
+			strings.Contains(errStr, "use of closed network connection") ||
+			websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway, websocket.CloseAbnormalClosure)
+
+		ts.requestTracker.FailRequest(requestID, err)
+
+		if isWriteClosed {
+			ts.logger.Warn().
+				Err(err).
+				Str("request_id", requestID).
+				Str("tunnel_id", tunnel.ID).
+				Msg("WebSocket connection closed during write - tunnel may be reconnecting")
+			// Return 503 (Service Unavailable) instead of 502 for connection closed errors
+			// This indicates the tunnel exists but is temporarily unavailable
+			ts.writeErrorPage(w, r, tunnel, http.StatusServiceUnavailable, "Tunnel Temporarily Unavailable", "The tunnel connection was closed while processing your request.", "The tunnel client may be reconnecting. Please try again in a moment.")
+		} else {
+			ts.logger.Error().
+				Err(err).
+				Str("request_id", requestID).
+				Str("tunnel_id", tunnel.ID).
+				Msg("Failed to send request to tunnel client - connection may be broken")
+			ts.writeErrorPage(w, r, tunnel, http.StatusBadGateway, "Tunnel Connection Error", "Failed to forward request to tunnel client.", html.EscapeString(err.Error()))
+		}
+		return
+	}
+	// Clear write deadline after successful write
+	finalWSConn.SetWriteDeadline(time.Time{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	response, err := pendingReq.WaitForResponse(ctx)
@@ -2153,7 +2782,7 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 		Int("response_size", len(response.Body)).
 		Int("header_count", len(response.Headers)).
 		Msg("Writing HTTP response to client")
-	
+
 	// Validate response before writing
 	if response == nil {
 		ts.logger.Error().
@@ -2163,21 +2792,14 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 		http.Error(w, "Internal server error: response is nil", http.StatusInternalServerError)
 		return
 	}
-	
-	ts.writeResponse(w, response)
-	
-	ts.logger.Debug().
-		Str("request_id", requestID).
-		Str("tunnel_id", tunnel.ID).
-		Int("status_code", response.Status).
-		Msg("HTTP response written successfully")
+
+	ts.writeResponse(w, r, response)
 
 	latency := time.Since(start)
 	tunnel.mu.Lock()
 	tunnel.RequestCount++
 	tunnel.mu.Unlock()
 
-	// Log request to database
 	if ts.requestLogger != nil {
 		reqLog := &TunnelRequestLog{
 			TunnelID:        tunnel.ID,
@@ -2200,30 +2822,18 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 		ts.requestLogger.LogRequest(r.Context(), reqLog)
 	}
 
-	// Record statistics
 	isError := response.Status >= 400
 	ts.statsCollector.RecordRequest(tunnel.ID, int(latency.Milliseconds()), len(reqData.Body), len(response.Body), isError)
 
-	// Update database if repository is available
-	// Use count = 1 to increment by 1 (avoids double counting)
 	if ts.repository != nil {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			// Pass 1 to increment request_count by 1 (not the total count to avoid double counting)
 			if err := ts.repository.UpdateTunnelActivity(ctx, tunnel.ID, 1); err != nil {
 				ts.logger.Error().Err(err).Str("tunnel_id", tunnel.ID).Msg("Failed to update tunnel activity")
 			}
 		}()
 	}
-
-	ts.logger.Info().
-		Str("request_id", requestID).
-		Str("tunnel_id", tunnel.ID).
-		Str("subdomain", tunnel.Subdomain).
-		Int("status_code", response.Status).
-		Dur("latency", latency).
-		Msg("Request forwarded and response written successfully")
 }
 
 // serializeRequest serializes HTTP request to TunnelMessage format
@@ -2243,10 +2853,16 @@ func (ts *TunnelServer) serializeRequest(r *http.Request, requestID string) (*HT
 		}
 	}
 
+	// Normalize path - ensure root path is "/" not empty
+	path := r.URL.Path
+	if path == "" {
+		path = "/"
+	}
+
 	return &HTTPRequest{
 		RequestID: requestID,
 		Method:    r.Method,
-		Path:      r.URL.Path,
+		Path:      path,
 		Query:     r.URL.RawQuery,
 		Headers:   headers,
 		Body:      body,
@@ -2254,24 +2870,385 @@ func (ts *TunnelServer) serializeRequest(r *http.Request, requestID string) (*HT
 }
 
 // writeResponse writes HTTP response from tunnel
-func (ts *TunnelServer) writeResponse(w http.ResponseWriter, resp *HTTPResponse) {
-	// CRITICAL: Headers must be set BEFORE WriteHeader
+func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, resp *HTTPResponse) {
 	// Once WriteHeader is called, headers cannot be modified
+
+	// Get tunnel URL for rewriting redirects
+	// This prevents redirects from accidentally creating URLs with different subdomains
+	tunnelHost := r.Host
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	tunnelURL := fmt.Sprintf("%s://%s", scheme, tunnelHost)
+
+	// Validate that we can extract a subdomain from the Host header
+	// This ensures redirects will work correctly
+	requestSubdomain := extractSubdomain(tunnelHost)
+	if requestSubdomain == "" && !strings.Contains(tunnelHost, "localhost") {
+		ts.logger.Warn().
+			Str("host", tunnelHost).
+			Str("request_path", r.URL.Path).
+			Msg("Cannot extract subdomain from Host header - redirect rewriting may be incorrect")
+	}
+
+	// Rewrite Location header for redirects (3xx status codes)
+	// If local server redirects to localhost:PORT, rewrite to tunnel URL
+	// External redirects (like naijacrawl.com) pass through unchanged
+	if resp.Status >= 300 && resp.Status < 400 {
+		// Check for Location header (case-insensitive)
+		location := ""
+		for k, v := range resp.Headers {
+			if strings.EqualFold(k, "Location") && v != "" {
+				location = v
+				break
+			}
+		}
+
+		if location != "" {
+			ts.logger.Debug().
+				Str("redirect_location", location).
+				Int("status_code", resp.Status).
+				Msg("Processing redirect Location header")
+
+			// Parse the location URL
+			locationURL, err := url.Parse(location)
+			if err == nil {
+				// Check if it's a localhost or 127.0.0.1 URL
+				host := locationURL.Hostname()
+				if host == "localhost" || host == "127.0.0.1" {
+					// Rewrite to use tunnel URL
+					tunnelURLParsed, err := url.Parse(tunnelURL)
+					if err == nil {
+						// Preserve the path and query from the original location
+						tunnelURLParsed.Path = locationURL.Path
+						tunnelURLParsed.RawQuery = locationURL.RawQuery
+						tunnelURLParsed.Fragment = locationURL.Fragment
+						// Update the Location header with the rewritten URL
+						// Use canonical header name
+						rewrittenURL := tunnelURLParsed.String()
+						resp.Headers["Location"] = rewrittenURL
+
+						// Validate that the rewritten URL uses the same subdomain as the request
+						rewrittenSubdomain := extractSubdomain(tunnelURLParsed.Host)
+						requestSubdomain := extractSubdomain(tunnelHost)
+						if rewrittenSubdomain != requestSubdomain && rewrittenSubdomain != "" && requestSubdomain != "" {
+							ts.logger.Warn().
+								Str("original_location", location).
+								Str("rewritten_location", rewrittenURL).
+								Str("request_subdomain", requestSubdomain).
+								Str("rewritten_subdomain", rewrittenSubdomain).
+								Str("request_host", tunnelHost).
+								Msg("Redirect rewrite changed subdomain - this may cause issues")
+						}
+
+						ts.logger.Debug().
+							Str("original_location", location).
+							Str("rewritten_location", rewrittenURL).
+							Str("subdomain", requestSubdomain).
+							Msg("Rewrote redirect Location header to use tunnel URL")
+					}
+				} else if host != "" {
+					// External redirect (like naijacrawl.com) - pass through unchanged
+					ts.logger.Debug().
+						Str("external_redirect", location).
+						Msg("Passing through external redirect unchanged")
+				} else {
+					// Relative redirect (like /path) - pass through unchanged
+					ts.logger.Debug().
+						Str("relative_redirect", location).
+						Msg("Passing through relative redirect unchanged")
+				}
+			} else {
+				ts.logger.Warn().
+					Err(err).
+					Str("location", location).
+					Msg("Failed to parse Location URL, passing through unchanged")
+			}
+		} else {
+			ts.logger.Debug().
+				Int("status_code", resp.Status).
+				Msg("Redirect response but no Location header found")
+		}
+	}
+
 	for k, v := range resp.Headers {
+		if strings.EqualFold(k, "Content-Length") {
+			continue
+		}
+
+		if strings.EqualFold(k, "Content-Security-Policy") {
+			continue
+		}
+
+		if strings.EqualFold(k, "Content-Type") && strings.Contains(strings.ToLower(v), "text/html") {
+			bodyStr := string(resp.Body)
+			if len(bodyStr) > 0 && (strings.Contains(bodyStr, "import ") ||
+				strings.Contains(bodyStr, "export ") ||
+				strings.Contains(bodyStr, "class ") ||
+				strings.Contains(bodyStr, "function ") ||
+				strings.HasPrefix(bodyStr, "import") ||
+				strings.HasPrefix(bodyStr, "export")) {
+				w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+				continue
+			}
+		}
+
 		w.Header().Set(k, v)
 	}
 
-	// Write status code (this commits headers)
+	var finalBody []byte
+	if len(resp.Body) > 0 {
+		body := resp.Body
+		contentType := resp.Headers["Content-Type"]
+
+		if strings.Contains(contentType, "text/html") {
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' *;")
+		}
+
+		if strings.Contains(contentType, "text/html") ||
+			strings.Contains(contentType, "text/css") ||
+			strings.Contains(contentType, "application/javascript") ||
+			strings.Contains(contentType, "text/javascript") {
+			tunnelHost := r.Host
+			scheme := "http"
+			if r.TLS != nil {
+				scheme = "https"
+			}
+			tunnelURL := fmt.Sprintf("%s://%s", scheme, tunnelHost)
+
+			bodyStr := string(body)
+
+			re := regexp.MustCompile(`(https?://)localhost:\d+(/[^"'\s>]*)?`)
+			bodyStr = re.ReplaceAllStringFunc(bodyStr, func(match string) string {
+				pathMatch := regexp.MustCompile(`localhost:\d+(.*)`)
+				if pathMatch.MatchString(match) {
+					path := pathMatch.FindStringSubmatch(match)[1]
+					return tunnelURL + path
+				}
+				return tunnelURL
+			})
+
+			re2 := regexp.MustCompile(`(https?://)127\.0\.0\.1:\d+(/[^"'\s>]*)?`)
+			bodyStr = re2.ReplaceAllStringFunc(bodyStr, func(match string) string {
+				pathMatch := regexp.MustCompile(`127\.0\.0\.1:\d+(.*)`)
+				if pathMatch.MatchString(match) {
+					path := pathMatch.FindStringSubmatch(match)[1]
+					return tunnelURL + path
+				}
+				return tunnelURL
+			})
+
+			if strings.Contains(contentType, "text/html") {
+				tunnelMonitorScript := `<script>
+(function() {
+	var checkInterval = 5000; // Check every 5 seconds (less aggressive)
+	var failures = 0;
+	var reloading = false;
+	var lastCheck = Date.now();
+	var consecutiveFailures = 0; // Track consecutive failures
+	var consecutiveSuccesses = 0; // Track consecutive successes (for recovery detection)
+	var maxFailures = 3; // Require 3 consecutive failures before reloading
+	var maxSuccesses = 2; // Require 2 consecutive successes before reloading on recovery
+	var wasOffline = false; // Track if we were showing error page
+	
+	// Check if we're currently on an error page (503, 502, etc.)
+	function isOnErrorPage() {
+		// Check if page title or content indicates error page
+		var title = document.title.toLowerCase();
+		var bodyText = document.body ? document.body.innerText.toLowerCase() : '';
+		return title.includes('503') || title.includes('502') || title.includes('bad gateway') || 
+		       title.includes('service unavailable') || bodyText.includes('tunnel connection') ||
+		       bodyText.includes('connection lost') || bodyText.includes('offline');
+	}
+	
+	function checkConnection() {
+		if (reloading) return;
+		
+		var url = window.location.href.split('?')[0] + '?_check=' + Date.now();
+		var xhr = new XMLHttpRequest();
+		var timedOut = false;
+		var timeoutId = setTimeout(function() {
+			timedOut = true;
+			xhr.abort();
+			consecutiveFailures++;
+			consecutiveSuccesses = 0;
+			wasOffline = true;
+			if (consecutiveFailures >= maxFailures) {
+				reloading = true;
+				window.location.reload();
+			}
+		}, 3000); // Longer timeout (3 seconds)
+		
+		xhr.open('GET', url, true);
+		xhr.setRequestHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+		xhr.setRequestHeader('Pragma', 'no-cache');
+		xhr.setRequestHeader('Expires', '0');
+		
+		xhr.onload = function() {
+			clearTimeout(timeoutId);
+			lastCheck = Date.now();
+			if (xhr.status >= 200 && xhr.status < 400) {
+				// Success - reset failure counter
+				consecutiveFailures = 0;
+				failures = 0;
+				consecutiveSuccesses++;
+				
+				// If we were offline (showing error page) and now we have successful responses,
+				// reload to show the restored page
+				if (wasOffline && consecutiveSuccesses >= maxSuccesses) {
+					// Check if we're still on an error page
+					if (isOnErrorPage()) {
+						reloading = true;
+						wasOffline = false; // Reset flag before reload
+						consecutiveSuccesses = 0; // Reset counter
+						window.location.reload();
+					} else {
+						// We're already on the correct page, just reset flags
+						wasOffline = false;
+						consecutiveSuccesses = 0;
+					}
+				}
+			} else if (xhr.status >= 500 || xhr.status === 0 || xhr.status === 503 || xhr.status === 502) {
+				// Server errors - increment failure counter
+				consecutiveFailures++;
+				consecutiveSuccesses = 0;
+				wasOffline = true;
+				if (consecutiveFailures >= maxFailures) {
+					reloading = true;
+					window.location.reload();
+				}
+			} else {
+				// Other status codes (like 404) - don't count as failures, might be normal
+				consecutiveFailures = 0;
+				consecutiveSuccesses = 0;
+			}
+		};
+		
+		xhr.onerror = function() {
+			clearTimeout(timeoutId);
+			consecutiveFailures++;
+			consecutiveSuccesses = 0;
+			wasOffline = true;
+			// Only reload if we have multiple consecutive failures AND haven't checked in a while
+			if (consecutiveFailures >= maxFailures && (Date.now() - lastCheck > 5000)) {
+				reloading = true;
+				window.location.reload();
+			}
+		};
+		
+		xhr.ontimeout = function() {
+			clearTimeout(timeoutId);
+			consecutiveFailures++;
+			consecutiveSuccesses = 0;
+			wasOffline = true;
+			if (consecutiveFailures >= maxFailures) {
+				reloading = true;
+				window.location.reload();
+			}
+		};
+		
+		xhr.timeout = 3000; // 3 second timeout
+		xhr.send();
+	}
+	
+	function startMonitoring() {
+		// Don't start checking immediately - wait a bit after page load
+		setTimeout(function() {
+			if (document.readyState === 'complete' || document.readyState === 'interactive') {
+				setTimeout(checkConnection, 2000); // Wait 2 seconds after page load
+			} else {
+				window.addEventListener('load', function() {
+					setTimeout(checkConnection, 2000); // Wait 2 seconds after page load
+				});
+			}
+		}, 1000);
+		
+		// Check periodically, but less frequently
+		setInterval(checkConnection, checkInterval);
+		
+		// Only check when page becomes visible (user switched back to tab)
+		document.addEventListener('visibilitychange', function() {
+			if (!document.hidden && Date.now() - lastCheck > 10000) {
+				// Only check if it's been more than 10 seconds since last check
+				setTimeout(checkConnection, 500);
+			}
+		});
+	}
+	
+	// Only reload on actual network offline events, and only after multiple failures
+	window.addEventListener('offline', function() {
+		consecutiveFailures++;
+		if (consecutiveFailures >= maxFailures && !reloading) {
+			reloading = true;
+			setTimeout(function() {
+				window.location.reload();
+			}, 2000); // Wait 2 seconds before reloading
+		}
+	});
+	
+	// Don't reload on resource errors - these are often normal (missing images, etc.)
+	// Only reload if we get many consecutive resource errors AND connection failures
+	var resourceErrors = 0;
+	window.addEventListener('error', function(e) {
+		// Ignore resource errors - they're often normal and shouldn't trigger reloads
+		// Only track them for debugging, but don't reload based on them
+		if (e.target && (e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK' || e.target.tagName === 'IMG' || e.target.tagName === 'IFRAME')) {
+			resourceErrors++;
+			// Don't reload on resource errors - they're often normal
+		}
+	}, true);
+	
+	startMonitoring();
+	
+	// Only reload if offline AND we've had multiple failures
+	if (!navigator.onLine) {
+		consecutiveFailures++;
+		if (consecutiveFailures >= maxFailures && !reloading) {
+			reloading = true;
+			setTimeout(function() {
+				window.location.reload();
+			}, 2000);
+		}
+	}
+})();
+</script>`
+				if strings.Contains(bodyStr, "</body>") {
+					bodyStr = strings.Replace(bodyStr, "</body>", tunnelMonitorScript+"</body>", 1)
+				} else if strings.Contains(bodyStr, "</html>") {
+					bodyStr = strings.Replace(bodyStr, "</html>", tunnelMonitorScript+"</html>", 1)
+				} else {
+					bodyStr = bodyStr + tunnelMonitorScript
+				}
+				ts.logger.Info().Str("path", r.URL.Path).Msg("Injected tunnel monitoring script into HTML response")
+			}
+
+			finalBody = []byte(bodyStr)
+		} else {
+			finalBody = body
+		}
+
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(finalBody)))
+	} else {
+		w.Header().Set("Content-Length", "0")
+	}
+
 	w.WriteHeader(resp.Status)
 
-	// Write body
-	if len(resp.Body) > 0 {
-		if n, err := w.Write(resp.Body); err != nil {
+	if len(finalBody) > 0 {
+		if n, err := w.Write(finalBody); err != nil {
 			ts.logger.Error().
 				Err(err).
 				Int("bytes_written", n).
-				Int("body_size", len(resp.Body)).
+				Int("body_size", len(finalBody)).
+				Str("path", r.URL.Path).
 				Msg("Failed to write response body")
+		} else if n != len(finalBody) {
+			ts.logger.Warn().
+				Int("bytes_written", n).
+				Int("body_size", len(finalBody)).
+				Str("path", r.URL.Path).
+				Msg("Partial write of response body")
 		}
 	}
 }
@@ -2582,6 +3559,54 @@ func (ts *TunnelServer) writeConnectionRefusedError(w http.ResponseWriter, r *ht
 
 // writeErrorPage writes a styled error page for various HTTP errors
 func (ts *TunnelServer) writeErrorPage(w http.ResponseWriter, r *http.Request, tunnel *TunnelConnection, statusCode int, title, subtitle, details string) {
+	path := strings.ToLower(r.URL.Path)
+	if r.URL.RawQuery != "" {
+		path = path + "?" + strings.ToLower(r.URL.RawQuery)
+	}
+
+	isAsset := strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css") ||
+		strings.HasSuffix(path, ".png") || strings.HasSuffix(path, ".jpg") ||
+		strings.HasSuffix(path, ".jpeg") || strings.HasSuffix(path, ".gif") ||
+		strings.HasSuffix(path, ".svg") || strings.HasSuffix(path, ".woff") ||
+		strings.HasSuffix(path, ".woff2") || strings.HasSuffix(path, ".ttf") ||
+		strings.HasSuffix(path, ".eot") || strings.HasSuffix(path, ".ico") ||
+		strings.HasSuffix(path, ".webmanifest") || strings.Contains(path, "/browser-sync/") ||
+		strings.Contains(path, "/node_modules/") || strings.Contains(path, "/assets/")
+
+	if isAsset {
+		var contentType string
+		if strings.HasSuffix(path, ".js") || strings.Contains(path, "/browser-sync/") {
+			contentType = "application/javascript; charset=utf-8"
+		} else if strings.HasSuffix(path, ".css") {
+			contentType = "text/css; charset=utf-8"
+		} else if strings.HasSuffix(path, ".svg") {
+			contentType = "image/svg+xml"
+		} else if strings.HasSuffix(path, ".png") {
+			contentType = "image/png"
+		} else if strings.HasSuffix(path, ".jpg") || strings.HasSuffix(path, ".jpeg") {
+			contentType = "image/jpeg"
+		} else if strings.HasSuffix(path, ".gif") {
+			contentType = "image/gif"
+		} else if strings.HasSuffix(path, ".woff") {
+			contentType = "font/woff"
+		} else if strings.HasSuffix(path, ".woff2") {
+			contentType = "font/woff2"
+		} else if strings.HasSuffix(path, ".ttf") {
+			contentType = "font/ttf"
+		} else if strings.HasSuffix(path, ".ico") {
+			contentType = "image/x-icon"
+		} else if strings.HasSuffix(path, ".webmanifest") {
+			contentType = "application/manifest+json"
+		} else {
+			contentType = "application/javascript; charset=utf-8"
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Content-Length", "0")
+		w.WriteHeader(statusCode)
+		return
+	}
+
 	var publicURL, localURL string
 	if tunnel != nil {
 		tunnel.mu.RLock()
@@ -2600,29 +3625,31 @@ func (ts *TunnelServer) writeErrorPage(w http.ResponseWriter, r *http.Request, t
 	subtitle = html.EscapeString(subtitle)
 	details = html.EscapeString(details)
 
-	// Determine icon and color based on status code
-	var iconSVG, iconColor string
+	var iconSVG, iconColor, errorCode string
 	switch statusCode {
 	case http.StatusNotFound:
 		iconSVG = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>`
-		iconColor = "#f59e0b" // amber
+		iconColor = "#f59e0b"
+		errorCode = `<div class="error-code">ERR_UNIROUTE_404</div>`
 	case http.StatusBadGateway:
 		iconSVG = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>`
-		iconColor = "#ef4444" // red
+		iconColor = "#ef4444"
+		errorCode = `<div class="error-code">ERR_UNIROUTE_502</div>`
 	case http.StatusServiceUnavailable:
 		iconSVG = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"></path>`
-		iconColor = "#f59e0b" // amber
+		iconColor = "#f59e0b"
+		errorCode = `<div class="error-code">ERR_UNIROUTE_503</div>`
 	default:
 		iconSVG = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>`
-		iconColor = "#ef4444" // red
+		iconColor = "#ef4444"
+		errorCode = `<div class="error-code">ERR_UNIROUTE_500</div>`
 	}
 
-	// Add security headers
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-XSS-Protection", "1; mode=block")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; img-src 'self' data:; font-src 'self' data:;")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self';")
 
 	ts.logger.Debug().
 		Int("status_code", statusCode).
@@ -2708,6 +3735,14 @@ func (ts *TunnelServer) writeErrorPage(w http.ResponseWriter, r *http.Request, t
 			height: 48px;
 			color: %s;
 		}
+		.error-code {
+			font-size: 14px;
+			font-weight: 600;
+			color: #94a3b8;
+			text-align: center;
+			margin-bottom: 8px;
+			letter-spacing: 0.5px;
+		}
 		h1 {
 			font-size: 28px;
 			font-weight: bold;
@@ -2776,6 +3811,18 @@ func (ts *TunnelServer) writeErrorPage(w http.ResponseWriter, r *http.Request, t
 		.footer a:hover {
 			text-decoration: underline;
 		}
+		.status-indicator {
+			text-align: center;
+			margin-top: 24px;
+			color: #94a3b8;
+			font-size: 13px;
+		}
+		.status-indicator.checking {
+			color: #60a5fa;
+		}
+		.status-indicator.online {
+			color: #22c55e;
+		}
 	</style>
 </head>
 <body>
@@ -2793,6 +3840,7 @@ func (ts *TunnelServer) writeErrorPage(w http.ResponseWriter, r *http.Request, t
 			</svg>
 		</div>
 		
+		%s
 		<h1>%s</h1>
 		<p class="subtitle">%s</p>
 		
@@ -2815,12 +3863,60 @@ func (ts *TunnelServer) writeErrorPage(w http.ResponseWriter, r *http.Request, t
 			<div class="details-text">%s</div>
 		</div>
 		
+		<div class="status-indicator" id="statusIndicator">Checking connection...</div>
+		
 		<div class="footer">
 			Powered by <a href="https://uniroute.co" target="_blank">UniRoute</a>
 		</div>
 	</div>
+	<script>
+		(function() {
+			var checkInterval = 2000;
+			var statusEl = document.getElementById('statusIndicator');
+			var isChecking = false;
+			var isReloading = false;
+			
+			function checkConnection() {
+				if (isChecking || isReloading) return;
+				isChecking = true;
+				
+				statusEl.textContent = 'Checking connection...';
+				statusEl.className = 'status-indicator checking';
+				
+				var url = window.location.href.split('?')[0] + '?t=' + Date.now();
+				fetch(url, {
+					method: 'HEAD',
+					cache: 'no-cache',
+					headers: {
+						'Cache-Control': 'no-cache',
+						'Pragma': 'no-cache'
+					}
+				}).then(function(response) {
+					isChecking = false;
+					if (response.status === 200 || response.status === 304) {
+						statusEl.textContent = 'Connection restored! Refreshing...';
+						statusEl.className = 'status-indicator online';
+						isReloading = true;
+						setTimeout(function() {
+							window.location.reload();
+						}, 500);
+					} else {
+						statusEl.textContent = 'Still offline. Checking again in ' + (checkInterval / 1000) + ' seconds...';
+						statusEl.className = 'status-indicator';
+					}
+				}).catch(function(error) {
+					isChecking = false;
+					statusEl.textContent = 'Still offline. Checking again in ' + (checkInterval / 1000) + ' seconds...';
+					statusEl.className = 'status-indicator';
+				});
+			}
+			
+			checkConnection();
+			setInterval(checkConnection, checkInterval);
+		})();
+	</script>
 </body>
-</html>`, title, iconColor, iconSVG, title, subtitle, publicURL, localURL, statusCode, details)
+</html>`, title, iconColor, iconSVG, errorCode, title, subtitle, publicURL, localURL, statusCode, details)
 
 	w.Write([]byte(html))
 }
@@ -2842,13 +3938,13 @@ func (ts *TunnelServer) removeTunnel(subdomain string) {
 		ts.tunnelsMu.Unlock()
 		return // Tunnel already removed
 	}
-	
+
 	// Get tunnel details while holding the lock
 	tunnel.mu.RLock()
 	tunnelID := tunnel.ID
 	currentWSConn := tunnel.WSConn
 	tunnel.mu.RUnlock()
-	
+
 	// Double-check: tunnel might have been re-registered with a new connection
 	// Only remove if it's still the same tunnel object
 	if ts.tunnels[subdomain] != tunnel {
@@ -2859,14 +3955,14 @@ func (ts *TunnelServer) removeTunnel(subdomain string) {
 		ts.tunnelsMu.Unlock()
 		return // Tunnel was re-registered, don't remove it
 	}
-	
+
 	// Check if WebSocket connection is still active (not nil)
 	// If it's nil, the tunnel might be in a bad state, but we should still remove it
 	// If it's not nil, check if it's the same connection we're tracking
 	tunnel.mu.RLock()
 	wsConnStillActive := tunnel.WSConn != nil && tunnel.WSConn == currentWSConn
 	tunnel.mu.RUnlock()
-	
+
 	if wsConnStillActive {
 		// WebSocket is still active - this might be a premature removal
 		// Log a warning but proceed with removal (the connection might be dead)
@@ -2875,11 +3971,11 @@ func (ts *TunnelServer) removeTunnel(subdomain string) {
 			Str("subdomain", subdomain).
 			Msg("Removing tunnel with active WebSocket connection - connection may be dead")
 	}
-	
+
 	// Remove from map
 	delete(ts.tunnels, subdomain)
 	ts.tunnelsMu.Unlock()
-	
+
 	ts.logger.Debug().
 		Str("tunnel_id", tunnelID).
 		Str("subdomain", subdomain).
@@ -2907,7 +4003,7 @@ func (ts *TunnelServer) removeTunnel(subdomain string) {
 			}
 			ts.portMapMu.Unlock()
 		}
-		
+
 		if protocol == ProtocolUDP {
 			ts.portMapMu.Lock()
 			for port, t := range ts.portMap {
@@ -3204,6 +4300,29 @@ func (ts *TunnelServer) startPortListener(port int, tunnel *TunnelConnection) {
 // handleTCPConnection handles incoming TCP/TLS connections for TCP/TLS tunnels
 // This is called when a TCP connection is established to the tunnel server
 func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.Conn) {
+	tunnel.mu.RLock()
+	tunnelID := tunnel.ID
+	tunnel.mu.RUnlock()
+
+	// Check rate limit
+	if ts.rateLimiter != nil {
+		allowed, err := ts.rateLimiter.CheckRateLimit(context.Background(), tunnelID)
+		if err != nil {
+			ts.logger.Error().
+				Err(err).
+				Str("tunnel_id", tunnelID).
+				Msg("Rate limit check failed for TCP connection")
+		}
+		if !allowed {
+			ts.logger.Warn().
+				Str("tunnel_id", tunnelID).
+				Msg("TCP connection rejected - rate limit exceeded")
+			conn.Close()
+			return
+		}
+		ts.rateLimiter.RecordRequest(context.Background(), tunnelID)
+	}
+
 	connectionID := generateID()
 
 	// Store connection
@@ -3243,7 +4362,11 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 		return
 	}
 
-	if err := wsConn.WriteJSON(msg); err != nil {
+	tunnel.writeMu.Lock()
+	err := wsConn.WriteJSON(msg)
+	tunnel.writeMu.Unlock()
+
+	if err != nil {
 		ts.logger.Error().
 			Err(err).
 			Str("connection_id", connectionID).
@@ -3286,7 +4409,9 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 						Message:   "TCP connection closed",
 					},
 				}
+				tunnel.writeMu.Lock()
 				wsConn.WriteJSON(closeMsg)
+				tunnel.writeMu.Unlock()
 				return
 			}
 
@@ -3297,7 +4422,11 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 					RequestID: connectionID,
 					Data:      buffer[:n],
 				}
-				if err := wsConn.WriteJSON(dataMsg); err != nil {
+				tunnel.writeMu.Lock()
+				err := wsConn.WriteJSON(dataMsg)
+				tunnel.writeMu.Unlock()
+
+				if err != nil {
 					ts.logger.Error().
 						Err(err).
 						Str("connection_id", connectionID).
@@ -3405,6 +4534,28 @@ func (ts *TunnelServer) startUDPListener(port int, tunnel *TunnelConnection) {
 
 // handleUDPPacket handles an incoming UDP packet
 func (ts *TunnelServer) handleUDPPacket(tunnel *TunnelConnection, port int, addr net.Addr, data []byte) {
+	tunnel.mu.RLock()
+	tunnelID := tunnel.ID
+	tunnel.mu.RUnlock()
+
+	// Check rate limit
+	if ts.rateLimiter != nil {
+		allowed, err := ts.rateLimiter.CheckRateLimit(context.Background(), tunnelID)
+		if err != nil {
+			ts.logger.Error().
+				Err(err).
+				Str("tunnel_id", tunnelID).
+				Msg("Rate limit check failed for UDP packet")
+		}
+		if !allowed {
+			ts.logger.Warn().
+				Str("tunnel_id", tunnelID).
+				Msg("UDP packet rejected - rate limit exceeded")
+			return
+		}
+		ts.rateLimiter.RecordRequest(context.Background(), tunnelID)
+	}
+
 	// Generate connection ID based on remote address (UDP is connectionless)
 	connectionID := fmt.Sprintf("%s-%d", addr.String(), time.Now().UnixNano())
 
@@ -3438,7 +4589,11 @@ func (ts *TunnelServer) handleUDPPacket(tunnel *TunnelConnection, port int, addr
 		Data:      data,
 	}
 
-	if err := wsConn.WriteJSON(msg); err != nil {
+	tunnel.writeMu.Lock()
+	err := wsConn.WriteJSON(msg)
+	tunnel.writeMu.Unlock()
+
+	if err != nil {
 		ts.logger.Error().
 			Err(err).
 			Str("connection_id", connectionID).

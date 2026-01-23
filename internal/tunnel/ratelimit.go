@@ -24,12 +24,15 @@ type RateLimitConfig struct {
 }
 
 // DefaultRateLimitConfig returns default rate limit configuration
+// NOTE: When using API keys for tunnel authentication, users set rate limits when creating the API key.
+// Ideally, tunnels should use the API key's rate limits (RateLimitPerMinute, RateLimitPerDay).
+// These defaults are only used as fallback when API key rate limits are not available.
 func DefaultRateLimitConfig() *RateLimitConfig {
 	return &RateLimitConfig{
-		RequestsPerMinute: 60,
-		RequestsPerHour:   1000,
-		RequestsPerDay:    10000,
-		BurstSize:         10,
+		RequestsPerMinute: 60,   // Default fallback - users should set this in API key creation
+		RequestsPerHour:   1000, // Default fallback - users should set this in API key creation
+		RequestsPerDay:    10000, // Default fallback - users should set this in API key creation
+		BurstSize:         10,   // Default fallback
 	}
 }
 

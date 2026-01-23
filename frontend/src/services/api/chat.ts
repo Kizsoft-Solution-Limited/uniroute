@@ -171,8 +171,22 @@ export const chatApi = {
       token = sessionStorage.getItem('auth_token')
     }
 
-    // Get base URL from apiClient
-    const baseURL = apiClient.defaults.baseURL || 'http://localhost:8084'
+    // Get base URL for WebSocket connection
+    // When accessed through tunnel, use tunnel URL for WebSocket (tunnel should proxy it)
+    // When accessed directly, use gateway server URL
+    let baseURL = apiClient.defaults.baseURL || 'http://localhost:8084'
+    
+    // If running in browser and accessed through tunnel, use tunnel URL
+    if (typeof window !== 'undefined' && window.location) {
+      const currentHost = window.location.host
+      const currentProtocol = window.location.protocol
+      
+      // If accessing through tunnel (e.g., *.localhost:8055), use tunnel URL
+      // The tunnel server should proxy WebSocket connections to the gateway
+      if (currentHost.includes('.localhost:8055') || currentHost.includes('.localhost:')) {
+        baseURL = `${currentProtocol}//${currentHost}`
+      }
+    }
     
     // Convert http/https to ws/wss
     const wsProtocol = baseURL.startsWith('https') ? 'wss' : 'ws'

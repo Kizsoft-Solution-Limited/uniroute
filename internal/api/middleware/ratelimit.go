@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
 	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/errors"
 )
 
@@ -16,7 +17,21 @@ func RateLimitMiddleware(rateLimiter *security.RateLimiter, getLimits func(strin
 		identifier := getIdentifier(c)
 
 		// Get limits for this identifier
-		limitPerMinute, limitPerDay := getLimits(identifier)
+		// First check if API key record is in context (set by AuthMiddleware)
+		// and extract rate limits from it
+		var limitPerMinute, limitPerDay int
+		if apiKeyRecord, exists := c.Get("api_key_record"); exists {
+			if keyRecord, ok := apiKeyRecord.(*storage.APIKey); ok {
+				// Use API key's configured rate limits
+				limitPerMinute = keyRecord.RateLimitPerMinute
+				limitPerDay = keyRecord.RateLimitPerDay
+			}
+		}
+		
+		// If limits not found in context (or are 0), use getLimits function as fallback
+		if limitPerMinute == 0 || limitPerDay == 0 {
+			limitPerMinute, limitPerDay = getLimits(identifier)
+		}
 
 		// Check rate limit
 		allowed, err := rateLimiter.CheckRateLimit(c.Request.Context(), identifier, limitPerMinute, limitPerDay)

@@ -1,6 +1,6 @@
 # 🚀 UniRoute
 
-**One unified gateway for every AI model. Route, secure, and manage traffic to any LLM—cloud or local—with one unified platform.**
+**One unified gateway for every AI model. Route, secure, and manage traffic to any LLM—cloud or local—with one unified platform. Built-in tunneling for exposing local services to the internet.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8.svg)](https://golang.org/)
@@ -49,7 +49,28 @@ curl -fsSL https://raw.githubusercontent.com/Kizsoft-Solution-Limited/uniroute/m
 uniroute --version
 
 # Login to your account
+
+## Email/Password Login
+```bash
 uniroute auth login
+# Or with email flag
+uniroute auth login --email user@example.com
+```
+
+## API Key Login (Recommended for Automation)
+API keys provide longer sessions without expiration, making them ideal for automation and CI/CD:
+```bash
+# Login with API key
+uniroute auth login --api-key ur_xxxxxxxxxxxxx
+# or using short flag
+uniroute auth login -k ur_xxxxxxxxxxxxx
+```
+
+**Benefits of API Key Login:**
+- ✅ No expiration (unlike JWT tokens)
+- ✅ Perfect for automation and scripts
+- ✅ Longer sessions for CI/CD pipelines
+- ✅ Same authentication as email/password
 
 # Start using UniRoute!
 uniroute projects list
@@ -78,7 +99,20 @@ export UNIROUTE_TUNNEL_URL=localhost:8080
 export UNIROUTE_ENV=local
 
 # Then login (will use localhost automatically)
+
+## Email/Password Login
+```bash
 uniroute auth login
+```
+
+## API Key Login (Longer Sessions)
+```bash
+uniroute auth login --api-key ur_xxxxxxxxxxxxx
+# or
+uniroute auth login -k ur_xxxxxxxxxxxxx
+```
+
+**Note:** API keys provide longer sessions without expiration, making them ideal for automation.
 ```
 
 **Option 2: Build from Source**
@@ -434,10 +468,10 @@ Both CLI and dashboard use the same backend system, so domains created via CLI a
 ### Supported Providers
 
 - 🏠 **Local LLMs (Ollama, vLLM)** ⭐ Priority - Free, private, self-hosted
-- 🤖 OpenAI (GPT-4, GPT-3.5, etc.) - Phase 3
-- 🧠 Anthropic (Claude) - Phase 3
-- 🔷 Google (Gemini) - Phase 3
-- 📊 Cohere - Phase 3
+- 🤖 OpenAI (GPT-4, GPT-3.5, etc.)
+- 🧠 Anthropic (Claude)
+- 🔷 Google (Gemini)
+- 📊 Cohere
 - ➕ Custom providers
 
 ---
@@ -615,10 +649,10 @@ uniroute/
 ## 📚 Documentation
 
 - **[SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md)** - 🔐 Complete security documentation and measures
-- **[CLI_INSTALLATION.md](./docs/CLI_INSTALLATION.md)** - 📦 CLI installation and usage guide
-- **[TUNNEL_CONFIG.md](./docs/TUNNEL_CONFIG.md)** - 🔌 Tunnel configuration and management
-- **[TUNNEL_RESUME.md](./docs/TUNNEL_RESUME.md)** - 🔄 Tunnel resume functionality
-- **Custom Domain Management** - See "Custom Domain Management" section above for CLI commands and DNS setup
+- **[Interactive Documentation](https://uniroute.co/docs)** - 📖 Full documentation with guides, API reference, and examples
+- **[CLI Reference](https://uniroute.co/docs/cli)** - 📦 CLI installation and usage guide
+- **[Tunnel Documentation](https://uniroute.co/docs/tunnels)** - 🔌 Tunnel configuration, protocols, and custom domains
+- **[Custom Domains Guide](https://uniroute.co/docs/tunnels/custom-domains)** - 🌐 Custom domain setup and management
 - **API Documentation**: Interactive Swagger UI available at `http://localhost:8084/swagger` when the server is running
 - **Postman Collection**: Import `UniRoute.postman_collection.json` for ready-to-use API requests
 
@@ -658,7 +692,7 @@ docker-compose up -d
 3. Set environment variables
 4. Deploy automatically
 
-For detailed deployment instructions, see the [Deployment Guide](./docs/PRODUCTION_SETUP.md).
+For detailed deployment instructions, see the [Deployment Guide](https://uniroute.co/docs/deployment).
 
 ---
 

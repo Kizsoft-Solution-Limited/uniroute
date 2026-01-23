@@ -39,6 +39,7 @@ type InitMessage struct {
 	Token     string                 `json:"token,omitempty"`
 	Subdomain string                 `json:"subdomain,omitempty"` // For resuming existing tunnel
 	TunnelID  string                 `json:"tunnel_id,omitempty"` // For resuming existing tunnel
+	ForceNew  bool                   `json:"force_new,omitempty"` // If true, force creating a new tunnel (don't auto-find or resume)
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
 

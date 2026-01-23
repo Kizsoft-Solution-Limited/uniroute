@@ -333,13 +333,19 @@ func (r *TunnelRepository) ListAllTunnels(ctx context.Context) ([]*Tunnel, error
 }
 
 // ListTunnelsByUser retrieves all tunnels for a user
+// Optimized query: Uses indexes on user_id and status, orders by status (active first) then created_at
 func (r *TunnelRepository) ListTunnelsByUser(ctx context.Context, userID uuid.UUID) ([]*Tunnel, error) {
+	// Optimized query: Prefer active tunnels, then most recent
+	// Uses composite index idx_tunnels_user_id_status for faster lookups
 	query := `
 		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
 		       status, region, created_at, updated_at, last_active_at, request_count
 		FROM tunnels
 		WHERE user_id = $1
-		ORDER BY created_at DESC
+		ORDER BY 
+			CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+			created_at DESC
+		LIMIT 100
 	`
 
 	rows, err := r.pool.Query(ctx, query, userID)

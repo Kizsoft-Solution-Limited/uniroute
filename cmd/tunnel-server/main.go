@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"flag"
+	"fmt"
 	"os"
 
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/config"
@@ -97,6 +99,40 @@ func main() {
 					log.Fatal().Msg("SECURITY ERROR: JWT_SECRET must be set in production! Tunnels require JWT validation for user association. Set JWT_SECRET environment variable.")
 				}
 				log.Warn().Msg("JWT_SECRET not configured or using default - tunnels will NOT be auto-associated with users. Set JWT_SECRET environment variable to enable.")
+			}
+
+			// Set up API key validator for API key authentication
+			// This allows tunnels created via API key authentication to be automatically associated with users
+			// IMPORTANT: API_KEY_SECRET must match the gateway's API_KEY_SECRET for this to work
+			if cfg.APIKeySecret != "" && cfg.APIKeySecret != "change-me-in-production" {
+				apiKeyRepo := storage.NewAPIKeyRepository(postgresClient.Pool())
+				apiKeyService := security.NewAPIKeyServiceV2(apiKeyRepo, cfg.APIKeySecret)
+				
+				// Set up validator with rate limits (preferred)
+				server.SetAPIKeyValidatorWithLimits(func(ctx context.Context, apiKey string) (string, int, int, error) {
+					keyRecord, err := apiKeyService.ValidateAPIKey(ctx, apiKey)
+					if err != nil || keyRecord == nil {
+						return "", 0, 0, fmt.Errorf("invalid API key: %w", err)
+					}
+					// Return user ID and rate limits from API key
+					return keyRecord.UserID.String(), keyRecord.RateLimitPerMinute, keyRecord.RateLimitPerDay, nil
+				})
+				
+				// Also set old validator for backward compatibility
+				server.SetAPIKeyValidator(func(ctx context.Context, apiKey string) (string, error) {
+					keyRecord, err := apiKeyService.ValidateAPIKey(ctx, apiKey)
+					if err != nil || keyRecord == nil {
+						return "", fmt.Errorf("invalid API key: %w", err)
+					}
+					return keyRecord.UserID.String(), nil
+				})
+				log.Info().Msg("API key validator configured with rate limits - tunnels will use API key's rate limits")
+			} else {
+				// SECURITY: In production, fail if API_KEY_SECRET is not set
+				if cfg.Environment == "production" {
+					log.Fatal().Msg("SECURITY ERROR: API_KEY_SECRET must be set in production! Tunnels require API key validation for user association. Set API_KEY_SECRET environment variable.")
+				}
+				log.Warn().Msg("API_KEY_SECRET not configured or using default - API key authentication will NOT work. Set API_KEY_SECRET environment variable to enable.")
 			}
 		}
 	}

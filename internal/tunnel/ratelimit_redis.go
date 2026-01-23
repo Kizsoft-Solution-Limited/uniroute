@@ -3,6 +3,7 @@ package tunnel
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
@@ -14,7 +15,7 @@ type RedisRateLimiter struct {
 	redisClient *storage.RedisClient
 	logger      zerolog.Logger
 	configs     map[string]*RateLimitConfig
-	mu          interface{} // sync.RWMutex (avoid import)
+	mu          sync.RWMutex // Protect concurrent access to configs map
 }
 
 // NewRedisRateLimiter creates a new Redis-based rate limiter
@@ -28,11 +29,21 @@ func NewRedisRateLimiter(redisClient *storage.RedisClient, logger zerolog.Logger
 
 // SetRateLimit sets rate limit configuration for a tunnel
 func (rrl *RedisRateLimiter) SetRateLimit(tunnelID string, config *RateLimitConfig) {
+	rrl.mu.Lock()
+	defer rrl.mu.Unlock()
 	rrl.configs[tunnelID] = config
+	rrl.logger.Info().
+		Str("tunnel_id", tunnelID).
+		Int("requests_per_minute", config.RequestsPerMinute).
+		Int("requests_per_hour", config.RequestsPerHour).
+		Int("requests_per_day", config.RequestsPerDay).
+		Msg("✅ Rate limit configuration set for tunnel")
 }
 
 // GetRateLimit gets rate limit configuration for a tunnel
 func (rrl *RedisRateLimiter) GetRateLimit(tunnelID string) *RateLimitConfig {
+	rrl.mu.RLock()
+	defer rrl.mu.RUnlock()
 	if config, exists := rrl.configs[tunnelID]; exists {
 		return config
 	}
@@ -48,6 +59,15 @@ func (rrl *RedisRateLimiter) CheckRateLimit(ctx context.Context, tunnelID string
 
 	config := rrl.GetRateLimit(tunnelID)
 	now := time.Now()
+
+	// Log the rate limit config being used (for debugging)
+	// Use Info level for first few requests to help diagnose rate limit issues
+	rrl.logger.Info().
+		Str("tunnel_id", tunnelID).
+		Int("requests_per_minute", config.RequestsPerMinute).
+		Int("requests_per_hour", config.RequestsPerHour).
+		Int("requests_per_day", config.RequestsPerDay).
+		Msg("Checking rate limit with config")
 
 	// Check per-minute limit
 	minuteKey := fmt.Sprintf("tunnel:ratelimit:%s:minute:%d", tunnelID, now.Unix()/60)
