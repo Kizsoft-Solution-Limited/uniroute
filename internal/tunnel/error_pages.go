@@ -307,7 +307,7 @@ func (ts *TunnelServer) writeErrorPage(w http.ResponseWriter, r *http.Request, t
 		<div class="status-indicator" id="statusIndicator">Checking connection...</div>
 		
 		<div class="footer">
-			Powered by <a href="https://uniroute.co" target="_blank">UniRoute</a>
+			Powered by <a href="%s" target="_blank">UniRoute</a>
 		</div>
 	</div>
 	<script>
@@ -352,12 +352,12 @@ func (ts *TunnelServer) writeErrorPage(w http.ResponseWriter, r *http.Request, t
 				});
 			}
 			
-			checkConnection();
-			setInterval(checkConnection, checkInterval);
-		})();
+		checkConnection();
+		setInterval(checkConnection, checkInterval);
+	})();
 	</script>
 </body>
-</html>`, title, iconColor, iconSVG, errorCode, title, subtitle, publicURL, localURL, statusCode, details)
+</html>`, title, iconColor, iconSVG, errorCode, title, subtitle, publicURL, localURL, statusCode, details, ts.websiteURL)
 
 	w.Write([]byte(html))
 }
@@ -628,11 +628,11 @@ func (ts *TunnelServer) writeConnectionRefusedError(w http.ResponseWriter, r *ht
 		</div>
 		
 		<div class="footer">
-			Powered by <a href="https://uniroute.co" target="_blank">UniRoute</a>
+			Powered by <a href="%s" target="_blank">UniRoute</a>
 		</div>
 	</div>
 </body>
-</html>`, publicURL, localURL, localPort, localURL)
+</html>`, publicURL, localURL, localPort, localURL, ts.websiteURL)
 
 	w.Write([]byte(html))
 }

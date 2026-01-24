@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -56,6 +57,8 @@ type TunnelServer struct {
 	apiKeyValidator func(ctx context.Context, apiKey string) (userID string, err error) // API key validator function (optional) - DEPRECATED: use apiKeyValidatorWithLimits
 	// API key validator that returns rate limits - preferred when available
 	apiKeyValidatorWithLimits func(ctx context.Context, apiKey string) (userID string, rateLimitPerMinute, rateLimitPerDay int, err error)
+	baseDomain      string // Base domain for tunnels (e.g., "uniroute.co")
+	websiteURL      string // Website URL for links (e.g., "https://uniroute.co")
 }
 
 // TCPConnection represents an active TCP/TLS connection
@@ -97,20 +100,26 @@ type TunnelConnection struct {
 // NewTunnelServer creates a new tunnel server
 // allowedOrigins: List of allowed origin patterns (empty = use defaults)
 func NewTunnelServer(port int, logger zerolog.Logger, allowedOrigins []string) *TunnelServer {
-	// Default allowed origins if not provided
 	defaultOrigins := []string{
 		"http://localhost",
 		"https://localhost",
 		"http://127.0.0.1",
 		"https://127.0.0.1",
-		"tunnel.uniroute.co",
-		".uniroute.co", // Allow subdomains
 	}
 
-	// Use provided origins if available, otherwise use defaults
+	baseDomain := getEnv("TUNNEL_BASE_DOMAIN", "")
+	if baseDomain != "" {
+		defaultOrigins = append(defaultOrigins, baseDomain, "."+baseDomain)
+	}
+
 	originPatterns := defaultOrigins
 	if len(allowedOrigins) > 0 {
 		originPatterns = allowedOrigins
+	}
+
+	websiteURL := getEnv("WEBSITE_URL", getEnv("BASE_URL", "https://uniroute.co"))
+	if baseDomain == "" {
+		baseDomain = getEnv("TUNNEL_BASE_DOMAIN", "uniroute.co")
 	}
 
 	return &TunnelServer{
@@ -140,8 +149,8 @@ func NewTunnelServer(port int, logger zerolog.Logger, allowedOrigins []string) *
 		udpConnections:  make(map[string]*UDPConnection),
 		udpListeners:    make(map[int]net.PacketConn),
 		portMap:         make(map[int]*TunnelConnection),
-		nextTCPPort:     20000, // Start TCP port allocation from 20000
-		tcpPortBase:     20000, // Base port for TCP tunnels
+		tcpPortBase:     getEnvAsInt("TUNNEL_TCP_PORT_BASE", 20000),
+		nextTCPPort:     getEnvAsInt("TUNNEL_TCP_PORT_BASE", 20000),
 		port:            port,
 		logger:          logger,
 		subdomainPrefix: "tunnel",
@@ -150,8 +159,30 @@ func NewTunnelServer(port int, logger zerolog.Logger, allowedOrigins []string) *
 		rateLimiter:     NewTunnelRateLimiter(logger),
 		statsCollector:  NewStatsCollector(logger),
 		security:        NewSecurityMiddleware(logger),
-		requireAuth:     false, // Can be enabled via config
+		requireAuth:     false,
+		baseDomain:      baseDomain,
+		websiteURL:      websiteURL,
 	}
+}
+
+func getEnvAsInt(key string, defaultValue int) int {
+	value := getEnv(key, "")
+	if value == "" {
+		return defaultValue
+	}
+	var intValue int
+	fmt.Sscanf(value, "%d", &intValue)
+	if intValue == 0 {
+		return defaultValue
+	}
+	return intValue
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
 // SetTCPPortBase sets the base port for TCP tunnel allocation
@@ -1270,7 +1301,8 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			if ts.domainManager != nil && ts.domainManager.baseDomain != "" {
 				publicURL = fmt.Sprintf("%s:%d", ts.domainManager.GetPublicURL(subdomain, ts.port, false), tcpPort)
 			} else {
-				publicURL = fmt.Sprintf("%s.localhost:%d", subdomain, tcpPort)
+				localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
+				publicURL = fmt.Sprintf("%s.%s:%d", subdomain, localhostDomain, tcpPort)
 			}
 		} else {
 			// Port not found - this should not happen if allocation succeeded
@@ -1280,8 +1312,8 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 				Str("subdomain", subdomain).
 				Str("protocol", tunnelProtocol).
 				Msg("TCP port not found in portMap - using fallback URL")
-			// Fallback if port allocation failed
-			publicURL = fmt.Sprintf("%s.localhost:%d", subdomain, ts.port)
+			localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
+			publicURL = fmt.Sprintf("%s.%s:%d", subdomain, localhostDomain, ts.port)
 		}
 	} else if tunnelProtocol == ProtocolUDP {
 		// Get allocated UDP port
@@ -1300,7 +1332,8 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			if ts.domainManager != nil && ts.domainManager.baseDomain != "" {
 				publicURL = fmt.Sprintf("%s:%d", ts.domainManager.GetPublicURL(subdomain, ts.port, false), udpPort)
 			} else {
-				publicURL = fmt.Sprintf("%s.localhost:%d", subdomain, udpPort)
+				localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
+				publicURL = fmt.Sprintf("%s.%s:%d", subdomain, localhostDomain, udpPort)
 			}
 		} else {
 			// Port not found - this should not happen if allocation succeeded
@@ -1310,28 +1343,26 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 				Str("subdomain", subdomain).
 				Str("protocol", tunnelProtocol).
 				Msg("UDP port not found in portMap - using fallback URL")
-			// Fallback if port allocation failed
-			publicURL = fmt.Sprintf("%s.localhost:%d", subdomain, ts.port)
+			localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
+			publicURL = fmt.Sprintf("%s.%s:%d", subdomain, localhostDomain, ts.port)
 		}
 	} else {
-		// HTTP tunnel - use HTTP URL
-		publicURL = fmt.Sprintf("http://%s.localhost:%d", subdomain, ts.port)
+		localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
+		publicURL = fmt.Sprintf("http://%s.%s:%d", subdomain, localhostDomain, ts.port)
 		if ts.domainManager != nil {
-			// Use HTTPS if base domain is set (Coolify will handle SSL termination)
 			useHTTPS := ts.domainManager.baseDomain != ""
 			publicURL = ts.domainManager.GetPublicURL(subdomain, ts.port, useHTTPS)
 		}
 	}
 
-	// Safety check: ensure publicURL is never empty
 	if publicURL == "" {
 		ts.logger.Warn().
 			Str("tunnel_id", tunnelID).
 			Str("subdomain", subdomain).
 			Str("protocol", tunnelProtocol).
 			Msg("Public URL is empty - using fallback")
-		// Fallback to basic HTTP URL
-		publicURL = fmt.Sprintf("http://%s.localhost:%d", subdomain, ts.port)
+		localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
+		publicURL = fmt.Sprintf("http://%s.%s:%d", subdomain, localhostDomain, ts.port)
 	}
 
 	// Save tunnel to database if repository is available
@@ -2707,7 +2738,7 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 		</div>
 		
 		<div class="footer">
-			Powered by <a href="https://uniroute.co" target="_blank">UniRoute</a> | 
+			Powered by <a href="%s" target="_blank">UniRoute</a> | 
 			<a href="/" style="color: #60a5fa; text-decoration: none;">Refresh</a>
 		</div>
 	</div>
@@ -2718,7 +2749,7 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 		}, 5000);
 	</script>
 </body>
-</html>`, activeTunnels, totalTunnels)
+</html>`, activeTunnels, totalTunnels, ts.websiteURL)
 
 	w.Write([]byte(html))
 }
@@ -4372,8 +4403,8 @@ func extractSubdomain(host string) string {
 		return ""
 	}
 
-	// For localhost:port format like "abc123.localhost:8080"
-	if parts[1] == "localhost" {
+	localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
+	if parts[1] == localhostDomain {
 		subdomain := parts[0]
 		// Validate subdomain format (alphanumeric and hyphens only, max 63 chars)
 		if len(subdomain) > 63 {
@@ -4386,7 +4417,7 @@ func extractSubdomain(host string) string {
 		return subdomain
 	}
 
-	// For domain format like "abc123.uniroute.co"
+	// For domain format like "abc123.{baseDomain}"
 	// Return first part as subdomain
 	subdomain := parts[0]
 	// Validate subdomain format (alphanumeric and hyphens only, max 63 chars)
@@ -4398,6 +4429,51 @@ func extractSubdomain(host string) string {
 		return ""
 	}
 	return subdomain
+}
+
+func (ts *TunnelServer) getPublicURLForTunnel(tunnel *TunnelConnection) string {
+	tunnel.mu.RLock()
+	subdomain := tunnel.Subdomain
+	protocol := tunnel.Protocol
+	tunnel.mu.RUnlock()
+
+	localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
+	if ts.domainManager != nil && ts.domainManager.baseDomain != "" {
+		useHTTPS := ts.domainManager.baseDomain != ""
+		return ts.domainManager.GetPublicURL(subdomain, ts.port, useHTTPS)
+	}
+
+	if protocol == ProtocolTCP || protocol == ProtocolTLS {
+		ts.portMapMu.RLock()
+		var tcpPort int
+		for port, t := range ts.portMap {
+			if t.ID == tunnel.ID {
+				tcpPort = port
+				break
+			}
+		}
+		ts.portMapMu.RUnlock()
+		if tcpPort > 0 {
+			return fmt.Sprintf("%s.%s:%d", subdomain, localhostDomain, tcpPort)
+		}
+	}
+
+	if protocol == ProtocolUDP {
+		ts.portMapMu.RLock()
+		var udpPort int
+		for port, t := range ts.portMap {
+			if t.ID == tunnel.ID {
+				udpPort = port
+				break
+			}
+		}
+		ts.portMapMu.RUnlock()
+		if udpPort > 0 {
+			return fmt.Sprintf("%s.%s:%d", subdomain, localhostDomain, udpPort)
+		}
+	}
+
+	return fmt.Sprintf("http://%s.%s:%d", subdomain, localhostDomain, ts.port)
 }
 
 // validateLocalURL validates a local URL format

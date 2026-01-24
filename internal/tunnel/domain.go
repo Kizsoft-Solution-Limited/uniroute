@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -95,8 +96,11 @@ func (dm *DomainManager) GetPublicURL(subdomain string, port int, useHTTPS bool)
 		return fmt.Sprintf("%s://%s.%s", scheme, subdomain, dm.baseDomain)
 	}
 	
-	// Fallback to localhost
-	return fmt.Sprintf("%s://%s.localhost:%d", scheme, subdomain, port)
+	localhostDomain := os.Getenv("TUNNEL_LOCALHOST_DOMAIN")
+	if localhostDomain == "" {
+		localhostDomain = "localhost"
+	}
+	return fmt.Sprintf("%s://%s.%s:%d", scheme, subdomain, localhostDomain, port)
 }
 
 // CheckSubdomainAvailability checks if a subdomain is available

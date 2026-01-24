@@ -14,6 +14,23 @@
 
 UniRoute is a unified gateway platform that routes, secures, and manages traffic to any LLM (cloud or local) with one unified API. Think of it as **ngrok for AI models** - a single entry point that intelligently routes requests to the best available model.
 
+### Unified API
+
+UniRoute provides a **single, consistent API interface** for all LLM providers. Instead of learning different APIs for OpenAI, Anthropic, Google, and local models, you use one unified endpoint:
+
+- **Single Endpoint**: `/v1/chat` works with all providers
+- **Consistent Format**: Same request/response format across all providers
+- **Automatic Routing**: UniRoute intelligently routes to the best available model
+- **Provider Abstraction**: Switch providers without changing your code
+- **Multi-Provider Support**: Use multiple providers simultaneously with failover
+
+This unified approach means you can:
+- Build applications that work with any LLM provider
+- Switch between providers without code changes
+- Use local models (Ollama, vLLM) alongside cloud providers
+- Implement intelligent routing based on cost, latency, or availability
+- Scale across multiple providers automatically
+
 ### Why UniRoute?
 
 - ✅ **Open Source** - Full transparency, community-driven
@@ -90,7 +107,8 @@ sudo mv uniroute /usr/local/bin/
 
 ```bash
 # Set API server URL (default: auto-detects local mode or uses https://api.uniroute.co)
-export UNIROUTE_API_URL=http://localhost:8084
+# Use BASE_URL from .env or set explicitly:
+export UNIROUTE_API_URL=${BASE_URL:-http://localhost:8084}
 
 # Set tunnel server URL (default: auto-detects local mode or uses tunnel.uniroute.co)
 export UNIROUTE_TUNNEL_URL=localhost:8080
@@ -191,6 +209,29 @@ CORS_ORIGINS=http://localhost:3000,https://app.uniroute.co
 
 # Optional: Tunnel Allowed Origins (comma-separated, overrides defaults)
 TUNNEL_ORIGINS=http://localhost,https://tunnel.uniroute.co,.uniroute.co
+
+# Base URL Configuration
+# Base URL for the API server (used in documentation and examples)
+# For local development: http://localhost:8084
+# For production: https://api.uniroute.co (or your domain)
+BASE_URL=http://localhost:8084
+
+# Tunnel Server Configuration
+# Base domain for tunnel subdomains (e.g., "uniroute.co" or "yourdomain.com")
+# If not set, defaults to "uniroute.co"
+TUNNEL_BASE_DOMAIN=uniroute.co
+
+# Localhost domain for local development tunnels
+# Default: "localhost" (results in subdomain.localhost:port)
+TUNNEL_LOCALHOST_DOMAIN=localhost
+
+# Base port for TCP/UDP tunnel allocation
+# Default: 20000 (tunnels will use ports starting from this number)
+TUNNEL_TCP_PORT_BASE=20000
+
+# Website URL for links in error pages and UI
+# Default: https://uniroute.co
+WEBSITE_URL=https://uniroute.co
 ```
 
 #### SMTP Configuration
@@ -220,7 +261,7 @@ UniRoute supports OAuth authentication with Google, GitHub, and X (Twitter). To 
 1. **Google OAuth:**
    - Go to [Google Cloud Console](https://console.cloud.google.com/)
    - Create OAuth 2.0 credentials
-   - Add authorized redirect URI: `{BACKEND_URL}/auth/google/callback` (e.g., `http://localhost:8084/auth/google/callback` for local dev)
+   - Add authorized redirect URI: `{BASE_URL}/auth/google/callback` (e.g., `http://localhost:8084/auth/google/callback` for local dev, or `https://api.uniroute.co/auth/google/callback` for production)
    - Add to `.env`:
      ```bash
      GOOGLE_OAUTH_CLIENT_ID=your-client-id
@@ -256,15 +297,16 @@ See [CLI Reference](https://uniroute.co/docs/cli) for detailed CLI installation 
 ### Verify Installation
 
 ```bash
-# Check health endpoint
-curl http://localhost:8084/health
+# Check health endpoint (replace with your BASE_URL if different)
+curl ${BASE_URL:-http://localhost:8084}/health
 ```
 
 ### First Request (Local LLM)
 
 ```bash
 # With Ollama running locally
-curl -X POST http://localhost:8084/v1/chat \
+# Replace ${BASE_URL} with your actual base URL (e.g., http://localhost:8084)
+curl -X POST ${BASE_URL:-http://localhost:8084}/v1/chat \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -279,24 +321,27 @@ curl -X POST http://localhost:8084/v1/chat \
 
 **Option 1: Using cloudflared (100% free, no signup) - Recommended**
 ```bash
-cloudflared tunnel --url http://localhost:8084
+# Replace with your BASE_URL port (default: 8084)
+cloudflared tunnel --url ${BASE_URL:-http://localhost:8084}
 # Returns: https://random-subdomain.trycloudflare.com
 ```
 
 **Option 2: Using ngrok (free tier, requires signup)**
 ```bash
+# Replace 8084 with your actual port from BASE_URL
 ngrok http 8084
-# Returns: https://abc123.ngrok-free.app -> http://localhost:8084
+# Returns: https://abc123.ngrok-free.app -> ${BASE_URL}
 ```
 
 **Option 3: Built-in UniRoute tunnel (requires CLI installation)** ⭐ Recommended
 ```bash
-# Download CLI (see CLI_INSTALLATION.md)
+# Download CLI (see CLI Reference in docs)
 # Or build: make build
 
 # Expose your local app (any port, any app)
+# Replace 8084 with your actual port from BASE_URL
 uniroute tunnel --port 8084
-# Returns: http://{subdomain}.uniroute.co -> http://localhost:8084
+# Returns: http://{subdomain}.${TUNNEL_BASE_DOMAIN:-uniroute.co} -> ${BASE_URL}
 
 # Works with any local application, not just UniRoute!
 
@@ -653,7 +698,7 @@ uniroute/
 - **[CLI Reference](https://uniroute.co/docs/cli)** - 📦 CLI installation and usage guide
 - **[Tunnel Documentation](https://uniroute.co/docs/tunnels)** - 🔌 Tunnel configuration, protocols, and custom domains
 - **[Custom Domains Guide](https://uniroute.co/docs/tunnels/custom-domains)** - 🌐 Custom domain setup and management
-- **API Documentation**: Interactive Swagger UI available at `http://localhost:8084/swagger` when the server is running
+- **API Documentation**: Interactive Swagger UI available at `${BASE_URL}/swagger` when the server is running (default: `http://localhost:8084/swagger` for local development)
 - **Postman Collection**: Import `UniRoute.postman_collection.json` for ready-to-use API requests
 
 ---
@@ -1096,7 +1141,8 @@ make security # Security scan
 
 ```bash
 # Using local Ollama instance
-curl -X POST http://localhost:8084/v1/chat \
+# Replace ${BASE_URL} with your actual base URL
+curl -X POST ${BASE_URL:-http://localhost:8084}/v1/chat \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1142,7 +1188,8 @@ ollama serve
 make dev
 
 # 3. Expose to internet (using cloudflared - 100% free, no signup)
-cloudflared tunnel --url http://localhost:8084
+# Replace with your BASE_URL
+cloudflared tunnel --url ${BASE_URL:-http://localhost:8084}
 # Share: https://random-subdomain.trycloudflare.com
 
 # 4. Others can now use your gateway!
