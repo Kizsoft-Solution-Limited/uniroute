@@ -251,7 +251,7 @@ UniRoute supports OAuth authentication with Google, GitHub, and X (Twitter). To 
 - OAuth providers redirect to your backend server, which then redirects to the frontend with the authentication token
 - **OAuth users do NOT need email verification** - OAuth providers (Google, GitHub, X) already verify user emails, so users are automatically marked as verified upon OAuth login/registration
 
-See [CLI_INSTALLATION.md](./CLI_INSTALLATION.md) for detailed installation instructions.
+See [CLI Reference](https://uniroute.co/docs/cli) for detailed CLI installation and usage instructions, including the interactive UI.
 
 ### Verify Installation
 
@@ -648,7 +648,7 @@ uniroute/
 
 ## 📚 Documentation
 
-- **[SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md)** - 🔐 Complete security documentation and measures
+- **[SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md)** - Complete security documentation and measures
 - **[Interactive Documentation](https://uniroute.co/docs)** - 📖 Full documentation with guides, API reference, and examples
 - **[CLI Reference](https://uniroute.co/docs/cli)** - 📦 CLI installation and usage guide
 - **[Tunnel Documentation](https://uniroute.co/docs/tunnels)** - 🔌 Tunnel configuration, protocols, and custom domains
@@ -1260,7 +1260,7 @@ UniRoute is an open-source project built with ❤️ by the community. If you fi
 - ⭐ **Star the repository** on GitHub
 - 🐛 **Report bugs** and suggest features
 - 💻 **Contribute code** via pull requests
-- ☕ **Buy us a coffee** - [Coming soon]
+- ☕ **Buy us a coffee** - [Donate via Polar.sh](https://polar.sh/uniroute/donate)
 
 Your support helps us continue developing and maintaining UniRoute!
 
