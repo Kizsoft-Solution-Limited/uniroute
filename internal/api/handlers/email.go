@@ -76,18 +76,18 @@ func (h *EmailTestHandler) HandleTestEmail(c *gin.Context) {
 		<body>
 			<div class="container">
 				<div class="header">
-					<h1 style="margin: 0; font-size: 28px;">✅ SMTP Test Successful!</h1>
+					<h1 style="margin: 0; font-size: 28px;">SMTP Test Successful</h1>
 				</div>
 				<div class="content">
 					<div class="success">
-						<strong>🎉 Congratulations!</strong><br>
+						<strong>Congratulations!</strong><br>
 						Your SMTP configuration is working correctly. This is a test email from UniRoute.
 					</div>
 					<p>If you received this email, it means:</p>
 					<ul>
-						<li>✅ SMTP server connection is working</li>
-						<li>✅ Authentication credentials are valid</li>
-						<li>✅ Email service is properly configured</li>
+						<li>SMTP server connection is working</li>
+						<li>Authentication credentials are valid</li>
+						<li>Email service is properly configured</li>
 					</ul>
 					<p><strong>Test Details:</strong></p>
 					<ul>
@@ -96,9 +96,9 @@ func (h *EmailTestHandler) HandleTestEmail(c *gin.Context) {
 					</ul>
 					<p>You can now use the email service for:</p>
 					<ul>
-						<li>📧 Email verification</li>
-						<li>🔑 Password reset emails</li>
-						<li>👋 Welcome emails</li>
+						<li>Email verification</li>
+						<li>Password reset emails</li>
+						<li>Welcome emails</li>
 					</ul>
 				</div>
 				<div class="footer">

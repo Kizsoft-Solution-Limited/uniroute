@@ -202,6 +202,14 @@ else
     MIGRATIONS_TO_RUN+=("migrations/016_custom_domains.sql")
 fi
 
+# Migration 017: Add tunnel protocol column
+if check_migration "017" "SELECT 1 FROM information_schema.columns WHERE table_name = 'tunnels' AND column_name = 'protocol' AND table_schema = 'public';"; then
+    echo -e "${GREEN}✅ 017_add_tunnel_protocol.sql (already applied)${NC}"
+else
+    echo -e "${YELLOW}⏸️  017_add_tunnel_protocol.sql (pending)${NC}"
+    MIGRATIONS_TO_RUN+=("migrations/017_add_tunnel_protocol.sql")
+fi
+
 echo ""
 
 # Run pending migrations

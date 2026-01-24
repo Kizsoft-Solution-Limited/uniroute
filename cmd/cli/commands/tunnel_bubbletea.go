@@ -23,34 +23,211 @@ import (
 
 // Quote with weight for weighted random selection
 type weightedQuote struct {
-	quote string
-	weight int // Higher weight = more likely to appear
+	quote    string
+	weight   int
+	protocol string // "http", "tcp", "tls", "udp", or "" for all protocols
 }
 
-// Funny quotes to display (with weights - donation link appears much less frequently)
-var tunnelQuotes = []weightedQuote{
-	{quote: "💬 Your app is now accessible worldwide!", weight: 100},
-	{quote: "🚀 Your local server just went global!", weight: 100},
-	{quote: "🌍 Breaking down firewalls, one request at a time!", weight: 100},
-	{quote: "⚡ Your code is now faster than your WiFi!", weight: 100},
-	{quote: "🎯 Tunnel vision? More like tunnel success!", weight: 100},
-	{quote: "🔥 Your app is so hot, it's breaking the internet!", weight: 100},
-	{quote: "💪 Local development, global domination!", weight: 100},
-	{quote: "🎉 Congratulations! Your app just got a passport!", weight: 100},
-	{quote: "🌟 From localhost to everywhere!", weight: 100},
-	{quote: "🚦 Green light! Your tunnel is live!", weight: 100},
-	{quote: "🎪 Welcome to the greatest show on the internet!", weight: 100},
-	{quote: "🎸 Your app is now rockin' the web!", weight: 100},
-	{quote: "🏆 You've just won the tunnel lottery!", weight: 100},
-	{quote: "🎨 Your app is now a masterpiece on display!", weight: 100},
-	{quote: "🎭 The show must go on, and it's going global!", weight: 100},
-	{quote: "🎯 Bullseye! Your tunnel is perfectly aimed!", weight: 100},
-	{quote: "🎪 Step right up! Your app is now on stage!", weight: 100},
-	{quote: "🎊 Party time! Your tunnel is celebrating!", weight: 100},
-	{quote: "🎁 Your app just got the best gift: global access!", weight: 100},
-	{quote: "🎪 The circus is in town, and your app is the star!", weight: 100},
-	// Donation link - very low weight so it appears rarely (only 1/2000 chance vs 100/2000 for others = ~0.05% vs 5% each)
-	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 1},
+// Protocol-specific quotes
+var httpQuotes = []weightedQuote{
+	{quote: "🌐 Your app is now rockin' the web!", weight: 10, protocol: "http"},
+	{quote: "💬 Your web app is now accessible worldwide!", weight: 10, protocol: "http"},
+	{quote: "🚀 Your local server just went global on the web!", weight: 10, protocol: "http"},
+	{quote: "⚡ HTTP requests are now faster than your WiFi!", weight: 10, protocol: "http"},
+	{quote: "🎯 Your web app just got its passport to the internet!", weight: 10, protocol: "http"},
+	{quote: "🔥 Your web app is so hot, it's breaking the internet!", weight: 10, protocol: "http"},
+	{quote: "🎉 Your website is now live and accessible globally!", weight: 10, protocol: "http"},
+	{quote: "🌟 From localhost to the world wide web!", weight: 10, protocol: "http"},
+	{quote: "🚦 Green light! Your HTTP tunnel is live!", weight: 10, protocol: "http"},
+	{quote: "🎪 Your web app is now on the world's biggest stage!", weight: 10, protocol: "http"},
+	{quote: "🎸 Your web app is now rockin' the global network!", weight: 10, protocol: "http"},
+	{quote: "🏆 Your website just won the tunnel lottery!", weight: 10, protocol: "http"},
+	{quote: "🎨 Your web app is now a masterpiece on display!", weight: 10, protocol: "http"},
+	{quote: "🎭 The web show must go on, and it's going global!", weight: 10, protocol: "http"},
+	{quote: "🎯 Bullseye! Your HTTP tunnel is perfectly aimed!", weight: 10, protocol: "http"},
+	{quote: "🎪 Step right up! Your web app is now on stage!", weight: 10, protocol: "http"},
+	{quote: "🎊 Party time! Your HTTP tunnel is celebrating!", weight: 10, protocol: "http"},
+	{quote: "🎁 Your web app just got the best gift: global HTTP access!", weight: 10, protocol: "http"},
+	{quote: "🌐 From 127.0.0.1 to the world wide web!", weight: 10, protocol: "http"},
+	{quote: "🚀 Your localhost just became a world-class web citizen!", weight: 10, protocol: "http"},
+	// Donation link - appears most frequently (much higher weight)
+	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 200, protocol: "http"},
+}
+
+var tcpQuotes = []weightedQuote{
+	{quote: "🔌 Your TCP connection is now globally accessible!", weight: 10, protocol: "tcp"},
+	{quote: "🌐 Your TCP service just went worldwide!", weight: 10, protocol: "tcp"},
+	{quote: "⚡ TCP packets are flying faster than ever!", weight: 10, protocol: "tcp"},
+	{quote: "🎯 Your TCP tunnel is perfectly connected!", weight: 10, protocol: "tcp"},
+	{quote: "🚀 Your TCP server just got its global passport!", weight: 10, protocol: "tcp"},
+	{quote: "💪 TCP connections are now breaking down barriers!", weight: 10, protocol: "tcp"},
+	{quote: "🎉 Your TCP service is now live and accessible!", weight: 10, protocol: "tcp"},
+	{quote: "🌟 From localhost to global TCP access!", weight: 10, protocol: "tcp"},
+	{quote: "🚦 Green light! Your TCP tunnel is live!", weight: 10, protocol: "tcp"},
+	{quote: "🎪 Your TCP service is now on the world stage!", weight: 10, protocol: "tcp"},
+	{quote: "🔌 TCP connections are now flowing globally!", weight: 10, protocol: "tcp"},
+	{quote: "🏆 Your TCP tunnel just won the connection lottery!", weight: 10, protocol: "tcp"},
+	{quote: "🎨 Your TCP service is now a global masterpiece!", weight: 10, protocol: "tcp"},
+	{quote: "🎭 The TCP show must go on, and it's going global!", weight: 10, protocol: "tcp"},
+	{quote: "🎯 Bullseye! Your TCP tunnel is perfectly aimed!", weight: 10, protocol: "tcp"},
+	{quote: "🎪 Step right up! Your TCP service is now on stage!", weight: 10, protocol: "tcp"},
+	{quote: "🎊 Party time! Your TCP tunnel is celebrating!", weight: 10, protocol: "tcp"},
+	{quote: "🎁 Your TCP service just got global access!", weight: 10, protocol: "tcp"},
+	{quote: "🔌 From localhost to global TCP connectivity!", weight: 10, protocol: "tcp"},
+	{quote: "🚀 Your TCP server just became a global citizen!", weight: 10, protocol: "tcp"},
+	// Donation link - appears most frequently (much higher weight)
+	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 200, protocol: "tcp"},
+}
+
+var tlsQuotes = []weightedQuote{
+	{quote: "🔒 Your secure TLS connection is now globally accessible!", weight: 10, protocol: "tls"},
+	{quote: "🌐 Your TLS service just went worldwide with encryption!", weight: 10, protocol: "tls"},
+	{quote: "⚡ Secure TLS packets are flying faster than ever!", weight: 10, protocol: "tls"},
+	{quote: "🎯 Your encrypted TLS tunnel is perfectly connected!", weight: 10, protocol: "tls"},
+	{quote: "🚀 Your TLS server just got its secure global passport!", weight: 10, protocol: "tls"},
+	{quote: "💪 Secure TLS connections are now breaking down barriers!", weight: 10, protocol: "tls"},
+	{quote: "🎉 Your encrypted TLS service is now live!", weight: 10, protocol: "tls"},
+	{quote: "🌟 From localhost to global secure TLS access!", weight: 10, protocol: "tls"},
+	{quote: "🚦 Green light! Your secure TLS tunnel is live!", weight: 10, protocol: "tls"},
+	{quote: "🎪 Your TLS service is now on the secure world stage!", weight: 10, protocol: "tls"},
+	{quote: "🔒 TLS connections are now flowing securely globally!", weight: 10, protocol: "tls"},
+	{quote: "🏆 Your encrypted tunnel just won the security lottery!", weight: 10, protocol: "tls"},
+	{quote: "🎨 Your TLS service is now a secure global masterpiece!", weight: 10, protocol: "tls"},
+	{quote: "🎭 The secure TLS show must go on, and it's going global!", weight: 10, protocol: "tls"},
+	{quote: "🎯 Bullseye! Your encrypted TLS tunnel is perfectly aimed!", weight: 10, protocol: "tls"},
+	{quote: "🎪 Step right up! Your secure TLS service is now on stage!", weight: 10, protocol: "tls"},
+	{quote: "🎊 Party time! Your encrypted TLS tunnel is celebrating!", weight: 10, protocol: "tls"},
+	{quote: "🎁 Your TLS service just got secure global access!", weight: 10, protocol: "tls"},
+	{quote: "🔒 From localhost to global encrypted TLS connectivity!", weight: 10, protocol: "tls"},
+	{quote: "🚀 Your secure TLS server just became a global citizen!", weight: 10, protocol: "tls"},
+	// Donation link - appears most frequently (much higher weight)
+	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 200, protocol: "tls"},
+}
+
+var udpQuotes = []weightedQuote{
+	{quote: "📡 Your UDP packets are now flying globally!", weight: 10, protocol: "udp"},
+	{quote: "🌐 Your UDP service just went worldwide!", weight: 10, protocol: "udp"},
+	{quote: "⚡ UDP datagrams are racing faster than ever!", weight: 10, protocol: "udp"},
+	{quote: "🎯 Your UDP tunnel is perfectly connected!", weight: 10, protocol: "udp"},
+	{quote: "🚀 Your UDP server just got its global passport!", weight: 10, protocol: "udp"},
+	{quote: "💪 UDP packets are now breaking down barriers!", weight: 10, protocol: "udp"},
+	{quote: "🎉 Your UDP service is now live and accessible!", weight: 10, protocol: "udp"},
+	{quote: "🌟 From localhost to global UDP access!", weight: 10, protocol: "udp"},
+	{quote: "🚦 Green light! Your UDP tunnel is live!", weight: 10, protocol: "udp"},
+	{quote: "🎪 Your UDP service is now on the world stage!", weight: 10, protocol: "udp"},
+	{quote: "📡 UDP datagrams are now flowing globally!", weight: 10, protocol: "udp"},
+	{quote: "🏆 Your UDP tunnel just won the packet lottery!", weight: 10, protocol: "udp"},
+	{quote: "🎨 Your UDP service is now a global masterpiece!", weight: 10, protocol: "udp"},
+	{quote: "🎭 The UDP show must go on, and it's going global!", weight: 10, protocol: "udp"},
+	{quote: "🎯 Bullseye! Your UDP tunnel is perfectly aimed!", weight: 10, protocol: "udp"},
+	{quote: "🎪 Step right up! Your UDP service is now on stage!", weight: 10, protocol: "udp"},
+	{quote: "🎊 Party time! Your UDP tunnel is celebrating!", weight: 10, protocol: "udp"},
+	{quote: "🎁 Your UDP service just got global access!", weight: 10, protocol: "udp"},
+	{quote: "📡 From localhost to global UDP connectivity!", weight: 10, protocol: "udp"},
+	{quote: "🚀 Your UDP server just became a global citizen!", weight: 10, protocol: "udp"},
+	// Donation link - appears most frequently (much higher weight)
+	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 200, protocol: "udp"},
+}
+
+// Custom domain quotes (when user uses their own domain)
+var domainQuotes = []weightedQuote{
+	{quote: "🌐 Your custom domain is now live and accessible worldwide!", weight: 10, protocol: ""},
+	{quote: "🎯 Your own domain is now rockin' the web!", weight: 10, protocol: ""},
+	{quote: "🚀 Your custom domain just went global!", weight: 10, protocol: ""},
+	{quote: "💎 Your domain is now a premium global citizen!", weight: 10, protocol: ""},
+	{quote: "👑 Your custom domain is now the king of the internet!", weight: 10, protocol: ""},
+	{quote: "🌟 Your own domain is now shining worldwide!", weight: 10, protocol: ""},
+	{quote: "🎉 Congratulations! Your custom domain is live!", weight: 10, protocol: ""},
+	{quote: "🏆 Your domain just won the premium tunnel lottery!", weight: 10, protocol: ""},
+	{quote: "🎪 Your custom domain is now on the world's biggest stage!", weight: 10, protocol: ""},
+	{quote: "🎨 Your domain is now a masterpiece on display!", weight: 10, protocol: ""},
+	{quote: "🎭 The custom domain show must go on, and it's going global!", weight: 10, protocol: ""},
+	{quote: "🎯 Bullseye! Your custom domain is perfectly connected!", weight: 10, protocol: ""},
+	{quote: "🎪 Step right up! Your domain is now on stage!", weight: 10, protocol: ""},
+	{quote: "🎊 Party time! Your custom domain is celebrating!", weight: 10, protocol: ""},
+	{quote: "🎁 Your domain just got the best gift: global access!", weight: 10, protocol: ""},
+	{quote: "🌐 From localhost to your own domain - you've made it!", weight: 10, protocol: ""},
+	{quote: "🚀 Your custom domain just became a world-class citizen!", weight: 10, protocol: ""},
+	{quote: "💎 Premium domain, premium experience!", weight: 10, protocol: ""},
+	{quote: "👑 Your domain is now ruling the internet!", weight: 10, protocol: ""},
+	{quote: "🌟 Your custom domain is now a global superstar!", weight: 10, protocol: ""},
+	// Donation link - appears most frequently (much higher weight)
+	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 200, protocol: ""},
+}
+
+// Generic quotes that work for all protocols
+var genericQuotes = []weightedQuote{
+	{quote: "💬 Your app is now accessible worldwide!", weight: 10, protocol: ""},
+	{quote: "🚀 Your local server just went global!", weight: 10, protocol: ""},
+	{quote: "🌍 Breaking down firewalls, one request at a time!", weight: 10, protocol: ""},
+	{quote: "⚡ Your code is now faster than your WiFi!", weight: 10, protocol: ""},
+	{quote: "🎯 Tunnel vision? More like tunnel success!", weight: 10, protocol: ""},
+	{quote: "🔥 Your app is so hot, it's breaking the internet!", weight: 10, protocol: ""},
+	{quote: "💪 Local development, global domination!", weight: 10, protocol: ""},
+	{quote: "🎉 Congratulations! Your app just got a passport!", weight: 10, protocol: ""},
+	{quote: "🌟 From localhost to everywhere!", weight: 10, protocol: ""},
+	{quote: "🎪 Welcome to the greatest show on the internet!", weight: 10, protocol: ""},
+	{quote: "🏆 You've just won the tunnel lottery!", weight: 10, protocol: ""},
+	{quote: "🎪 The circus is in town, and your app is the star!", weight: 10, protocol: ""},
+	{quote: "🚀 Your localhost just became a world-class citizen!", weight: 10, protocol: ""},
+	{quote: "🌐 From 127.0.0.1 to infinity and beyond!", weight: 10, protocol: ""},
+	{quote: "⚡ Faster than a speeding bullet, more powerful than localhost!", weight: 10, protocol: ""},
+	{quote: "🏰 Your local server just became a global empire!", weight: 10, protocol: ""},
+	{quote: "🎨 Picasso would be jealous of this masterpiece!", weight: 10, protocol: ""},
+	{quote: "🎬 Lights, camera, action! Your app is live!", weight: 10, protocol: ""},
+	{quote: "🎤 Your app just got its own world tour!", weight: 10, protocol: ""},
+	{quote: "🎮 Game over for localhost limitations!", weight: 10, protocol: ""},
+	{quote: "🎲 You rolled a natural 20! Tunnel connected!", weight: 10, protocol: ""},
+	{quote: "🎪 The magic show begins - watch your app disappear from localhost!", weight: 10, protocol: ""},
+	{quote: "🚁 Your app just got airlifted to the cloud!", weight: 10, protocol: ""},
+	{quote: "🎪 Welcome to the tunnel of wonders!", weight: 10, protocol: ""},
+	{quote: "🎯 Mission accomplished: Your app is now public!", weight: 10, protocol: ""},
+	{quote: "🎪 Your app just joined the global network party!", weight: 10, protocol: ""},
+	{quote: "🎨 From localhost to local-hero in one tunnel!", weight: 10, protocol: ""},
+	{quote: "🎪 The tunnel is open - your app is free!", weight: 10, protocol: ""},
+	{quote: "🚀 Houston, we have a tunnel connection!", weight: 10, protocol: ""},
+	{quote: "🎪 Your app just got its VIP pass to the internet!", weight: 10, protocol: ""},
+	{quote: "🎯 Direct hit! Your tunnel is perfectly connected!", weight: 10, protocol: ""},
+	{quote: "🎪 The tunnel is alive! Your app is breathing the global air!", weight: 10, protocol: ""},
+	// Donation link - appears most frequently (much higher weight = most likely)
+	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 200, protocol: ""},
+}
+
+// isCustomDomain checks if the PublicURL contains a custom domain (not .localhost)
+func isCustomDomain(publicURL string) bool {
+	if publicURL == "" {
+		return false
+	}
+	// Check if URL contains .localhost (default subdomain) or localhost:port
+	// If it doesn't, it's likely a custom domain
+	return !strings.Contains(publicURL, ".localhost") && !strings.Contains(publicURL, "localhost:")
+}
+
+// getQuotesForProtocol returns quotes appropriate for the given protocol and domain type
+func getQuotesForProtocol(protocol string, hasCustomDomain bool) []weightedQuote {
+	var quotes []weightedQuote
+
+	// If custom domain is used, add domain-specific quotes first (higher priority)
+	if hasCustomDomain {
+		quotes = append(quotes, domainQuotes...)
+	}
+
+	// Add protocol-specific quotes
+	switch protocol {
+	case "http":
+		quotes = append(quotes, httpQuotes...)
+	case "tcp":
+		quotes = append(quotes, tcpQuotes...)
+	case "tls":
+		quotes = append(quotes, tlsQuotes...)
+	case "udp":
+		quotes = append(quotes, udpQuotes...)
+	}
+
+	// Always add generic quotes (they work for all protocols)
+	quotes = append(quotes, genericQuotes...)
+
+	return quotes
 }
 
 // Bubble Tea model for tunnel UI
@@ -85,6 +262,7 @@ type tunnelModel struct {
 	wasOffline     bool      // Track if we were offline to show reconnecting when back
 	reconnectTime  time.Time // Time when internet came back
 	terminated     bool      // Track if tunnel was terminated
+	lastStatus     string    // Track last connection status to detect changes
 	ctx            context.Context
 	cancel         context.CancelFunc
 
@@ -124,32 +302,51 @@ func initialTunnelModel(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, ac
 	// Get initial version
 	currentVersion := GetVersion()
 
-	// Pick a random quote using weighted selection (donation link appears much less frequently)
+	// Get protocol from client to show protocol-specific quotes
+	protocol := ""
+	if client != nil {
+		protocol = client.GetProtocol()
+	}
+
+	// Check if custom domain is being used
+	hasCustomDomain := false
+	if info != nil && info.PublicURL != "" {
+		hasCustomDomain = isCustomDomain(info.PublicURL)
+	}
+
+	// Get protocol and domain-specific quotes
+	quotes := getQuotesForProtocol(protocol, hasCustomDomain)
+
+	// Pick a random quote using weighted selection
 	rand.Seed(time.Now().UnixNano())
-	
+
 	// Calculate total weight
 	totalWeight := 0
-	for _, q := range tunnelQuotes {
+	for _, q := range quotes {
 		totalWeight += q.weight
 	}
-	
+
 	// Pick random number in range [0, totalWeight)
 	randomNum := rand.Intn(totalWeight)
-	
+
 	// Find which quote this corresponds to
 	var randomQuote string
 	currentWeight := 0
-	for _, q := range tunnelQuotes {
+	for _, q := range quotes {
 		currentWeight += q.weight
 		if randomNum < currentWeight {
 			randomQuote = q.quote
 			break
 		}
 	}
-	
+
 	// Fallback (should never happen, but safety check)
 	if randomQuote == "" {
-		randomQuote = tunnelQuotes[0].quote
+		if len(quotes) > 0 {
+			randomQuote = quotes[0].quote
+		} else {
+			randomQuote = "🚀 Your tunnel is live!"
+		}
 	}
 
 	// Initialize styles
@@ -297,15 +494,17 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.checkInternet()
 	case connectionStatusMsg:
-		// Don't update if terminated
+		// Don't update if terminated - check first to avoid any processing
 		if m.terminated {
 			return m, nil
 		}
-		// Don't update status if tunnel is terminated
-		if m.terminated {
+
+		// Check if tunnel was disconnected from dashboard - don't process status updates
+		if m.client.ShouldExit() {
+			// Should exit - don't process this status update, terminate message will be sent by monitor
 			return m, nil
 		}
-		
+
 		status := string(msg)
 		// Only update if internet is online, otherwise internetStatusMsg handler will handle it
 		if m.internetOnline {
@@ -313,7 +512,7 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// This prevents false positives where isReconnecting might be temporarily true
 			isReconnecting := m.client.IsReconnecting()
 			isConnected := m.client.IsConnected()
-			
+
 			// Trust the status from GetConnectionStatus() - it's the source of truth
 			// Only show reconnecting if BOTH status says reconnecting AND client confirms it
 			// This prevents showing reconnecting when connection is actually fine
@@ -356,7 +555,13 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.terminated {
 			return m, nil
 		}
-		
+
+		// Check if tunnel was disconnected from dashboard - don't process status updates
+		if m.client.ShouldExit() {
+			// Should exit - don't process this status update, terminate message will be sent by monitor
+			return m, nil
+		}
+
 		status := string(msg)
 		// Only update session status if internet is online
 		// If internet is offline, it's already handled by internetStatusMsg
@@ -382,10 +587,17 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.terminated = true
 			m.sessionStatus = fmt.Sprintf("%s %s", color.Red("●"), color.Red("terminated"))
 			m.connectionStatus = color.Red("Tunnel Terminated")
+			// Update lastStatus to trigger screen clear in View()
+			m.lastStatus = "" // Reset to force screen clear
 			// Cancel context to stop tunnel
 			m.cancel()
+			// Return updated model with a command to quit after showing status
+			// This ensures the terminated status is rendered before exit
+			return m, tea.Tick(500*time.Millisecond, func(time.Time) tea.Msg {
+				return tea.Quit()
+			})
 		}
-		// Quit after showing terminated status
+		// Already terminated, just quit
 		return m, tea.Quit
 	case latencyUpdateMsg:
 		latency := int64(msg)
@@ -493,6 +705,26 @@ func (m *tunnelModel) View() string {
 	// Fixed header section
 	header := strings.Builder{}
 
+	// Detect status change and clear screen to prevent duplicate lines
+	// This ensures old content is removed when status changes (e.g., online -> terminated)
+	// Without alt screen, Bubble Tea doesn't automatically clear, so we must do it manually
+	currentStatus := m.connectionStatus
+	statusChanged := m.lastStatus != "" && m.lastStatus != currentStatus
+	
+	// Clear screen if status changed or if terminated (and lastStatus was reset)
+	if statusChanged || (m.terminated && m.lastStatus == "") {
+		// Status changed or terminated - clear screen to remove old content
+		header.WriteString("\033[2J\033[H") // Clear screen and move cursor to top-left
+	}
+	
+	// Update last status after clearing
+	if statusChanged {
+		m.lastStatus = currentStatus
+	} else if m.lastStatus == "" {
+		// First render or after termination reset - initialize lastStatus
+		m.lastStatus = currentStatus
+	}
+
 	// Add some top padding to ensure header is visible (prevents cut-off)
 	header.WriteString("\n")
 
@@ -581,7 +813,7 @@ func (m *tunnelModel) updateStatus() tea.Cmd {
 		if m.terminated {
 			return nil
 		}
-		
+
 		// Only update latency and stats - connection status is handled by status change handler
 		// This prevents duplicate status messages
 		latency := m.client.GetLatency()
@@ -848,7 +1080,7 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 	// Channel to send request events to Bubble Tea
 	// Large buffer to prevent dropping events - we want ALL requests logged
 	requestChan := make(chan tunnel.RequestEvent, 1000)
-	
+
 	// Channel to send connection status changes to Bubble Tea for real-time updates
 	statusChangeChan := make(chan string, 10)
 
@@ -875,7 +1107,7 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 		}
 	}
 	client.SetRequestHandler(requestHandler)
-	
+
 	// Set up connection status change handler for real-time updates
 	// This provides immediate status updates when connection state changes
 	// Use a debounce mechanism to prevent rapid status changes from causing duplicates
@@ -883,7 +1115,7 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 	lastStatusTime := time.Time{}
 	statusChangeHandler := func(status string) {
 		now := time.Now()
-		
+
 		// Only send if status actually changed AND enough time has passed (debounce)
 		// This prevents rapid toggling between statuses
 		if status != lastStatus {
@@ -918,12 +1150,13 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 	}
 	client.SetConnectionStatusChangeHandler(statusChangeHandler)
 
-	// Clear screen and move cursor to top to ensure header is visible
-	// Do this right before starting Bubble Tea to prevent duplicate output
-	fmt.Print("\033[2J\033[H") // Clear screen and move to top-left
+	// Clear screen and move cursor to top before starting
+	// This ensures a clean start without duplicate content
+	fmt.Print("\033[2J\033[H")        // Clear screen and move to top-left
 	time.Sleep(50 * time.Millisecond) // Small delay to ensure screen is cleared
 
 	// Create program without alt screen to ensure header is always visible
+	// We'll handle screen clearing manually in the View function
 	p := tea.NewProgram(model)
 
 	// Goroutine to forward request events and status changes to Bubble Tea
@@ -938,10 +1171,24 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 				// Only send if model is not terminated
 				// Double-check the actual connection status before updating to prevent false positives
 				if !model.terminated {
+					// Check if tunnel was disconnected from dashboard - should exit
+					// This check must happen FIRST before processing any status updates
+					if model.client.ShouldExit() {
+						// Don't process status updates if we should exit - let monitor handle termination
+						// This prevents showing "online" status right before "terminated"
+						continue
+					}
+
 					// Verify the status is still accurate before sending
 					actualIsConnected := model.client.IsConnected()
 					actualIsReconnecting := model.client.IsReconnecting()
-					
+
+					// Double-check ShouldExit() again after getting connection state
+					// This prevents race conditions where ShouldExit() becomes true between checks
+					if model.client.ShouldExit() {
+						continue
+					}
+
 					// Only update if the status matches the actual connection state
 					// This prevents showing "reconnecting" when connection is actually stable
 					if status == "online" && actualIsConnected && !actualIsReconnecting {
@@ -955,6 +1202,29 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 						p.Send(sessionStatusMsg(status))
 					}
 					// If status doesn't match actual state, ignore it (prevents false positives)
+				}
+			case <-model.ctx.Done():
+				return
+			}
+		}
+	}()
+
+	// Monitor for tunnel disconnect from dashboard (should exit)
+	// This is the single source of truth for detecting dashboard disconnects
+	go func() {
+		ticker := time.NewTicker(500 * time.Millisecond) // Check more frequently for faster response
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if model.client.ShouldExit() && !model.terminated {
+					// Tunnel was disconnected from dashboard - exit gracefully
+					// Only send terminate message once - let Update handler show status and quit
+					p.Send(terminateMsg{})
+					model.cancel()
+					// Don't call p.Quit() here - let the terminateMsg handler return tea.Quit
+					// This ensures the terminated status is shown before exit
+					return
 				}
 			case <-model.ctx.Done():
 				return
@@ -985,13 +1255,13 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 	// Cleanup - close tunnel with timeout to prevent hanging
 	fmt.Println()
 	fmt.Println(color.Yellow("Shutting down tunnel..."))
-	
+
 	// Close tunnel with timeout to prevent hanging
 	closeDone := make(chan error, 1)
 	go func() {
 		closeDone <- client.Close()
 	}()
-	
+
 	select {
 	case err := <-closeDone:
 		if err != nil {
@@ -1004,6 +1274,6 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 		// Timeout - connection might be stuck, but we'll exit anyway
 		fmt.Println(color.Yellow("Tunnel shutdown timed out, exiting..."))
 	}
-	
+
 	return nil
 }

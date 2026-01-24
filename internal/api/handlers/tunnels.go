@@ -53,7 +53,8 @@ func (h *TunnelHandler) ListTunnels(c *gin.Context) {
 
 	// List tunnels for user
 	// This includes tunnels with matching user_id
-	tunnels, err := h.repository.ListTunnelsByUser(c.Request.Context(), userID)
+	// Pass empty string for protocol filter to get all tunnels (not filtering by protocol)
+	tunnels, err := h.repository.ListTunnelsByUser(c.Request.Context(), userID, "")
 	if err != nil {
 		h.logger.Error().Err(err).Str("user_id", userID.String()).Msg("Failed to list tunnels")
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -85,6 +86,12 @@ func (h *TunnelHandler) ListTunnels(c *gin.Context) {
 		if t.CustomDomain != "" {
 			tunnelList[i]["custom_domain"] = t.CustomDomain
 		}
+		// Include protocol (default to "http" if not set for backward compatibility)
+		protocol := t.Protocol
+		if protocol == "" {
+			protocol = "http" // Default for backward compatibility
+		}
+		tunnelList[i]["protocol"] = protocol
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -181,6 +188,12 @@ func (h *TunnelHandler) GetTunnel(c *gin.Context) {
 	if t.CustomDomain != "" {
 		response["custom_domain"] = t.CustomDomain
 	}
+	// Include protocol (default to "http" if not set for backward compatibility)
+	protocol := t.Protocol
+	if protocol == "" {
+		protocol = "http" // Default for backward compatibility
+	}
+	response["protocol"] = protocol
 
 	c.JSON(http.StatusOK, gin.H{
 		"tunnel": response,

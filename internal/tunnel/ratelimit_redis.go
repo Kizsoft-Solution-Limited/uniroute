@@ -37,7 +37,7 @@ func (rrl *RedisRateLimiter) SetRateLimit(tunnelID string, config *RateLimitConf
 		Int("requests_per_minute", config.RequestsPerMinute).
 		Int("requests_per_hour", config.RequestsPerHour).
 		Int("requests_per_day", config.RequestsPerDay).
-		Msg("✅ Rate limit configuration set for tunnel")
+		Msg("Rate limit configuration set for tunnel")
 }
 
 // GetRateLimit gets rate limit configuration for a tunnel
@@ -60,8 +60,6 @@ func (rrl *RedisRateLimiter) CheckRateLimit(ctx context.Context, tunnelID string
 	config := rrl.GetRateLimit(tunnelID)
 	now := time.Now()
 
-	// Log the rate limit config being used (for debugging)
-	// Use Info level for first few requests to help diagnose rate limit issues
 	rrl.logger.Info().
 		Str("tunnel_id", tunnelID).
 		Int("requests_per_minute", config.RequestsPerMinute).
@@ -77,7 +75,6 @@ func (rrl *RedisRateLimiter) CheckRateLimit(ctx context.Context, tunnelID string
 	}
 
 	if minuteCount == 1 {
-		// Set expiration on first request
 		rrl.redisClient.Client().Expire(ctx, minuteKey, 1*time.Minute)
 	}
 
@@ -133,9 +130,8 @@ func (rrl *RedisRateLimiter) CheckRateLimit(ctx context.Context, tunnelID string
 	return true, nil
 }
 
-// RecordRequest records a request for rate limiting (already done in CheckRateLimit)
+// RecordRequest records a request for rate limiting
 func (rrl *RedisRateLimiter) RecordRequest(ctx context.Context, tunnelID string) error {
-	// Already recorded in CheckRateLimit via Incr
 	return nil
 }
 

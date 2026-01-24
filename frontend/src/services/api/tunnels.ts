@@ -10,6 +10,7 @@ export interface Tunnel {
   created_at: string
   last_active?: string | null
   custom_domain?: string | null
+  protocol?: string // http, tcp, tls, udp
 }
 
 export interface ListTunnelsResponse {

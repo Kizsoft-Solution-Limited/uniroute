@@ -73,7 +73,7 @@
               <p v-if="tunnel.customDomain" class="text-xs text-gray-500 dark:text-gray-400 ml-6">
                 Configure DNS: <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">CNAME {{ tunnel.customDomain }} → tunnel.uniroute.co</code>
               </p>
-              <p v-else class="text-xs text-gray-500 dark:text-gray-400 italic">
+              <p v-else-if="tunnel.protocol === 'http' || !tunnel.protocol" class="text-xs text-gray-500 dark:text-gray-400 italic">
                 No custom domain. Use <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">uniroute domain example.com</code> to set one.
               </p>
               
@@ -179,6 +179,7 @@ interface Tunnel {
   createdAt: string
   lastActive?: string
   customDomain?: string | null
+  protocol?: string // http, tcp, tls, udp
 }
 
 const { showToast } = useToast()
@@ -207,7 +208,8 @@ const loadTunnels = async () => {
       requestCount: t.request_count,
       createdAt: t.created_at,
       lastActive: t.last_active || undefined,
-      customDomain: t.custom_domain || null
+      customDomain: t.custom_domain || null,
+      protocol: t.protocol || 'http' // Default to http for backward compatibility
     }))
   } catch (error: any) {
     showToast(error.response?.data?.error || 'Failed to load tunnels', 'error')

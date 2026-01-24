@@ -95,6 +95,7 @@ type Tunnel struct {
 	CustomDomain string
 	LocalURL     string
 	PublicURL    string
+	Protocol     string // http, tcp, tls, udp
 	Status       string
 	Region       string
 	CreatedAt    time.Time
@@ -121,7 +122,7 @@ type TunnelStatus struct {
 	LastActive time.Time `json:"last_active"`
 }
 
-// ConnectionStats represents connection statistics in ngrok-style format
+// ConnectionStats represents connection statistics
 type ConnectionStats struct {
 	Total int64   `json:"total"` // Total connections/requests
 	Open  int64   `json:"open"`  // Open/active connections

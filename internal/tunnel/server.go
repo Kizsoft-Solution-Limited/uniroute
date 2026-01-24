@@ -21,8 +21,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Note: uuid is already imported above
-
 // TunnelServer manages tunnel connections
 type TunnelServer struct {
 	upgrader        websocket.Upgrader
@@ -303,8 +301,6 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.logger.Error().Err(err).Msg("Failed to upgrade WebSocket connection")
 		return
 	}
-	// Don't close here - let handleTunnelMessages manage the connection lifecycle
-
 	// Read initial connection message
 	var initMsg InitMessage
 	if err := ws.ReadJSON(&initMsg); err != nil {
@@ -428,8 +424,7 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 	var subdomain string
 	var tunnelID string
 	var isResume bool
-	var autoFoundTunnel bool // Track if tunnel was auto-found (to preserve isResume flag)
-	// authenticatedUserID is already extracted above and will be used in resume logic
+	var autoFoundTunnel bool
 
 	if initMsg.ForceNew {
 		isResume = false
@@ -439,23 +434,53 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 
 		userUUID, parseErr := uuid.Parse(authenticatedUserID)
 		if parseErr == nil {
-			// Filter by protocol to ensure we resume the correct tunnel type
-			// This prevents resuming an HTTP tunnel when user wants TCP, etc.
 			userTunnels, err := ts.repository.ListTunnelsByUser(r.Context(), userUUID, initMsg.Protocol)
 			if err == nil && len(userTunnels) > 0 {
-			bestTunnel := userTunnels[0]
-
-				if bestTunnel != nil && bestTunnel.UserID == authenticatedUserID {
-					subdomain = bestTunnel.Subdomain
-					tunnelID = bestTunnel.ID
+				ts.tunnelsMu.RLock()
+				for _, dbTunnel := range userTunnels {
+					if dbTunnel.UserID != authenticatedUserID {
+						continue
+					}
+					
+					tunnelIDStr := dbTunnel.ID
+					existingTunnel, isConnected := ts.tunnels[dbTunnel.Subdomain]
+					
+					if isConnected && existingTunnel != nil {
+						existingTunnel.mu.RLock()
+						existingTunnelID := existingTunnel.ID
+						existingWSConn := existingTunnel.WSConn
+						existingTunnel.mu.RUnlock()
+						
+						if existingTunnelID == tunnelIDStr && existingWSConn != nil {
+							ts.logger.Info().
+								Str("tunnel_id", tunnelIDStr).
+								Str("subdomain", dbTunnel.Subdomain).
+								Str("protocol", dbTunnel.Protocol).
+								Msg("Tunnel is already connected - skipping and looking for another")
+							continue
+						}
+					}
+					
+					subdomain = dbTunnel.Subdomain
+					tunnelID = tunnelIDStr
 					isResume = true
 					autoFoundTunnel = true
-				} else if bestTunnel != nil {
-					ts.logger.Warn().
-						Str("tunnel_id", bestTunnel.ID).
-						Str("tunnel_user_id", bestTunnel.UserID).
-						Str("authenticated_user_id", authenticatedUserID).
-						Msg("Found tunnel but user_id mismatch - will create new tunnel")
+					ts.logger.Info().
+						Str("tunnel_id", tunnelID).
+						Str("subdomain", subdomain).
+						Str("protocol", dbTunnel.Protocol).
+						Str("status", dbTunnel.Status).
+						Msg("Found tunnel that is not connected - will resume it")
+					break
+				}
+				ts.tunnelsMu.RUnlock()
+				
+				if !autoFoundTunnel {
+					ts.logger.Info().
+						Str("user_id", authenticatedUserID).
+						Str("protocol", initMsg.Protocol).
+						Int("tunnel_count", len(userTunnels)).
+						Msg("All tunnels for user are already connected - will create new tunnel")
 				}
 			} else if err != nil {
 				ts.logger.Debug().
@@ -476,11 +501,87 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 	}
 
 	if autoFoundTunnel && isResume && subdomain != "" && tunnelID != "" {
-	} else if initMsg.Subdomain != "" || initMsg.TunnelID != "" {
+	} else if initMsg.Subdomain != "" || initMsg.TunnelID != "" || initMsg.Host != "" {
 		ts.tunnelsMu.RLock()
 		var existingTunnel *TunnelConnection
 
-		if initMsg.Subdomain != "" {
+		if initMsg.Host != "" {
+			tunnel := ts.tunnels[initMsg.Host]
+			if tunnel != nil {
+				tunnel.mu.RLock()
+				tunnelProtocol := tunnel.Protocol
+				tunnelWSConn := tunnel.WSConn
+				tunnel.mu.RUnlock()
+				if (initMsg.Protocol == "" || tunnelProtocol == initMsg.Protocol) && tunnelWSConn == nil {
+					existingTunnel = tunnel
+				} else if tunnelWSConn != nil {
+					ts.logger.Info().
+						Str("host", initMsg.Host).
+						Str("tunnel_id", tunnel.ID).
+						Str("protocol", tunnelProtocol).
+						Msg("Tunnel found in memory by host but already connected - will check database or create new")
+				} else {
+					ts.logger.Info().
+						Str("host", initMsg.Host).
+						Str("tunnel_protocol", tunnelProtocol).
+						Str("requested_protocol", initMsg.Protocol).
+						Msg("Tunnel found in memory by host but protocol mismatch - will check database or create new")
+				}
+			}
+			
+			if existingTunnel == nil && ts.repository != nil {
+				dbTunnel, err := ts.repository.GetTunnelByCustomDomain(context.Background(), initMsg.Host)
+				if err == nil && dbTunnel != nil {
+					if dbTunnel.Protocol != "" && initMsg.Protocol != "" && dbTunnel.Protocol != initMsg.Protocol {
+						ts.logger.Info().
+							Str("host", initMsg.Host).
+							Str("tunnel_protocol", dbTunnel.Protocol).
+							Str("requested_protocol", initMsg.Protocol).
+							Msg("Tunnel found by custom domain but protocol mismatch - will create new")
+					} else {
+						ts.tunnelsMu.RLock()
+						connectedTunnel, isConnected := ts.tunnels[dbTunnel.Subdomain]
+						ts.tunnelsMu.RUnlock()
+						
+						if isConnected && connectedTunnel != nil {
+							connectedTunnel.mu.RLock()
+							connectedTunnelID := connectedTunnel.ID
+							connectedWSConn := connectedTunnel.WSConn
+							connectedTunnel.mu.RUnlock()
+							
+							if connectedTunnelID == dbTunnel.ID && connectedWSConn != nil {
+								ts.logger.Info().
+									Str("host", initMsg.Host).
+									Str("tunnel_id", dbTunnel.ID).
+									Str("subdomain", dbTunnel.Subdomain).
+									Str("protocol", dbTunnel.Protocol).
+									Msg("Tunnel found by custom domain but already connected - will create new tunnel")
+							} else {
+								subdomain = dbTunnel.Subdomain
+								tunnelID = dbTunnel.ID
+								isResume = true
+								ts.logger.Info().
+									Str("host", initMsg.Host).
+									Str("tunnel_id", tunnelID).
+									Str("subdomain", subdomain).
+									Str("protocol", dbTunnel.Protocol).
+									Msg("Found tunnel by custom domain/host - not connected - will resume it")
+							}
+						} else {
+							subdomain = dbTunnel.Subdomain
+							tunnelID = dbTunnel.ID
+							isResume = true
+							ts.logger.Info().
+								Str("host", initMsg.Host).
+								Str("tunnel_id", tunnelID).
+								Str("subdomain", subdomain).
+								Str("protocol", dbTunnel.Protocol).
+								Msg("Found tunnel by custom domain/host - not connected - will resume it")
+						}
+					}
+				}
+			}
+		} else if initMsg.Subdomain != "" {
 			tunnel := ts.tunnels[initMsg.Subdomain]
 			if tunnel != nil {
 				tunnel.mu.RLock()
@@ -518,24 +619,28 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.tunnelsMu.RUnlock()
 
 		if existingTunnel != nil {
-			// Resume existing in-memory tunnel
-			// Instead, let the unified resume path (below) create a fresh tunnel
-			// This ensures consistent behavior and prevents race conditions
 			existingTunnel.mu.RLock()
 			existingProtocol := existingTunnel.Protocol
+			existingWSConn := existingTunnel.WSConn
 			existingTunnel.mu.RUnlock()
 			
-			subdomain = existingTunnel.Subdomain
-			tunnelID = existingTunnel.ID
-			isResume = true
-
-			ts.logger.Info().
-				Str("tunnel_id", tunnelID).
-				Str("subdomain", subdomain).
-				Str("protocol", existingProtocol).
-				Str("existing_tunnel_id", existingTunnel.ID).
-				Str("existing_local_url", existingTunnel.LocalURL).
-				Msg("Resuming existing tunnel (from memory) - protocol matches - will create fresh tunnel connection")
+			if existingWSConn != nil {
+				ts.logger.Info().
+					Str("tunnel_id", existingTunnel.ID).
+					Str("subdomain", existingTunnel.Subdomain).
+					Str("protocol", existingProtocol).
+					Msg("Tunnel is already connected - cannot resume, will check database for other tunnels or create new")
+				existingTunnel = nil
+			} else {
+				subdomain = existingTunnel.Subdomain
+				tunnelID = existingTunnel.ID
+				isResume = true
+				ts.logger.Info().
+					Str("tunnel_id", tunnelID).
+					Str("subdomain", subdomain).
+					Str("protocol", existingProtocol).
+					Msg("Resuming existing tunnel (from memory) - not connected - will create fresh tunnel connection")
+			}
 		} else if ts.repository != nil {
 			// Not in memory, check database for persisted tunnel
 			var dbTunnel *Tunnel
@@ -636,7 +741,6 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 							Str("authenticated_user_id", authenticatedUserID).
 							Str("db_user_id", dbTunnel.UserID).
 							Msg("Tunnel has null/empty user_id - REJECTING resume (will create new tunnel)")
-						// Don't set resume variables - will create new tunnel below
 						dbTunnel = nil
 						isResume = false
 					} else if dbTunnel.UserID != authenticatedUserID {
@@ -646,50 +750,76 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 							Str("tunnel_user_id", dbTunnel.UserID).
 							Str("authenticated_user_id", authenticatedUserID).
 							Msg("Tunnel belongs to different user - skipping resume (will create new tunnel)")
-						// Don't set resume variables - will create new tunnel below
 						dbTunnel = nil
 						isResume = false
 					} else {
 						// Tunnel belongs to authenticated user - check protocol before resuming
 						// Status doesn't matter - resuming an inactive tunnel will make it active again
 						if initMsg.Protocol != "" && dbTunnel.Protocol != "" && dbTunnel.Protocol != initMsg.Protocol {
-							// Protocol mismatch - don't resume wrong tunnel type
 							ts.logger.Info().
 								Str("tunnel_id", dbTunnel.ID).
 								Str("subdomain", dbTunnel.Subdomain).
 								Str("tunnel_protocol", dbTunnel.Protocol).
 								Str("requested_protocol", initMsg.Protocol).
 								Msg("Protocol mismatch - tunnel is different type - will create new tunnel")
-							// Don't set resume variables - will create new tunnel below
 							dbTunnel = nil
 							isResume = false
 						} else {
-							// Protocol matches (or protocol not specified) - proceed with resume
-							// Resuming will make the tunnel active again regardless of current status
-							if initMsg.Subdomain != "" && dbTunnel.Subdomain != initMsg.Subdomain {
-								ts.logger.Warn().
+							ts.tunnelsMu.RLock()
+							connectedTunnel, isConnected := ts.tunnels[dbTunnel.Subdomain]
+							ts.tunnelsMu.RUnlock()
+							
+							if isConnected && connectedTunnel != nil {
+								connectedTunnel.mu.RLock()
+								connectedTunnelID := connectedTunnel.ID
+								connectedWSConn := connectedTunnel.WSConn
+								connectedTunnel.mu.RUnlock()
+								
+								if connectedTunnelID == dbTunnel.ID && connectedWSConn != nil {
+									ts.logger.Info().
+										Str("tunnel_id", dbTunnel.ID).
+										Str("subdomain", dbTunnel.Subdomain).
+										Str("custom_domain", dbTunnel.CustomDomain).
+										Str("protocol", dbTunnel.Protocol).
+										Msg("Tunnel from database is already connected - cannot resume, will create new tunnel")
+									dbTunnel = nil
+									isResume = false
+								} else {
+									subdomain = dbTunnel.Subdomain
+									tunnelID = dbTunnel.ID
+									isResume = true
+									ts.logger.Info().
+										Str("tunnel_id", tunnelID).
+										Str("subdomain", subdomain).
+										Str("custom_domain", dbTunnel.CustomDomain).
+										Str("previous_status", dbTunnel.Status).
+										Str("protocol", dbTunnel.Protocol).
+										Msg("Resuming existing tunnel (from database) - not connected - will become active again")
+								}
+							} else {
+								if initMsg.Subdomain != "" && dbTunnel.Subdomain != initMsg.Subdomain {
+									ts.logger.Warn().
+										Str("requested_subdomain", initMsg.Subdomain).
+										Str("database_subdomain", dbTunnel.Subdomain).
+										Msg("Subdomain mismatch - using database subdomain (authoritative)")
+								}
+								subdomain = dbTunnel.Subdomain
+								tunnelID = dbTunnel.ID
+								isResume = true
+								ts.logger.Info().
+									Str("tunnel_id", tunnelID).
+									Str("subdomain", subdomain).
+									Str("previous_status", dbTunnel.Status).
+									Str("protocol", dbTunnel.Protocol).
+									Str("user_id", dbTunnel.UserID).
 									Str("requested_subdomain", initMsg.Subdomain).
+									Str("requested_tunnel_id", initMsg.TunnelID).
 									Str("database_subdomain", dbTunnel.Subdomain).
-									Msg("Subdomain mismatch - using database subdomain (authoritative)")
+									Msg("Resuming existing tunnel (from database) - not connected - will become active again")
 							}
-							subdomain = dbTunnel.Subdomain
-							tunnelID = dbTunnel.ID
-							isResume = true
-
-							ts.logger.Info().
-								Str("tunnel_id", tunnelID).
-								Str("subdomain", subdomain).
-								Str("previous_status", dbTunnel.Status).
-								Str("protocol", dbTunnel.Protocol).
-								Str("user_id", dbTunnel.UserID).
-								Str("requested_subdomain", initMsg.Subdomain).
-								Str("requested_tunnel_id", initMsg.TunnelID).
-								Str("database_subdomain", dbTunnel.Subdomain).
-								Msg("Resuming existing tunnel (from database) - will become active again")
 						}
 					}
 				} else {
-					// This should not happen since auth is required, but handle it gracefully
 					ts.logger.Warn().
 						Str("tunnel_id", dbTunnel.ID).
 						Str("subdomain", dbTunnel.Subdomain).
@@ -706,7 +836,6 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 				// The auto-find already validated the tunnel belongs to the user
 				if autoFoundTunnel && isResume && subdomain != "" && tunnelID != "" {
 					// Tunnel was auto-found and validated - keep isResume = true
-					// The lookup might have failed due to timing or other issues, but we trust the auto-find
 					ts.logger.Info().
 						Str("subdomain", subdomain).
 						Str("tunnel_id", tunnelID).
@@ -781,7 +910,6 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			}
 
 			// If ForceNew is set, we'll create a new tunnel with this subdomain
-			// But we still need to check if it's available (unless it's the user's own tunnel)
 			if !initMsg.ForceNew {
 				// Check if subdomain is available
 				available := true
@@ -795,25 +923,37 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 					}
 				}
 
-				// Also check if subdomain is already in use by an active tunnel
 				ts.tunnelsMu.RLock()
-				_, existsInMemory := ts.tunnels[initMsg.Host]
+				existingTunnelByHost, existsInMemory := ts.tunnels[initMsg.Host]
 				ts.tunnelsMu.RUnlock()
 
-				if !available || existsInMemory {
+				if existsInMemory && existingTunnelByHost != nil {
+					existingTunnelByHost.mu.RLock()
+					existingWSConn := existingTunnelByHost.WSConn
+					existingTunnelByHost.mu.RUnlock()
+					
+					if existingWSConn != nil {
+						ts.logger.Warn().
+							Str("requested_host", initMsg.Host).
+							Str("tunnel_id", existingTunnelByHost.ID).
+							Msg("Requested subdomain/host is already connected - cannot resume")
+						ws.WriteJSON(map[string]string{"error": "subdomain '" + initMsg.Host + "' is already connected by another client"})
+						ws.Close()
+						return
+					}
+				}
+
+				if !available {
 					ts.logger.Warn().
 						Str("requested_host", initMsg.Host).
 						Bool("available_in_db", available).
-						Bool("exists_in_memory", existsInMemory).
 						Msg("Requested subdomain is not available")
 					ws.WriteJSON(map[string]string{"error": "subdomain '" + initMsg.Host + "' is not available"})
 					ws.Close()
 					return
 				}
 			} else {
-				// ForceNew is set - we'll create a new tunnel, but if the subdomain exists and belongs to this user,
 				// we might want to reuse it. For now, we'll create a new tunnel with a different subdomain if needed.
-				// But actually, with ForceNew, the user wants a NEW tunnel, so we should allow reusing their own subdomain
 				ts.logger.Info().
 					Str("requested_host", initMsg.Host).
 					Bool("force_new", initMsg.ForceNew).
@@ -840,7 +980,6 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 				subdomain = ts.generateSubdomain()
 			}
 		}
-		// Always generate a new UUID for new tunnels
 		tunnelID = generateID()
 	} else {
 		// For resume, validate that tunnelID is a valid UUID
@@ -848,7 +987,6 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		if tunnelID != "" {
 			if _, err := uuid.Parse(tunnelID); err != nil {
 				// Only try to fix invalid IDs if tunnel was NOT auto-found
-				// Auto-found tunnels should already have valid UUIDs from database
 				if !autoFoundTunnel {
 					ts.logger.Warn().
 						Err(err).
@@ -875,21 +1013,17 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 						tunnelID = generateID()
 					}
 				} else {
-					// Auto-found tunnel with invalid ID - this shouldn't happen, but log it
 					ts.logger.Error().
 						Err(err).
 						Str("tunnel_id", tunnelID).
 						Str("subdomain", subdomain).
 						Msg("CRITICAL: Auto-found tunnel has invalid UUID - this should not happen")
-					// Don't clear isResume for auto-found tunnels - trust the auto-find
 				}
 			}
 		} else if autoFoundTunnel {
-			// Auto-found tunnel but tunnelID is empty - this shouldn't happen
 			ts.logger.Error().
 				Str("subdomain", subdomain).
 				Msg("CRITICAL: Auto-found tunnel but tunnelID is empty - this should not happen")
-			// Don't clear isResume - trust the auto-find, it will be handled in resume logic
 		}
 	}
 
@@ -902,7 +1036,6 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 	}
 
 	if isResume {
-		// SIMPLIFIED: Always create a fresh tunnel connection for resume, just like new tunnel
 		// This ensures resume works exactly the same way as new tunnel creation
 		// This minimizes the window where no tunnel is registered (prevents 404 errors)
 
@@ -931,16 +1064,11 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			handlerReady: false, // Will be set to true when handler starts
 		}
 
-		// Configure rate limits from API key BEFORE registering tunnel
-		// This ensures rate limits are set before any requests can come in
-		// ALWAYS apply rate limits if API key was used (even if values are 0, we should still set them)
+		// Configure rate limits from API key before registering tunnel
 		if isAPIKey {
 			if apiKeyRateLimitPerMinute > 0 || apiKeyRateLimitPerDay > 0 {
-				// Calculate hourly limit from daily (more accurate than dividing by 24)
-				// If daily is very high, set a reasonable hourly limit
 				hourlyLimit := apiKeyRateLimitPerDay / 24
 				if hourlyLimit < apiKeyRateLimitPerMinute*60 {
-					// Hourly should be at least 60x the per-minute limit
 					hourlyLimit = apiKeyRateLimitPerMinute * 60
 				}
 
@@ -1197,16 +1325,11 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			}()
 		}
 
-		// Configure rate limits from API key BEFORE registering tunnel
-		// This ensures rate limits are set before any requests can come in
-		// ALWAYS apply rate limits if API key was used (even if values are 0, we should still set them)
+		// Configure rate limits from API key before registering tunnel
 		if isAPIKey {
 			if apiKeyRateLimitPerMinute > 0 || apiKeyRateLimitPerDay > 0 {
-				// Calculate hourly limit from daily (more accurate than dividing by 24)
-				// If daily is very high, set a reasonable hourly limit
 				hourlyLimit := apiKeyRateLimitPerDay / 24
 				if hourlyLimit < apiKeyRateLimitPerMinute*60 {
-					// Hourly should be at least 60x the per-minute limit
 					hourlyLimit = apiKeyRateLimitPerMinute * 60
 				}
 
@@ -1692,8 +1815,6 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 
 // handleTunnelMessages handles messages from tunnel client
 func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
-	// Store reference to the WebSocket connection we're handling
-	// This allows us to detect if the connection has been replaced (during resume)
 	tunnel.mu.RLock()
 	ourWSConn := tunnel.WSConn
 	tunnelSubdomain := tunnel.Subdomain
@@ -1718,8 +1839,6 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 	tunnel.handlerReady = true
 	tunnel.mu.Unlock()
 
-	// Verify tunnel is still registered after a brief moment (catch any immediate removal)
-	// Minimal sleep to make handler ready as fast as possible
 	time.Sleep(20 * time.Millisecond)
 	ts.tunnelsMu.RLock()
 	stillRegistered, stillExists := ts.tunnels[tunnelSubdomain]

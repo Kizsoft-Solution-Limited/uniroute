@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,12 +36,13 @@ func (r *TunnelRepository) CreateTunnel(ctx context.Context, tunnel *Tunnel) err
 	query := `
 		INSERT INTO tunnels (
 			id, user_id, subdomain, custom_domain, local_url, public_url,
-			status, region, created_at, updated_at, last_active_at, request_count, metadata
+			protocol, status, region, created_at, updated_at, last_active_at, request_count, metadata
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		ON CONFLICT (subdomain) DO UPDATE SET
 			local_url = EXCLUDED.local_url,
 			public_url = EXCLUDED.public_url,
+			protocol = EXCLUDED.protocol,
 			status = EXCLUDED.status,
 			updated_at = EXCLUDED.updated_at,
 			last_active_at = EXCLUDED.last_active_at,
@@ -79,6 +81,16 @@ func (r *TunnelRepository) CreateTunnel(ctx context.Context, tunnel *Tunnel) err
 		tunnel.ID = tunnelID.String()
 	}
 
+	// Infer protocol from LocalURL if not set
+	protocol := tunnel.Protocol
+	if protocol == "" {
+		if strings.HasPrefix(tunnel.LocalURL, "http://") || strings.HasPrefix(tunnel.LocalURL, "https://") {
+			protocol = "http"
+		} else {
+			protocol = "tcp" // Default for host:port format
+		}
+	}
+
 	now := time.Now()
 	var returnedID uuid.UUID
 	err := r.pool.QueryRow(ctx, query,
@@ -88,6 +100,7 @@ func (r *TunnelRepository) CreateTunnel(ctx context.Context, tunnel *Tunnel) err
 		tunnel.CustomDomain,
 		tunnel.LocalURL,
 		tunnel.PublicURL,
+		protocol,
 		tunnel.Status,
 		tunnel.Region,
 		now,
@@ -124,7 +137,7 @@ func (r *TunnelRepository) CreateTunnel(ctx context.Context, tunnel *Tunnel) err
 func (r *TunnelRepository) GetTunnelByCustomDomain(ctx context.Context, domain string) (*Tunnel, error) {
 	query := `
 		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
-		       status, region, created_at, updated_at, last_active_at, request_count
+		       protocol, status, region, created_at, updated_at, last_active_at, request_count
 		FROM tunnels
 		WHERE custom_domain = $1
 		ORDER BY created_at DESC
@@ -134,6 +147,7 @@ func (r *TunnelRepository) GetTunnelByCustomDomain(ctx context.Context, domain s
 	var tunnel Tunnel
 	var userID sql.NullString
 	var customDomain sql.NullString
+	var protocol sql.NullString
 	var lastActive sql.NullTime
 
 	err := r.pool.QueryRow(ctx, query, domain).Scan(
@@ -143,6 +157,7 @@ func (r *TunnelRepository) GetTunnelByCustomDomain(ctx context.Context, domain s
 		&customDomain,
 		&tunnel.LocalURL,
 		&tunnel.PublicURL,
+		&protocol,
 		&tunnel.Status,
 		&tunnel.Region,
 		&tunnel.CreatedAt,
@@ -176,7 +191,7 @@ func (r *TunnelRepository) GetTunnelByCustomDomain(ctx context.Context, domain s
 func (r *TunnelRepository) GetTunnelBySubdomain(ctx context.Context, subdomain string) (*Tunnel, error) {
 	query := `
 		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
-		       status, region, created_at, updated_at, last_active_at, request_count
+		       protocol, status, region, created_at, updated_at, last_active_at, request_count
 		FROM tunnels
 		WHERE subdomain = $1
 		ORDER BY created_at DESC
@@ -186,6 +201,7 @@ func (r *TunnelRepository) GetTunnelBySubdomain(ctx context.Context, subdomain s
 	var tunnel Tunnel
 	var userID sql.NullString
 	var customDomain sql.NullString
+	var protocol sql.NullString
 	var lastActive sql.NullTime
 
 	err := r.pool.QueryRow(ctx, query, subdomain).Scan(
@@ -195,6 +211,7 @@ func (r *TunnelRepository) GetTunnelBySubdomain(ctx context.Context, subdomain s
 		&customDomain,
 		&tunnel.LocalURL,
 		&tunnel.PublicURL,
+		&protocol,
 		&tunnel.Status,
 		&tunnel.Region,
 		&tunnel.CreatedAt,
@@ -215,6 +232,9 @@ func (r *TunnelRepository) GetTunnelBySubdomain(ctx context.Context, subdomain s
 	}
 	if customDomain.Valid {
 		tunnel.CustomDomain = customDomain.String
+	}
+	if protocol.Valid {
+		tunnel.Protocol = protocol.String
 	}
 	if lastActive.Valid {
 		tunnel.LastActive = lastActive.Time
@@ -227,7 +247,7 @@ func (r *TunnelRepository) GetTunnelBySubdomain(ctx context.Context, subdomain s
 func (r *TunnelRepository) GetTunnelByID(ctx context.Context, tunnelID uuid.UUID) (*Tunnel, error) {
 	query := `
 		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
-		       status, region, created_at, updated_at, last_active_at, request_count
+		       protocol, status, region, created_at, updated_at, last_active_at, request_count
 		FROM tunnels
 		WHERE id = $1
 	`
@@ -235,6 +255,7 @@ func (r *TunnelRepository) GetTunnelByID(ctx context.Context, tunnelID uuid.UUID
 	var tunnel Tunnel
 	var userID sql.NullString
 	var customDomain sql.NullString
+	var protocol sql.NullString
 	var lastActive sql.NullTime
 
 	err := r.pool.QueryRow(ctx, query, tunnelID).Scan(
@@ -244,6 +265,7 @@ func (r *TunnelRepository) GetTunnelByID(ctx context.Context, tunnelID uuid.UUID
 		&customDomain,
 		&tunnel.LocalURL,
 		&tunnel.PublicURL,
+		&protocol,
 		&tunnel.Status,
 		&tunnel.Region,
 		&tunnel.CreatedAt,
@@ -265,6 +287,9 @@ func (r *TunnelRepository) GetTunnelByID(ctx context.Context, tunnelID uuid.UUID
 	if customDomain.Valid {
 		tunnel.CustomDomain = customDomain.String
 	}
+	if protocol.Valid {
+		tunnel.Protocol = protocol.String
+	}
 	if lastActive.Valid {
 		tunnel.LastActive = lastActive.Time
 	}
@@ -276,7 +301,7 @@ func (r *TunnelRepository) GetTunnelByID(ctx context.Context, tunnelID uuid.UUID
 func (r *TunnelRepository) ListAllTunnels(ctx context.Context) ([]*Tunnel, error) {
 	query := `
 		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
-		       status, region, created_at, updated_at, last_active_at, request_count
+		       protocol, status, region, created_at, updated_at, last_active_at, request_count
 		FROM tunnels
 		ORDER BY created_at DESC
 	`
@@ -292,6 +317,7 @@ func (r *TunnelRepository) ListAllTunnels(ctx context.Context) ([]*Tunnel, error
 		var tunnel Tunnel
 		var userID sql.NullString
 		var customDomain sql.NullString
+		var protocol sql.NullString
 		var lastActive sql.NullTime
 
 		err := rows.Scan(
@@ -301,6 +327,7 @@ func (r *TunnelRepository) ListAllTunnels(ctx context.Context) ([]*Tunnel, error
 			&customDomain,
 			&tunnel.LocalURL,
 			&tunnel.PublicURL,
+			&protocol,
 			&tunnel.Status,
 			&tunnel.Region,
 			&tunnel.CreatedAt,
@@ -334,21 +361,40 @@ func (r *TunnelRepository) ListAllTunnels(ctx context.Context) ([]*Tunnel, error
 
 // ListTunnelsByUser retrieves all tunnels for a user
 // Optimized query: Uses indexes on user_id and status, orders by status (active first) then created_at
-func (r *TunnelRepository) ListTunnelsByUser(ctx context.Context, userID uuid.UUID) ([]*Tunnel, error) {
+// If protocol is provided, filters by protocol to ensure correct tunnel type is resumed
+func (r *TunnelRepository) ListTunnelsByUser(ctx context.Context, userID uuid.UUID, protocolFilter string) ([]*Tunnel, error) {
 	// Optimized query: Prefer active tunnels, then most recent
-	// Uses composite index idx_tunnels_user_id_status for faster lookups
-	query := `
-		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
-		       status, region, created_at, updated_at, last_active_at, request_count
-		FROM tunnels
-		WHERE user_id = $1
-		ORDER BY 
-			CASE WHEN status = 'active' THEN 0 ELSE 1 END,
-			created_at DESC
-		LIMIT 100
-	`
+	// Uses composite index idx_tunnels_user_id_status_protocol for faster lookups
+	var query string
+	var args []interface{}
+	
+	if protocolFilter != "" {
+		query = `
+			SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
+			       protocol, status, region, created_at, updated_at, last_active_at, request_count
+			FROM tunnels
+			WHERE user_id = $1 AND protocol = $2
+			ORDER BY 
+				CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+				created_at DESC
+			LIMIT 100
+		`
+		args = []interface{}{userID, protocolFilter}
+	} else {
+		query = `
+			SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
+			       protocol, status, region, created_at, updated_at, last_active_at, request_count
+			FROM tunnels
+			WHERE user_id = $1
+			ORDER BY 
+				CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+				created_at DESC
+			LIMIT 100
+		`
+		args = []interface{}{userID}
+	}
 
-	rows, err := r.pool.Query(ctx, query, userID)
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -359,6 +405,7 @@ func (r *TunnelRepository) ListTunnelsByUser(ctx context.Context, userID uuid.UU
 		var tunnel Tunnel
 		var userID sql.NullString
 		var customDomain sql.NullString
+		var protocol sql.NullString
 		var lastActive sql.NullTime
 
 		err := rows.Scan(
@@ -368,6 +415,7 @@ func (r *TunnelRepository) ListTunnelsByUser(ctx context.Context, userID uuid.UU
 			&customDomain,
 			&tunnel.LocalURL,
 			&tunnel.PublicURL,
+			&protocol,
 			&tunnel.Status,
 			&tunnel.Region,
 			&tunnel.CreatedAt,
@@ -384,6 +432,9 @@ func (r *TunnelRepository) ListTunnelsByUser(ctx context.Context, userID uuid.UU
 		}
 		if customDomain.Valid {
 			tunnel.CustomDomain = customDomain.String
+		}
+		if protocol.Valid {
+			tunnel.Protocol = protocol.String
 		}
 		if lastActive.Valid {
 			tunnel.LastActive = lastActive.Time
@@ -827,7 +878,7 @@ func (r *TunnelRepository) GetTunnelStatsOverTime(ctx context.Context, userID uu
 	} else {
 		// User view: get user's tunnels
 		r.logger.Debug().Str("user_id", userID.String()).Msg("GetTunnelStatsOverTime: fetching user tunnels")
-		tunnels, err = r.ListTunnelsByUser(ctx, userID)
+		tunnels, err = r.ListTunnelsByUser(ctx, userID, "")
 	}
 	
 	if err != nil {

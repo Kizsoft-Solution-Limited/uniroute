@@ -48,6 +48,7 @@ type TunnelClient struct {
 	reconnectMu           sync.Mutex
 	isConnected           bool
 	isReconnecting        bool // True when attempting to reconnect
+	shouldExit            bool // True when tunnel was disconnected from dashboard - should exit instead of reconnect
 	token                 string
 	requestQueue          []*HTTPRequest // Queue for requests during disconnection
 	queueMu               sync.Mutex
@@ -92,9 +93,8 @@ func NewTunnelClientWithOptions(serverURL, localURL, protocol, host string, logg
 		host:      host,
 		httpClient: &http.Client{
 			Timeout: 120 * time.Second, // Increased timeout to allow very slow local servers (like Vite with large apps) to respond
-			// ngrok also uses longer timeouts - this matches that behavior
+			// Use longer timeouts for reliable connections
 			// Don't follow redirects - we need to pass them through to the browser
-			// so the browser can handle the redirect (e.g., redirect to naijacrawl.com)
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse // Don't follow redirects, return the redirect response
 			},
@@ -106,9 +106,6 @@ func NewTunnelClientWithOptions(serverURL, localURL, protocol, host string, logg
 	}
 
 	// CRITICAL CHANGE: Don't load saved tunnel state into client.subdomain/tunnelID
-	// Instead, let the server auto-find from database first
-	// Saved state will only be used to save NEW tunnels after they're created
-	// This ensures server always checks DB for existing tunnels before creating new ones
 	if state, err := client.persistence.Load(); err == nil && state != nil {
 		// Normalize server URLs for comparison (remove http://, https://, ws://, wss:// prefixes)
 		savedServer := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(state.ServerURL, "http://"), "https://"), "ws://"), "wss://")
@@ -162,7 +159,6 @@ func (tc *TunnelClient) SetRequestHandler(handler RequestEventHandler) {
 }
 
 // SetConnectionStatusChangeHandler sets a callback function to be called when connection status changes
-// This provides real-time updates when the tunnel connects, disconnects, or reconnects
 func (tc *TunnelClient) SetConnectionStatusChangeHandler(handler ConnectionStatusChangeHandler) {
 	tc.statusChangeHandlerMu.Lock()
 	defer tc.statusChangeHandlerMu.Unlock()
@@ -170,7 +166,6 @@ func (tc *TunnelClient) SetConnectionStatusChangeHandler(handler ConnectionStatu
 }
 
 // notifyStatusChange notifies the status change handler if set
-// Should be called whenever isConnected or isReconnecting changes
 // Uses internal state tracking to prevent duplicate notifications
 func (tc *TunnelClient) notifyStatusChange() {
 	tc.statusChangeHandlerMu.RLock()
@@ -178,11 +173,9 @@ func (tc *TunnelClient) notifyStatusChange() {
 	tc.statusChangeHandlerMu.RUnlock()
 
 	if handler != nil {
-		// Get current status
 		status := tc.GetConnectionStatus()
 
 		// Only notify if status actually changed from last notification
-		// This prevents false "reconnecting" status when connection is stable
 		tc.mu.RLock()
 		lastNotifiedStatus := tc.lastNotifiedStatus
 		tc.mu.RUnlock()
@@ -195,7 +188,6 @@ func (tc *TunnelClient) notifyStatusChange() {
 			tc.mu.Unlock()
 
 			// Call handler in a goroutine to avoid blocking
-			// The handler itself will debounce and validate the status
 			go handler(status)
 		}
 		// If status hasn't changed, don't notify (prevents false positives)
@@ -241,9 +233,6 @@ func (tc *TunnelClient) Connect() error {
 	tc.latencyMu.Unlock()
 
 	// Send initialization message
-	// CRITICAL: Don't send saved subdomain/tunnelID - let server auto-find from DB first
-	// Only send Subdomain/TunnelID if user explicitly requested a specific tunnel
-	// This ensures server always checks DB for existing tunnels before creating new ones
 	tc.mu.RLock()
 	authToken := tc.token
 	forceNew := tc.forceNew
@@ -283,7 +272,6 @@ func (tc *TunnelClient) Connect() error {
 			Msg("No tunnel specified - server will auto-find from database or create new")
 	}
 
-	// Serialize writes to prevent concurrent write panics (though this is during connection setup)
 	tc.writeMu.Lock()
 	err = conn.WriteJSON(initMsg)
 	tc.writeMu.Unlock()
@@ -308,7 +296,6 @@ func (tc *TunnelClient) Connect() error {
 			errorMessage = errorMsg
 		}
 		
-		// Check if this is an authentication error - automatically clear token
 		if strings.Contains(strings.ToLower(errorMsg), "token") || 
 		   strings.Contains(strings.ToLower(errorMsg), "authentication") ||
 		   strings.Contains(strings.ToLower(errorMsg), "expired") ||
@@ -319,7 +306,6 @@ func (tc *TunnelClient) Connect() error {
 			tc.mu.Unlock()
 			
 			// Try to clear token from CLI auth config if available
-			// This is a best-effort attempt - the CLI command handler should also handle this
 			tc.logger.Info().
 				Str("error", errorMsg).
 				Msg("Authentication failed - token cleared. Please run 'uniroute auth login' to authenticate again")
@@ -360,7 +346,6 @@ func (tc *TunnelClient) Connect() error {
 	tc.pongMu.Unlock()
 
 	// Save tunnel state to file for persistence across restarts
-	// This allows the tunnel to be automatically resumed on next run
 	if tc.persistence != nil {
 		state := &TunnelState{
 			TunnelID:  response.TunnelID,
@@ -408,7 +393,6 @@ func (tc *TunnelClient) handleMessages() {
 	readDeadline := 90 * time.Second
 
 	for {
-		// Set read deadline before each read to detect network disconnection
 		tc.mu.RLock()
 		conn := tc.wsConn
 		tc.mu.RUnlock()
@@ -423,13 +407,41 @@ func (tc *TunnelClient) handleMessages() {
 		if err := conn.ReadJSON(&msg); err != nil {
 			errStr := err.Error()
 
-			// Check if this is a normal shutdown (close 1000) - don't log or reconnect
-			if strings.Contains(errStr, "websocket: close 1000") || strings.Contains(errStr, "close 1000 (normal)") {
+			if websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
+				// Close code 1008 (Policy Violation) - tunnel was disconnected from dashboard
+				tc.logger.Info().Err(err).Msg("Tunnel was disconnected from dashboard (close 1008) - exiting (will not reconnect)")
+				tc.mu.Lock()
+				tc.isConnected = false
+				tc.isReconnecting = false
+				tc.shouldExit = true // Signal that we should exit instead of reconnecting
+				tc.mu.Unlock()
+				tc.notifyStatusChange()
+				return // Exit without reconnecting
+			}
+
+			if strings.Contains(errStr, "websocket: close 1008") || 
+			   strings.Contains(errStr, "close 1008") ||
+			   strings.Contains(errStr, "1008") ||
+			   strings.Contains(errStr, "Policy Violation") ||
+			   strings.Contains(errStr, "policy violation") ||
+			   strings.Contains(errStr, "disconnected from dashboard") {
+				tc.logger.Info().Err(err).Msg("Tunnel was disconnected from dashboard (detected via error string) - exiting (will not reconnect)")
+				tc.mu.Lock()
+				tc.isConnected = false
+				tc.isReconnecting = false
+				tc.shouldExit = true // Signal that we should exit instead of reconnecting
+				tc.mu.Unlock()
+				tc.notifyStatusChange()
+				return // Exit without reconnecting
+			}
+
+			if websocket.IsCloseError(err, websocket.CloseNormalClosure) ||
+			   strings.Contains(errStr, "websocket: close 1000") || 
+			   strings.Contains(errStr, "close 1000 (normal)") {
 				// Normal shutdown - just return without logging
 				return
 			}
 
-			// Check for failed websocket connection - connection is in bad state, can't read again
 			if strings.Contains(errStr, "repeated read on failed websocket connection") {
 				tc.logger.Debug().Err(err).Msg("WebSocket connection failed - attempting to reconnect")
 				tc.mu.Lock()
@@ -442,15 +454,13 @@ func (tc *TunnelClient) handleMessages() {
 				return
 			}
 
-			// Check if this is a real connection error that requires reconnection
-			// "close 1006" (abnormal closure) with "unexpected EOF" indicates the server closed the connection
-			// This should only happen on actual network disconnections, not when local server is down
 			isConnectionError := false
 
-			// WebSocket close codes indicate actual connection closure (but not normal 1000)
+			// WebSocket close codes indicate actual connection closure (but not normal 1000 or 1008)
 			if strings.Contains(errStr, "websocket: close") {
-				// All WebSocket close codes indicate connection was closed (except 1000 which we already handled)
-				isConnectionError = true
+				if !strings.Contains(errStr, "close 1000") && !strings.Contains(errStr, "close 1008") && !strings.Contains(errStr, "1008") {
+					isConnectionError = true
+				}
 			}
 
 			// Network-level errors that indicate connection is broken
@@ -468,7 +478,6 @@ func (tc *TunnelClient) handleMessages() {
 			}
 
 			// Only reconnect on actual connection errors (network disconnection)
-			// Errors from local server being down should NOT trigger reconnection
 			if isConnectionError {
 				tc.logger.Debug().Err(err).Msg("Connection lost - attempting to reconnect")
 				tc.mu.Lock()
@@ -488,7 +497,6 @@ func (tc *TunnelClient) handleMessages() {
 			}
 		}
 
-		// Reset read deadline after successful read (connection is alive)
 		conn.SetReadDeadline(time.Time{}) // Clear deadline
 
 		switch msg.Type {
@@ -587,7 +595,7 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 	}
 
 	// Extract host:port from base URL (e.g., "localhost:3002")
-	// This is what ngrok's --host-header=rewrite does - rewrites Host to match upstream
+	// Rewrites Host header to match upstream server
 	localHost := baseURL.Host
 	if localHost == "" {
 		// Fallback: extract from URL string
@@ -602,17 +610,12 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		}
 	}
 
-	// Copy headers, but rewrite Host header to match local server (like ngrok's --host-header=rewrite)
-	// This is critical for Vite and other dev servers that validate Host headers
-	// We preserve the original host in X-Forwarded-Host for reference
+	// Copy headers, but rewrite Host header to match local server
 	originalHost := ""
 	for k, v := range req.Headers {
 		if strings.EqualFold(k, "Host") {
-			originalHost = v // Save original Host for X-Forwarded-Host
-			// Don't set Host header here - we'll rewrite it below
+			originalHost = v
 		} else {
-			// Skip headers that Go's http client manages automatically
-			// Connection, Content-Length, Transfer-Encoding are managed by Go
 			if !strings.EqualFold(k, "Connection") &&
 				!strings.EqualFold(k, "Content-Length") &&
 				!strings.EqualFold(k, "Transfer-Encoding") {
@@ -621,14 +624,9 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		}
 	}
 
-	// Rewrite Host header to match local server (like ngrok's --host-header=rewrite)
-	// This is critical: Vite and other dev servers validate Host headers
-	// The Host header must match what the local server expects (e.g., "localhost:3002")
+	// Rewrite Host header to match local server
 	if localHost != "" {
-		// Set Host header to local server's host:port (e.g., "localhost:3002")
-		// Vite's allowedHosts includes "localhost", so this will pass validation
 		httpReq.Header.Set("Host", localHost)
-		// Also set httpReq.Host field for consistency (though Go uses the header)
 		httpReq.Host = localHost
 		tc.logger.Debug().
 			Str("rewritten_host", localHost).
@@ -636,7 +634,7 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 			Str("base_local_url", tc.localURL).
 			Str("full_request_url", localURL).
 			Str("url_host", httpReq.URL.Host).
-			Msg("Rewrote Host header for local server (like ngrok --host-header=rewrite)")
+			Msg("Rewrote Host header for local server")
 	} else {
 		tc.logger.Error().
 			Str("local_url", tc.localURL).
@@ -664,7 +662,7 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		Str("request_url", httpReq.URL.String()).
 		Str("method", req.Method).
 		Str("original_host", originalHost).
-		Msg("Sending HTTP request to local server (ngrok-style host rewrite)")
+		Msg("Sending HTTP request to local server")
 
 	// Make the request with a reasonable timeout
 	resp, err := tc.httpClient.Do(httpReq)
@@ -758,7 +756,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 
 	// Rewrite Location header for redirects (3xx status codes)
 	// If local server redirects to localhost:PORT, rewrite to tunnel URL
-	// External redirects (like naijacrawl.com) pass through unchanged
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
 		// Check for Location header (case-insensitive)
 		location := ""
@@ -1004,6 +1001,14 @@ func (tc *TunnelClient) heartbeat() {
 			tc.latencyMu.Unlock()
 
 		case <-pongCheckTicker.C:
+			tc.mu.RLock()
+			shouldExit := tc.shouldExit
+			tc.mu.RUnlock()
+			if shouldExit {
+				tc.logger.Info().Msg("Tunnel was disconnected from dashboard - exiting heartbeat loop")
+				return
+			}
+
 			// Check if we haven't received a pong in too long (connection might be dead)
 			tc.pongMu.RLock()
 			lastPong := tc.lastPongTime
@@ -1041,7 +1046,14 @@ func (tc *TunnelClient) reconnect() {
 	tc.mu.RLock()
 	isConnected := tc.isConnected
 	isReconnecting := tc.isReconnecting
+	shouldExit := tc.shouldExit
 	tc.mu.RUnlock()
+
+	// If tunnel was disconnected from dashboard, don't reconnect - exit instead
+	if shouldExit {
+		tc.logger.Info().Msg("Tunnel was disconnected from dashboard - not reconnecting")
+		return
+	}
 
 	if isConnected {
 		return // Already connected
@@ -1073,12 +1085,34 @@ func (tc *TunnelClient) reconnect() {
 
 		time.Sleep(backoff)
 
+		tc.mu.RLock()
+		shouldExit := tc.shouldExit
+		tc.mu.RUnlock()
+		if shouldExit {
+			tc.logger.Info().Msg("Tunnel was disconnected from dashboard - stopping reconnection attempts")
+			return
+		}
+
 		err := tc.Connect()
 		if err == nil {
 			tc.logger.Info().
 				Str("subdomain", tc.subdomain).
 				Str("public_url", tc.tunnel.PublicURL).
 				Msg("Reconnected successfully - resumed same tunnel")
+			return
+		}
+
+		// Check if error indicates tunnel was disconnected from dashboard
+		errStr := err.Error()
+		if strings.Contains(strings.ToLower(errStr), "disconnected from dashboard") ||
+		   strings.Contains(strings.ToLower(errStr), "tunnel disconnected") ||
+		   strings.Contains(strings.ToLower(errStr), "inactive") {
+			tc.logger.Info().Err(err).Msg("Tunnel was disconnected from dashboard - not reconnecting")
+			tc.mu.Lock()
+			tc.shouldExit = true
+			tc.isReconnecting = false
+			tc.mu.Unlock()
+			tc.notifyStatusChange()
 			return
 		}
 
@@ -1112,7 +1146,6 @@ func (tc *TunnelClient) processQueuedRequests() {
 }
 
 // Close closes the tunnel connection gracefully
-// This sends a close frame to the server before closing, allowing the server to detect the disconnection immediately
 func (tc *TunnelClient) Close() error {
 	tc.mu.Lock()
 
@@ -1183,6 +1216,13 @@ func (tc *TunnelClient) IsReconnecting() bool {
 	return tc.isReconnecting
 }
 
+// ShouldExit returns whether the client should exit (tunnel was disconnected from dashboard)
+func (tc *TunnelClient) ShouldExit() bool {
+	tc.mu.RLock()
+	defer tc.mu.RUnlock()
+	return tc.shouldExit
+}
+
 // GetConnectionStatus returns a string describing the connection status
 // This is the source of truth for connection status
 func (tc *TunnelClient) GetConnectionStatus() string {
@@ -1208,6 +1248,13 @@ func (tc *TunnelClient) GetLatency() int64 {
 	tc.latencyMu.RLock()
 	defer tc.latencyMu.RUnlock()
 	return tc.latencyMs
+}
+
+// GetProtocol returns the tunnel protocol (http, tcp, tls, udp)
+func (tc *TunnelClient) GetProtocol() string {
+	tc.mu.RLock()
+	defer tc.mu.RUnlock()
+	return tc.protocol
 }
 
 // GetConnectionStats fetches connection statistics from the tunnel server

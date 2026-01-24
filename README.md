@@ -12,7 +12,7 @@
 
 ## 📖 Overview
 
-UniRoute is a unified gateway platform that routes, secures, and manages traffic to any LLM (cloud or local) with one unified API. Think of it as **ngrok for AI models** - a single entry point that intelligently routes requests to the best available model.
+UniRoute is a unified gateway platform that routes, secures, and manages traffic to any LLM (cloud or local) with one unified API. A single entry point that intelligently routes requests to the best available model.
 
 ### Unified API
 
@@ -38,7 +38,7 @@ This unified approach means you can:
 - ✅ **Managed Service** - UniRoute handles provider keys, unified billing (pay-as-you-go)
 - ✅ **Local LLM First** - Priority support for local models (Ollama, vLLM) - Free & Private
 - ✅ **Multi-Provider** - Support for OpenAI, Anthropic, Google, Local LLMs, and more
-- ✅ **Shareable** - Host and share your gateway with others (ngrok-like tunneling)
+- ✅ **Shareable** - Host and share your gateway with others (built-in tunneling)
 - ✅ **Intelligent Routing** - Load balancing, failover, cost-based routing
 - ✅ **Enterprise Security** - API keys, rate limiting, Zero Trust support
 
@@ -326,11 +326,11 @@ cloudflared tunnel --url ${BASE_URL:-http://localhost:8084}
 # Returns: https://random-subdomain.trycloudflare.com
 ```
 
-**Option 2: Using ngrok (free tier, requires signup)**
+**Option 2: Using cloudflared (100% free, no signup)**
 ```bash
 # Replace 8084 with your actual port from BASE_URL
-ngrok http 8084
-# Returns: https://abc123.ngrok-free.app -> ${BASE_URL}
+cloudflared tunnel --url ${BASE_URL:-http://localhost:8084}
+# Returns: https://random-subdomain.trycloudflare.com
 ```
 
 **Option 3: Built-in UniRoute tunnel (requires CLI installation)** ⭐ Recommended
@@ -506,7 +506,7 @@ Both CLI and dashboard use the same backend system, so domains created via CLI a
 - **Monitoring & Analytics** - Usage tracking, cost tracking, performance metrics
 - **Error Logging** - Frontend error tracking and admin error log management
 - **Multi-Provider Support** - OpenAI, Anthropic, Google, Local LLMs
-- **Tunneling** - Built-in ngrok-like tunneling for exposing local services
+- **Tunneling** - Built-in tunneling for exposing local services
 - **CLI Tool** - Command-line interface for tunnel management and authentication
 - **Developer Experience** - CLI tool, SDKs, OpenAPI docs
 
@@ -1348,7 +1348,7 @@ If you find UniRoute useful, please consider giving it a star ⭐ on GitHub!
 
 ## 🙏 Acknowledgments
 
-- Inspired by [ngrok's AI Gateway](https://ngrok.com/)
+- Built with modern Go best practices and clean architecture
 - Built with ❤️ by the open-source community
 
 ---

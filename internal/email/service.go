@@ -275,9 +275,9 @@ func (s *EmailService) SendWelcomeEmail(to, name, dashboardURL string) error {
 
 	greeting := fmt.Sprintf("Hi %s,<br><br>Congratulations! Your email has been verified and your UniRoute account is now fully activated.", name)
 
-	features := s.buildFeatureBox("🚀", "Get Started", "Access your dashboard and start configuring your routes.") +
-		s.buildFeatureBox("🔑", "API Keys", "Generate API keys to authenticate your requests.") +
-		s.buildFeatureBox("📊", "Monitor Traffic", "Track your API usage and monitor performance.")
+	features := s.buildFeatureBox("", "Get Started", "Access your dashboard and start configuring your routes.") +
+		s.buildFeatureBox("", "API Keys", "Generate API keys to authenticate your requests.") +
+		s.buildFeatureBox("", "Monitor Traffic", "Track your API usage and monitor performance.")
 
 	mainContent := fmt.Sprintf(`
 <p style="margin: 0 0 24px 0; font-size: 16px; line-height: 1.6; color: #1f2937;">You're all set to start using UniRoute to manage your AI model routing and traffic. Here's what you can do next:</p>
