@@ -8,6 +8,7 @@ import (
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/email"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/gateway"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/oauth"
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/providers"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/tunnel"
@@ -146,7 +147,8 @@ func SetupRouter(
 
 		// Provider key management (user routes - users manage their own provider keys BYOK)
 		if providerKeyService != nil {
-			providerKeyHandler := handlers.NewProviderKeyHandler(providerKeyService)
+			keyValidator := providers.NewKeyValidator(zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+			providerKeyHandler := handlers.NewProviderKeyHandler(providerKeyService, keyValidator)
 			authProtected.POST("/provider-keys", providerKeyHandler.AddProviderKey)
 			authProtected.GET("/provider-keys", providerKeyHandler.ListProviderKeys)
 			authProtected.PUT("/provider-keys/:provider", providerKeyHandler.UpdateProviderKey)

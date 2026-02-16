@@ -33,7 +33,7 @@ python3 -m http.server 3000 > /dev/null 2>&1 &
 HTTP_PID=$!
 
 echo ""
-echo "✅ Test servers running:"
+echo "Test servers running:"
 echo "   TCP:  localhost:3306 (PID: $TCP_PID)"
 echo "   UDP:  localhost:53 (PID: $UDP_PID)"
 echo "   HTTP: localhost:3000 (PID: $HTTP_PID)"

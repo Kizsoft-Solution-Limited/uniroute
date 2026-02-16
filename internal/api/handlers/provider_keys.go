@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,15 +10,22 @@ import (
 	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/errors"
 )
 
+// ProviderKeyValidator validates a provider API key with an outbound call to the provider.
+type ProviderKeyValidator interface {
+	ValidateKey(ctx context.Context, provider string, apiKey string) error
+}
+
 // ProviderKeyHandler handles provider key management (BYOK)
 type ProviderKeyHandler struct {
 	providerKeyService *security.ProviderKeyService
+	keyValidator       ProviderKeyValidator // optional; if set, TestProviderKey calls the provider API
 }
 
-// NewProviderKeyHandler creates a new provider key handler
-func NewProviderKeyHandler(providerKeyService *security.ProviderKeyService) *ProviderKeyHandler {
+// NewProviderKeyHandler creates a new provider key handler. keyValidator may be nil (test endpoint will only check key existence).
+func NewProviderKeyHandler(providerKeyService *security.ProviderKeyService, keyValidator ProviderKeyValidator) *ProviderKeyHandler {
 	return &ProviderKeyHandler{
 		providerKeyService: providerKeyService,
+		keyValidator:       keyValidator,
 	}
 }
 
@@ -254,8 +262,16 @@ func (h *ProviderKeyHandler) TestProviderKey(c *gin.Context) {
 		return
 	}
 
-	// TODO: Actually test the provider key by making a test API call
-	// For now, just return success if key exists
+	if h.keyValidator != nil {
+		if err := h.keyValidator.ValidateKey(c.Request.Context(), provider, apiKey); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "provider key test failed",
+				"details": err.Error(),
+			})
+			return
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"message":  "Provider key test successful",
 		"provider": provider,

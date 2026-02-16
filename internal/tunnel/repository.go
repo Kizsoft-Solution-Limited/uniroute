@@ -912,16 +912,11 @@ func (r *TunnelRepository) GetTunnelStatsOverTime(ctx context.Context, userID uu
 	}
 }
 
-// aggregateByPeriod returns a single data point with current tunnel counts
-// For 6h/24h views, this shows the CURRENT state (all active tunnels now, not just created in period)
-// CRITICAL: This function MUST return exactly ONE point, never multiple points
+// aggregateByPeriod returns exactly one data point (current tunnel counts for 6h/24h views).
 func (r *TunnelRepository) aggregateByPeriod(ctx context.Context, tunnels []*Tunnel, startTime, endTime time.Time) ([]TunnelStatsPoint, error) {
 	activeCount := 0
 	totalCount := 0
 	
-	// Count ALL tunnels (current state), not just those created in the period
-	// This represents the current state: how many tunnels exist and are active RIGHT NOW
-	// This includes tunnels created 3 hours ago, 10 hours ago, etc. - all currently existing tunnels
 	for _, tunnel := range tunnels {
 		totalCount++
 		r.logger.Debug().
@@ -937,7 +932,6 @@ func (r *TunnelRepository) aggregateByPeriod(ctx context.Context, tunnels []*Tun
 		}
 	}
 	
-	// Return single aggregated point at the middle of the period
 	midTime := startTime.Add(endTime.Sub(startTime) / 2)
 	
 	r.logger.Debug().
@@ -948,8 +942,6 @@ func (r *TunnelRepository) aggregateByPeriod(ctx context.Context, tunnels []*Tun
 		Int("all_tunnels_checked", len(tunnels)).
 		Msg("GetTunnelStatsOverTime: aggregated by period - returning SINGLE point with current state")
 	
-	// CRITICAL: Return exactly ONE aggregated point - never multiple points
-	// This is the key difference from time-series data
 	result := []TunnelStatsPoint{
 		{
 			Time:          midTime,
@@ -958,12 +950,10 @@ func (r *TunnelRepository) aggregateByPeriod(ctx context.Context, tunnels []*Tun
 		},
 	}
 	
-	// Double-check we're returning exactly one point
 	if len(result) != 1 {
 		r.logger.Error().
 			Int("result_points", len(result)).
-			Msg("GetTunnelStatsOverTime: ERROR - aggregateByPeriod returned multiple points, this should never happen!")
-		// Force single point
+			Msg("GetTunnelStatsOverTime: aggregateByPeriod returned multiple points")
 		result = result[:1]
 	}
 	

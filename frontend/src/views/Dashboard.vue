@@ -369,17 +369,12 @@ const loadTunnelChart = async () => {
     } else {
       interval = 1.0 // 1-hour intervals for 24h view
     }
-    console.log(`Loading tunnel chart: hours=${chartHours.value}, interval=${interval}`)
     const stats = await tunnelsApi.getStats(chartHours.value, interval, true)
-    console.log('Tunnel stats received:', stats) // Debug log
-    console.log(`Data points: ${stats.data?.length || 0}`)
     tunnelChartData.value = stats.data || []
-    if (stats.data && stats.data.length === 0) {
-      console.warn('Tunnel stats API returned empty data array')
-    }
   } catch (error: any) {
-    console.error('Failed to load tunnel chart data:', error)
-    console.error('Error details:', error.response?.data || error.message)
+    if (import.meta.env.DEV) {
+      console.error('Failed to load tunnel chart data:', error?.response?.data || error?.message || error)
+    }
     tunnelChartData.value = []
     // Don't show toast for chart errors to avoid spam
   } finally {

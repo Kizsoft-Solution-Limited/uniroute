@@ -5,7 +5,7 @@
 
 set -e
 
-echo "🚀 UniRoute Environment Variables Setup"
+echo "UniRoute Environment Variables Setup"
 echo ""
 
 # Colors
@@ -19,7 +19,7 @@ echo -e "${BLUE}Generating secure secrets...${NC}"
 API_KEY_SECRET=$(openssl rand -hex 32)
 JWT_SECRET=$(openssl rand -hex 32)
 
-echo -e "${GREEN}✅ Secrets generated${NC}"
+echo -e "${GREEN}Secrets generated${NC}"
 echo ""
 
 # Default values
@@ -37,21 +37,21 @@ export JWT_SECRET="$JWT_SECRET"
 # Optional Phase 2 variables (if set)
 if [ -n "$DATABASE_URL" ]; then
     export DATABASE_URL="$DATABASE_URL"
-    echo -e "${GREEN}✅ DATABASE_URL set${NC}"
+    echo -e "${GREEN}DATABASE_URL set${NC}"
 fi
 
 if [ -n "$REDIS_URL" ]; then
     export REDIS_URL="$REDIS_URL"
-    echo -e "${GREEN}✅ REDIS_URL set${NC}"
+    echo -e "${GREEN}REDIS_URL set${NC}"
 fi
 
 if [ -n "$IP_WHITELIST" ]; then
     export IP_WHITELIST="$IP_WHITELIST"
-    echo -e "${GREEN}✅ IP_WHITELIST set${NC}"
+    echo -e "${GREEN}IP_WHITELIST set${NC}"
 fi
 
 echo ""
-echo -e "${GREEN}✅ Environment variables exported!${NC}"
+echo -e "${GREEN}Environment variables exported${NC}"
 echo ""
 echo "Current configuration:"
 echo "  PORT=$PORT"
@@ -63,8 +63,8 @@ echo "  JWT_SECRET=*** (generated)"
 [ -n "$REDIS_URL" ] && echo "  REDIS_URL=$REDIS_URL"
 [ -n "$IP_WHITELIST" ] && echo "  IP_WHITELIST=$IP_WHITELIST"
 echo ""
-echo -e "${YELLOW}⚠️  Note: These variables are only set in this shell session.${NC}"
-echo -e "${YELLOW}   To persist, add them to your shell profile or use a process manager.${NC}"
+echo -e "${YELLOW}Note: These variables are only set in this shell session.${NC}"
+echo -e "${YELLOW}To persist, add them to your shell profile or use a process manager.${NC}"
 echo ""
 echo "To run UniRoute with these variables:"
 echo "  ./bin/uniroute"

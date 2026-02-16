@@ -15,9 +15,10 @@ export function initSentry(app: App) {
   const dsn = import.meta.env.VITE_SENTRY_DSN
   const environment = import.meta.env.MODE || 'development'
   
-  // Only initialize if DSN is provided
   if (!dsn) {
-    console.log('Sentry DSN not configured, error tracking disabled')
+    if (import.meta.env.DEV) {
+      console.debug('Sentry DSN not configured, error tracking disabled')
+    }
     return
   }
 
@@ -91,7 +92,9 @@ export function initSentry(app: App) {
     ],
   })
 
-  console.log('Sentry initialized for error tracking')
+  if (import.meta.env.DEV) {
+    console.debug('Sentry initialized for error tracking')
+  }
 }
 
 /**

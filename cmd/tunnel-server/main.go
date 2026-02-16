@@ -80,9 +80,7 @@ func main() {
 			server.SetRepository(repo)
 			log.Info().Msg("Database connected, request logging enabled")
 			
-			// Set up JWT validator for automatic tunnel-user association
-			// This allows CLI-created tunnels to be automatically associated with authenticated users
-			// IMPORTANT: JWT_SECRET must match the gateway's JWT_SECRET for this to work
+			// JWT_SECRET must match the gateway's JWT_SECRET for tunnel-user association.
 			if cfg.JWTSecret != "" && cfg.JWTSecret != "change-me-in-production-jwt-secret-min-32-chars" {
 				jwtService := security.NewJWTService(cfg.JWTSecret)
 				server.SetJWTValidator(func(tokenString string) (string, error) {
@@ -101,9 +99,7 @@ func main() {
 				log.Warn().Msg("JWT_SECRET not configured or using default - tunnels will NOT be auto-associated with users. Set JWT_SECRET environment variable to enable.")
 			}
 
-			// Set up API key validator for API key authentication
-			// This allows tunnels created via API key authentication to be automatically associated with users
-			// IMPORTANT: API_KEY_SECRET must match the gateway's API_KEY_SECRET for this to work
+			// API_KEY_SECRET must match the gateway's for API-key tunnel association.
 			if cfg.APIKeySecret != "" && cfg.APIKeySecret != "change-me-in-production" {
 				apiKeyRepo := storage.NewAPIKeyRepository(postgresClient.Pool())
 				apiKeyService := security.NewAPIKeyServiceV2(apiKeyRepo, cfg.APIKeySecret)

@@ -248,11 +248,6 @@ func (tc *TunnelClient) Connect() error {
 		ForceNew: forceNew,  // Signal to server to force new tunnel creation
 	}
 
-	// IMPORTANT: Don't send saved Subdomain/TunnelID here
-	// Let the server auto-find from database first
-	// Only send Subdomain/TunnelID if user explicitly requested a specific tunnel
-	// (which would be done via a different mechanism, not saved state)
-	
 	if forceNew {
 		tc.logger.Debug().
 			Str("protocol", tc.protocol).
@@ -667,14 +662,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 	// Make the request with a reasonable timeout
 	resp, err := tc.httpClient.Do(httpReq)
 	if err != nil {
-		// Log error with more details for debugging
-		// IMPORTANT: This is a connection error to the LOCAL server (Vite), NOT the tunnel WebSocket connection
-		// Failed HTTP requests to localhost do NOT mean the tunnel is down
-		// Common causes:
-		// 1. Local server (Vite) is not running on the expected port
-		// 2. Tunnel is configured for wrong port (e.g., 8080 but Vite runs on 3002)
-		// 3. Local server rejected the request (Host header validation, etc.)
-		// 4. Network/firewall blocking localhost connections
 		errStr := err.Error()
 		tc.logger.Warn().
 			Err(err).

@@ -1746,8 +1746,6 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		tunnelReady = true // Update after re-registering
 	}
 
-	// CRITICAL: Final verification that tunnel is accessible via handleHTTPRequest
-	// This ensures that when the client receives success, HTTP requests will definitely find the tunnel
 	ts.tunnelsMu.RLock()
 	verifyAccessible, accessibleExists := ts.tunnels[subdomain]
 	accessible := accessibleExists && verifyAccessible == tunnel && verifyAccessible.WSConn != nil

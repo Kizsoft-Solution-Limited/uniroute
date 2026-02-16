@@ -160,6 +160,7 @@ const navigation = [
   { path: '/authentication', title: 'Authentication' },
   { path: '/tunnels', title: 'Tunnels', children: [
     { path: '/tunnels/opening', title: 'Opening a Tunnel' },
+    { path: '/tunnels/dev-run', title: 'Dev & Run' },
     { path: '/tunnels/protocols', title: 'Protocols' },
     { path: '/tunnels/custom-domains', title: 'Custom Domains' },
     { path: '/tunnels/reserved-subdomains', title: 'Reserved Subdomains' }

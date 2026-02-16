@@ -24,12 +24,12 @@ fi
 
 # Check authentication
 if ! ./cli auth status &> /dev/null; then
-    echo -e "${RED}❌ Not authenticated. Run: ./cli auth login${NC}"
+    echo -e "${RED}Not authenticated. Run: ./cli auth login${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}✅ CLI ready${NC}"
-echo -e "${GREEN}✅ Authenticated${NC}\n"
+echo -e "${GREEN}CLI ready${NC}"
+echo -e "${GREEN}Authenticated${NC}\n"
 
 # Set tunnel server URL
 # Tunnel server default port is 8055 (not 8084, which is the gateway)
@@ -42,7 +42,7 @@ elif curl -s http://localhost:8080/health > /dev/null 2>&1 || lsof -i :8080 > /d
 else
     # Default to 8055 (standard tunnel server port)
     TUNNEL_PORT="8055"
-    echo -e "${YELLOW}⚠️  Could not detect tunnel server, using default: localhost:8055${NC}"
+    echo -e "${YELLOW}Could not detect tunnel server, using default: localhost:8055${NC}"
     echo -e "${YELLOW}   Make sure tunnel server is running: go run ./cmd/tunnel-server/main.go${NC}"
     echo -e "${YELLOW}   Or set UNIROUTE_TUNNEL_URL if using a different port${NC}\n"
 fi
@@ -53,7 +53,7 @@ echo -e "${BLUE}Note: Port 8084 is the gateway, not the tunnel server${NC}\n"
 
 # Verify tunnel server is actually running
 if ! lsof -i :$TUNNEL_PORT > /dev/null 2>&1; then
-    echo -e "${RED}❌ Tunnel server is not running on port $TUNNEL_PORT${NC}"
+    echo -e "${RED}Tunnel server is not running on port $TUNNEL_PORT${NC}"
     echo -e "${YELLOW}Start it with:${NC}"
     echo -e "${YELLOW}  go run ./cmd/tunnel-server/main.go${NC}"
     echo -e "${YELLOW}Or:${NC}"
@@ -61,7 +61,7 @@ if ! lsof -i :$TUNNEL_PORT > /dev/null 2>&1; then
     exit 1
 fi
 
-echo -e "${GREEN}✅ Tunnel server is running on port $TUNNEL_PORT${NC}\n"
+echo -e "${GREEN}Tunnel server is running on port $TUNNEL_PORT${NC}\n"
 
 # Function to cleanup
 cleanup() {
@@ -107,17 +107,17 @@ if [ -n "$ALLOCATED_PORT" ]; then
 fi
 
 if [ -n "$ALLOCATED_PORT" ] && [ "$ALLOCATED_PORT" != "8055" ] && [ "$ALLOCATED_PORT" -ge 20000 ] 2>/dev/null; then
-    echo -e "${GREEN}✅ TCP tunnel started on port $ALLOCATED_PORT${NC}"
+    echo -e "${GREEN}TCP tunnel started on port $ALLOCATED_PORT${NC}"
     echo "Testing connection..."
     # Test TCP connection (should connect, not get HTTP response)
     timeout 2 bash -c "echo 'test message' | nc localhost $ALLOCATED_PORT" > /tmp/tcp_test_result.log 2>&1
     if [ $? -eq 0 ] || grep -q "test message" /tmp/tcp_server.log 2>/dev/null; then
-        echo -e "${GREEN}✅ TCP test passed! Data flowing through tunnel${NC}"
+        echo -e "${GREEN}TCP test passed. Data flowing through tunnel${NC}"
     else
-        echo -e "${YELLOW}⚠️ TCP connection test inconclusive (check manually)${NC}"
+        echo -e "${YELLOW}TCP connection test inconclusive (check manually)${NC}"
     fi
 else
-    echo -e "${RED}❌ TCP tunnel failed to start or port not found${NC}"
+    echo -e "${RED}TCP tunnel failed to start or port not found${NC}"
     echo ""
     echo -e "${YELLOW}Tunnel output (last 30 lines):${NC}"
     cat /tmp/tcp_tunnel.log | tail -30
@@ -154,17 +154,17 @@ if [ -z "$ALLOCATED_UDP_PORT" ] || [ "$ALLOCATED_UDP_PORT" = "8055" ]; then
 fi
 
 if [ -n "$ALLOCATED_UDP_PORT" ] && [ "$ALLOCATED_UDP_PORT" != "8055" ] && [ "$ALLOCATED_UDP_PORT" -ge 20000 ] 2>/dev/null; then
-    echo -e "${GREEN}✅ UDP tunnel started on port $ALLOCATED_UDP_PORT${NC}"
+    echo -e "${GREEN}UDP tunnel started on port $ALLOCATED_UDP_PORT${NC}"
     echo "Sending UDP packet..."
     echo "Hello UDP" | nc -u localhost $ALLOCATED_UDP_PORT 2>/dev/null
     sleep 1
     if grep -q "Hello UDP" /tmp/udp_server.log 2>/dev/null; then
-        echo -e "${GREEN}✅ UDP test passed! Packet received${NC}"
+        echo -e "${GREEN}UDP test passed. Packet received${NC}"
     else
-        echo -e "${YELLOW}⚠️ UDP test inconclusive (check manually)${NC}"
+        echo -e "${YELLOW}UDP test inconclusive (check manually)${NC}"
     fi
 else
-    echo -e "${RED}❌ UDP tunnel failed to start or port not found${NC}"
+    echo -e "${RED}UDP tunnel failed to start or port not found${NC}"
     echo ""
     echo -e "${YELLOW}Tunnel output (last 30 lines):${NC}"
     cat /tmp/udp_tunnel.log | tail -30
@@ -207,13 +207,13 @@ if [ -z "$ALLOCATED_TLS_PORT" ] || [ "$ALLOCATED_TLS_PORT" = "8055" ]; then
 fi
 
 if [ -n "$ALLOCATED_TLS_PORT" ] && [ "$ALLOCATED_TLS_PORT" != "8055" ] && [ "$ALLOCATED_TLS_PORT" -ge 20000 ] 2>/dev/null; then
-    echo -e "${GREEN}✅ TLS tunnel started on port $ALLOCATED_TLS_PORT${NC}"
+    echo -e "${GREEN}TLS tunnel started on port $ALLOCATED_TLS_PORT${NC}"
     echo "Testing TLS connection..."
     echo | timeout 3 openssl s_client -connect localhost:$ALLOCATED_TLS_PORT 2>/dev/null | grep -q "CONNECTED" && \
-        echo -e "${GREEN}✅ TLS test passed! Connection established${NC}" || \
-        echo -e "${YELLOW}⚠️ TLS test inconclusive (check manually)${NC}"
+        echo -e "${GREEN}TLS test passed. Connection established${NC}" || \
+        echo -e "${YELLOW}TLS test inconclusive (check manually)${NC}"
 else
-    echo -e "${RED}❌ TLS tunnel failed to start or port not found${NC}"
+    echo -e "${RED}TLS tunnel failed to start or port not found${NC}"
     echo ""
     echo -e "${YELLOW}Tunnel output (last 30 lines):${NC}"
     cat /tmp/tls_tunnel.log | tail -30

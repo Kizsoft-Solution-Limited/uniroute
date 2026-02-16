@@ -48,8 +48,11 @@ You can override these by setting the environment variables in your `.env` file.
 # Install dependencies
 npm install
 
-# Start development server
+# Start dev server only
 npm run dev
+
+# Start dev server and tunnel (requires UniRoute CLI in PATH)
+npm run dev:tunnel
 
 # Build for production
 npm run build

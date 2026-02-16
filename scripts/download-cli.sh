@@ -65,7 +65,7 @@ fi
 # Make executable
 chmod +x uniroute
 
-echo -e "${GREEN}✓ Downloaded successfully!${NC}"
+echo -e "${GREEN}Downloaded successfully${NC}"
 echo ""
 echo "Binary location: $(pwd)/uniroute"
 echo ""

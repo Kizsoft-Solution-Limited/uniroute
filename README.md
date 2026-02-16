@@ -392,6 +392,26 @@ uniroute tunnel --resume  # Automatically resumes last tunnel
 uniroute resume abc123    # Resume tunnel by subdomain (shortcut)
 ```
 
+**Dev server + tunnel (one command or your normal command):**
+
+Three ways to run your dev server and get a public URL. Works with Laravel, Vue, React, Django, Rails, and more.
+
+```bash
+# Option 1: We start your dev server + tunnel (port auto-detected)
+uniroute dev
+
+# Option 2: You run your server; we only add the tunnel (two terminals)
+# Terminal 1:  php artisan serve   (or npm run dev, rails s, etc.)
+# Terminal 2:  uniroute dev --attach
+
+# Option 3: Your exact command; we run it and add the tunnel (port from your command or project)
+uniroute run -- php artisan serve
+uniroute run -- php artisan serve --port=8080   # tunnel to 8080
+uniroute run -- npm run dev
+```
+
+Port is taken from: (1) your command (e.g. `--port=8080`), (2) our `--port` flag, or (3) auto-detected from the project. Supported: **Node** (Vite/Next/React), **PHP** (Laravel), **Python** (Django, Flask, FastAPI), **Go**, **Ruby** (Rails). See **Tunnels → Dev & Run** in the [Docs UI](/docs/tunnels/dev-run) or run `uniroute dev --help` and `uniroute run --help`.
+
 **Tunnel Features:**
 - ✅ HTTP, TCP, TLS, and UDP protocol support
 - ✅ Persistent tunnels (survive CLI restarts)

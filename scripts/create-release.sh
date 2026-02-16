@@ -12,7 +12,7 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🚀 UniRoute Release Script${NC}"
+echo -e "${BLUE}UniRoute Release Script${NC}"
 echo ""
 
 # Check if we're in a git repository
@@ -23,7 +23,7 @@ fi
 
 # Check if there are uncommitted changes
 if ! git diff-index --quiet HEAD --; then
-    echo -e "${YELLOW}⚠️  Warning: You have uncommitted changes${NC}"
+    echo -e "${YELLOW}Warning: You have uncommitted changes${NC}"
     echo "It's recommended to commit or stash changes before creating a release."
     read -p "Continue anyway? (y/n): " -n 1 -r
     echo
@@ -112,7 +112,7 @@ echo -e "${BLUE}Pushing tag to remote...${NC}"
 git push origin "${NEW_VERSION}"
 
 echo ""
-echo -e "${GREEN}✅ Release ${NEW_VERSION} created and pushed!${NC}"
+echo -e "${GREEN}Release ${NEW_VERSION} created and pushed${NC}"
 echo ""
 echo "The GitHub Actions workflow will now:"
 echo "  1. Build CLI binaries for all platforms"

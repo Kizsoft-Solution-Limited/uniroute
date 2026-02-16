@@ -76,9 +76,7 @@ func AuthRateLimitMiddleware(authRateLimiter *security.AuthRateLimiter, maxAttem
 	}
 }
 
-// extractEmailFromRequest tries to extract email from request body
-// This allows email-based rate limiting which is more accurate than IP-based
-// IMPORTANT: This reads and restores the body so the handler can still read it
+// extractEmailFromRequest reads and restores the body so the handler can still read it.
 func extractEmailFromRequest(c *gin.Context) string {
 	// Check if body is already consumed
 	if c.Request.Body == nil {

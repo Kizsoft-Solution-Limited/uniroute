@@ -73,8 +73,6 @@ func (h *SwaggerHandler) HandleSwaggerUI(c *gin.Context) {
 				swaggerUrl += "?access_token=" + encodeURIComponent(accessToken);
 			}
 			
-			console.log("Loading Swagger UI from:", swaggerUrl);
-			
 			try {
 				const ui = SwaggerUIBundle({
 					url: swaggerUrl,
@@ -100,9 +98,7 @@ func (h *SwaggerHandler) HandleSwaggerUI(c *gin.Context) {
 						}
 						return request;
 					},
-					onComplete: function() {
-						console.log("Swagger UI loaded successfully");
-					},
+					onComplete: function() {},
 					onFailure: function(data) {
 						console.error("Swagger UI failed to load:", data);
 						document.getElementById('swagger-ui').innerHTML = 
@@ -172,9 +168,12 @@ func (h *SwaggerHandler) HandleSwaggerJSON(c *gin.Context) {
 			{"name": "Health", "description": "Health check endpoints"},
 			{"name": "Authentication", "description": "User authentication and registration"},
 			{"name": "Chat", "description": "AI chat completion endpoints"},
+			{"name": "Conversations", "description": "Conversation management"},
 			{"name": "Providers", "description": "LLM provider management"},
 			{"name": "Analytics", "description": "Usage analytics and metrics"},
 			{"name": "Routing", "description": "Intelligent routing and cost estimation"},
+			{"name": "Tunnels", "description": "Tunnel management"},
+			{"name": "Domains", "description": "Custom domain management"},
 			{"name": "Admin", "description": "Administrative endpoints (admin only)"},
 		},
 		"paths": map[string]interface{}{
@@ -978,7 +977,10 @@ func (h *SwaggerHandler) HandleSwaggerJSON(c *gin.Context) {
 					},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{
-							"description": "Provider key test result",
+							"description": "Provider key valid (tested with provider API)",
+						},
+						"400": map[string]interface{}{
+							"description": "Provider key test failed (invalid key or provider error)",
 						},
 						"401": map[string]interface{}{
 							"description": "Unauthorized",
@@ -986,6 +988,409 @@ func (h *SwaggerHandler) HandleSwaggerJSON(c *gin.Context) {
 						"404": map[string]interface{}{
 							"description": "Provider key not found",
 						},
+					},
+				},
+			},
+			"/auth/profile/password": map[string]interface{}{
+				"put": map[string]interface{}{
+					"tags":        []string{"Authentication"},
+					"summary":     "Change password",
+					"description": "Change current user password",
+					"security":    []map[string]interface{}{{"BearerAuth": []string{}}},
+					"requestBody": map[string]interface{}{
+						"required": true,
+						"content": map[string]interface{}{
+							"application/json": map[string]interface{}{
+								"schema": map[string]interface{}{
+									"type":     "object",
+									"required": []string{"current_password", "new_password"},
+									"properties": map[string]interface{}{
+										"current_password": map[string]interface{}{"type": "string", "format": "password"},
+										"new_password":     map[string]interface{}{"type": "string", "format": "password"},
+									},
+								},
+							},
+						},
+					},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Password updated"},
+						"400": map[string]interface{}{"description": "Invalid current password"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/auth/conversations": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags": []string{"Conversations"},
+					"summary": "List conversations",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "List of conversations"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+				"post": map[string]interface{}{
+					"tags": []string{"Conversations"},
+					"summary": "Create conversation",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"201": map[string]interface{}{"description": "Conversation created"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/auth/conversations/{id}": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags": []string{"Conversations"},
+					"summary": "Get conversation",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"parameters": []map[string]interface{}{{"name": "id", "in": "path", "required": true, "schema": map[string]interface{}{"type": "string"}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Conversation"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"404": map[string]interface{}{"description": "Not found"},
+					},
+				},
+				"put": map[string]interface{}{
+					"tags": []string{"Conversations"},
+					"summary": "Update conversation",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"parameters": []map[string]interface{}{{"name": "id", "in": "path", "required": true, "schema": map[string]interface{}{"type": "string"}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Updated"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"404": map[string]interface{}{"description": "Not found"},
+					},
+				},
+				"delete": map[string]interface{}{
+					"tags": []string{"Conversations"},
+					"summary": "Delete conversation",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"parameters": []map[string]interface{}{{"name": "id", "in": "path", "required": true, "schema": map[string]interface{}{"type": "string"}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Deleted"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"404": map[string]interface{}{"description": "Not found"},
+					},
+				},
+			},
+			"/auth/chat": map[string]interface{}{
+				"post": map[string]interface{}{
+					"tags": []string{"Chat"},
+					"summary": "Chat (JWT)",
+					"description": "Chat completion using JWT (same as /v1/chat but with Bearer JWT)",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Chat completion"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/auth/chat/stream": map[string]interface{}{
+				"post": map[string]interface{}{
+					"tags": []string{"Chat"},
+					"summary": "Chat stream (JWT)",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "SSE stream"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/auth/chat/ws": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags": []string{"Chat"},
+					"summary": "Chat WebSocket (JWT)",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"101": map[string]interface{}{"description": "Switching protocols"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/auth/analytics/usage": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags": []string{"Analytics"},
+					"summary": "Get usage (JWT)",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Usage statistics"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/auth/analytics/requests": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags": []string{"Analytics"},
+					"summary": "Get requests (JWT)",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Request history"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/auth/tunnels": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags": []string{"Tunnels"},
+					"summary": "List tunnels",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "List of tunnels"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/auth/tunnels/stats": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags": []string{"Tunnels"},
+					"summary": "Get tunnel stats (user)",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Tunnel statistics"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/auth/tunnels/{id}": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags": []string{"Tunnels"},
+					"summary": "Get tunnel",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"parameters": []map[string]interface{}{{"name": "id", "in": "path", "required": true, "schema": map[string]interface{}{"type": "string"}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Tunnel details"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"404": map[string]interface{}{"description": "Not found"},
+					},
+				},
+				"put": map[string]interface{}{
+					"tags": []string{"Tunnels"},
+					"summary": "Set custom domain",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"parameters": []map[string]interface{}{{"name": "id", "in": "path", "required": true, "schema": map[string]interface{}{"type": "string"}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Domain set"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"404": map[string]interface{}{"description": "Not found"},
+					},
+				},
+			},
+			"/auth/tunnels/{id}/disconnect": map[string]interface{}{
+				"post": map[string]interface{}{
+					"tags": []string{"Tunnels"},
+					"summary": "Disconnect tunnel",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"parameters": []map[string]interface{}{{"name": "id", "in": "path", "required": true, "schema": map[string]interface{}{"type": "string"}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Tunnel disconnected"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"404": map[string]interface{}{"description": "Not found"},
+					},
+				},
+			},
+			"/auth/tunnels/{id}/associate": map[string]interface{}{
+				"post": map[string]interface{}{
+					"tags": []string{"Tunnels"},
+					"summary": "Associate tunnel",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"parameters": []map[string]interface{}{{"name": "id", "in": "path", "required": true, "schema": map[string]interface{}{"type": "string"}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Tunnel associated"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"404": map[string]interface{}{"description": "Not found"},
+					},
+				},
+			},
+			"/auth/tunnels/{id}/domain": map[string]interface{}{
+				"post": map[string]interface{}{
+					"tags": []string{"Tunnels"},
+					"summary": "Set custom domain (POST)",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"parameters": []map[string]interface{}{{"name": "id", "in": "path", "required": true, "schema": map[string]interface{}{"type": "string"}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Domain set"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"404": map[string]interface{}{"description": "Not found"},
+					},
+				},
+				"put": map[string]interface{}{
+					"tags": []string{"Tunnels"},
+					"summary": "Set custom domain (PUT)",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"parameters": []map[string]interface{}{{"name": "id", "in": "path", "required": true, "schema": map[string]interface{}{"type": "string"}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Domain set"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"404": map[string]interface{}{"description": "Not found"},
+					},
+				},
+			},
+			"/auth/domains": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags": []string{"Domains"},
+					"summary": "List custom domains",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "List of domains"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+				"post": map[string]interface{}{
+					"tags": []string{"Domains"},
+					"summary": "Create custom domain",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"201": map[string]interface{}{"description": "Domain created"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/auth/domains/{id}": map[string]interface{}{
+				"delete": map[string]interface{}{
+					"tags": []string{"Domains"},
+					"summary": "Delete domain",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"parameters": []map[string]interface{}{{"name": "id", "in": "path", "required": true, "schema": map[string]interface{}{"type": "string"}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Deleted"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"404": map[string]interface{}{"description": "Not found"},
+					},
+				},
+			},
+			"/auth/domains/{id}/verify": map[string]interface{}{
+				"post": map[string]interface{}{
+					"tags": []string{"Domains"},
+					"summary": "Verify domain",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"parameters": []map[string]interface{}{{"name": "id", "in": "path", "required": true, "schema": map[string]interface{}{"type": "string"}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Verification result"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"404": map[string]interface{}{"description": "Not found"},
+					},
+				},
+			},
+			"/auth/routing/strategy": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags": []string{"Routing"},
+					"summary": "Get user routing strategy",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Current strategy"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+				"put": map[string]interface{}{
+					"tags": []string{"Routing"},
+					"summary": "Set user routing strategy",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Strategy updated"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+				"delete": map[string]interface{}{
+					"tags": []string{"Routing"},
+					"summary": "Clear user routing strategy",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Strategy cleared"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/auth/routing/custom-rules": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags": []string{"Routing"},
+					"summary": "Get user custom rules",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Custom routing rules"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+				"post": map[string]interface{}{
+					"tags": []string{"Routing"},
+					"summary": "Set user custom rules",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Rules updated"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/v1/user": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags": []string{"Authentication"},
+					"summary": "Get user (API key)",
+					"description": "Get user info for the API key holder",
+					"security": []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "User info"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+					},
+				},
+			},
+			"/admin/routing/strategy/lock": map[string]interface{}{
+				"post": map[string]interface{}{
+					"tags":        []string{"Admin"},
+					"summary":     "Lock routing strategy",
+					"description": "Lock or unlock default routing strategy (admin only)",
+					"security":    []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Lock state updated"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"403": map[string]interface{}{"description": "Forbidden - Admin required"},
+					},
+				},
+			},
+			"/admin/routing/custom-rules": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags":        []string{"Admin"},
+					"summary":     "Get custom routing rules",
+					"security":    []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Custom rules"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"403": map[string]interface{}{"description": "Forbidden - Admin required"},
+					},
+				},
+				"post": map[string]interface{}{
+					"tags":        []string{"Admin"},
+					"summary":     "Set custom routing rules",
+					"security":    []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Rules updated"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"403": map[string]interface{}{"description": "Forbidden - Admin required"},
+					},
+				},
+			},
+			"/admin/tunnels/stats": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags":        []string{"Admin"},
+					"summary":     "Get tunnel statistics",
+					"description": "Get tunnel stats across all users (admin only)",
+					"security":    []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Tunnel statistics"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"403": map[string]interface{}{"description": "Forbidden - Admin required"},
+					},
+				},
+			},
+			"/admin/users": map[string]interface{}{
+				"get": map[string]interface{}{
+					"tags":        []string{"Admin"},
+					"summary":     "List users",
+					"description": "List all users (admin only)",
+					"security":    []map[string]interface{}{{"BearerAuth": []string{}}},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "List of users"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"403": map[string]interface{}{"description": "Forbidden - Admin required"},
 					},
 				},
 			},

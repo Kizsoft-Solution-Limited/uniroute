@@ -973,52 +973,22 @@ func (m *tunnelModel) addRequestToLogs(event tunnel.RequestEvent) {
 	latencyStr := fmt.Sprintf("%dms", event.LatencyMs)
 	latencyColored := color.White(latencyStr)
 
-	// Format the request line: STATUS METHOD PATH LATENCY
-	// Each request is unique - even same path/method gets a new entry
-	// We prepend to ensure newest requests appear at the top
-	// NOTE: Even if two requests have identical method/path/status/latency,
-	// they are still TWO SEPARATE ENTRIES in the logs array
-	// CRITICAL: Build the line properly - each colored segment already has Reset codes
-	// Use very generous spacing between elements for better readability
 	requestLine := fmt.Sprintf("%s          %s          %s          %s",
 		statusColored,
 		methodColored,
 		pathColored,
 		latencyColored)
 
-	// IMPORTANT: This requestLine will be prepended to m.logs
-	// Even if it's identical to an existing entry, it's a NEW entry
-	// The logs array grows with EVERY request, no deduplication
-
-	// CRITICAL: ALWAYS prepend new request at the top (streaming behavior - newest at top)
-	// No deduplication - every request gets its own entry, even if identical
-	// This function is called for EVERY request event, no filtering
 	m.logsMu.Lock()
-
-	// IMPORTANT: Prepend new request to the FRONT of the slice
-	// This ensures newest requests appear at the top, pushing old ones down
-	// Even if path/method/status are identical, this is a NEW entry
 	m.logs = append([]string{requestLine}, m.logs...)
-
-	// Limit to latest 100 requests (allows scrolling to see older requests)
-	// When a new request comes in, it's added at the top and the oldest is removed from the bottom
-	// This keeps the header fixed at the top and new requests appear below it
-	// Users can scroll down to see older requests
 	const maxRequests = 100
 	if len(m.logs) > maxRequests {
-		// Keep only the first 100 (newest) requests, remove oldest from the end
 		m.logs = m.logs[:maxRequests]
 	}
 
 	m.logsMu.Unlock()
-
-	// State update complete - logs array is updated
-	// Viewport content will be rebuilt in updateViewportContent()
 }
 
-// updateViewportContent rebuilds viewport content from the logs array
-// This implements a fixed-size window showing the latest 10 requests
-// Following best practices for streaming request displays
 func (m *tunnelModel) updateViewportContent() {
 	m.logsMu.Lock()
 	logsCopy := make([]string, len(m.logs))
