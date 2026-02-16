@@ -485,12 +485,12 @@ When you assign a domain to a tunnel, the assignment is automatically saved. You
 
 ```bash
 # First time: assign domain to tunnel
-uniroute domain naijacrawl.com abc123
+uniroute domain billspot.co abc123
 
 # Later: resume the same assignment
 uniroute domain resume abc123
 # or
-uniroute domain resume naijacrawl.com
+uniroute domain resume billspot.co
 ```
 
 The resume feature:
@@ -713,8 +713,7 @@ uniroute/
 
 ## 📚 Documentation
 
-- **[SECURITY_OVERVIEW.md](SECURITY_OVERVIEW.md)** - Complete security documentation and measures
-- **[Interactive Documentation](https://uniroute.co/docs)** - 📖 Full documentation with guides, API reference, and examples
+- **[Interactive Documentation](https://uniroute.co/docs)** - Full documentation with guides, API reference, and examples
 - **[CLI Reference](https://uniroute.co/docs/cli)** - 📦 CLI installation and usage guide
 - **[Tunnel Documentation](https://uniroute.co/docs/tunnels)** - 🔌 Tunnel configuration, protocols, and custom domains
 - **[Custom Domains Guide](https://uniroute.co/docs/tunnels/custom-domains)** - 🌐 Custom domain setup and management
@@ -738,7 +737,7 @@ UniRoute implements enterprise-grade security:
 - ✅ Parameterized queries (SQL injection prevention)
 - ✅ Encrypted secrets at rest
 
-See [SECURITY_OVERVIEW.md](./SECURITY_OVERVIEW.md) for the complete security checklist.
+See the [Security overview](https://uniroute.co/docs/security) in the documentation for the complete checklist.
 
 ---
 

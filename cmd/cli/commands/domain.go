@@ -370,7 +370,7 @@ it will resume the most recently used domain assignment.
 
 Examples:
   uniroute domain resume                    # Resume last used assignment
-  uniroute domain resume naijacrawl.com    # Resume by domain name
+  uniroute domain resume billspot.co    # Resume by domain name
   uniroute domain resume abc123              # Resume by subdomain`,
 	Args: cobra.RangeArgs(0, 1),
 	RunE: func(cmd *cobra.Command, args []string) error {

@@ -791,7 +791,7 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 								Msg("Rewrote redirect Location header to use tunnel URL")
 						}
 					} else if host != "" {
-						// External redirect (like naijacrawl.com) - pass through unchanged
+						// External redirect - pass through unchanged
 						tc.logger.Debug().
 							Str("external_redirect", location).
 							Msg("Passing through external redirect unchanged")

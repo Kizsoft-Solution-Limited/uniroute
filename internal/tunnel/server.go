@@ -3220,7 +3220,7 @@ func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, re
 
 	// Rewrite Location header for redirects (3xx status codes)
 	// If local server redirects to localhost:PORT, rewrite to tunnel URL
-	// External redirects (like naijacrawl.com) pass through unchanged
+	// External redirects (e.g. custom domains) pass through unchanged
 	if resp.Status >= 300 && resp.Status < 400 {
 		// Check for Location header (case-insensitive)
 		location := ""
@@ -3275,7 +3275,7 @@ func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, re
 							Msg("Rewrote redirect Location header to use tunnel URL")
 					}
 				} else if host != "" {
-					// External redirect (like naijacrawl.com) - pass through unchanged
+					// External redirect - pass through unchanged
 					ts.logger.Debug().
 						Str("external_redirect", location).
 						Msg("Passing through external redirect unchanged")
