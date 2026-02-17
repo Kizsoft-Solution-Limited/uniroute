@@ -9,7 +9,7 @@ Same repo, three Coolify applications. Use one **Server** and one **Project** (o
 - **Source:** Same repo, same branch (e.g. `main`).
 - **Build Pack:** Dockerfile.
 - **Dockerfile Location:** `frontend/Dockerfile`.
-- **Build Context / Root Directory:** `frontend` (so `COPY . .` is inside frontend).
+- **Build Context / Base Directory:** leave **empty** or `.` (repo root). Do not set to `frontend` or Coolify may resolve `frontend/frontend`.
 - **Port:** 80 (nginx).
 - **Domain:** `uniroute.co`, `www.uniroute.co`. Enable ACME.
 - **Build env (optional):** `VITE_API_BASE_URL=https://app.uniroute.co` (default in Dockerfile; override if different).
