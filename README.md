@@ -410,7 +410,7 @@ uniroute run -- php artisan serve --port=8080   # tunnel to 8080
 uniroute run -- npm run dev
 ```
 
-Port is taken from: (1) your command (e.g. `--port=8080`), (2) our `--port` flag, or (3) auto-detected from the project. Supported: **Node** (Vite/Next/React), **PHP** (Laravel), **Python** (Django, Flask, FastAPI), **Go**, **Ruby** (Rails). See **Tunnels → Dev & Run** in the [Docs UI](/docs/tunnels/dev-run) or run `uniroute dev --help` and `uniroute run --help`.
+Port is taken from: (1) your command (e.g. `--port=8080`), (2) our `--port` flag, or (3) auto-detected from the project. Supported: **Node** (Vite/Next/React), **PHP** (Laravel), **Python** (Django, Flask, FastAPI), **Go**, **Ruby** (Rails). **Custom domains** work with dev/run: assign a domain to the tunnel and traffic to your domain goes to the same HTTP tunnel. See **Tunnels → Dev & Run** in the [Docs UI](/docs/tunnels/dev-run) or run `uniroute dev --help` and `uniroute run --help`.
 
 **Tunnel Features:**
 - ✅ HTTP, TCP, TLS, and UDP protocol support
@@ -756,7 +756,7 @@ docker-compose up -d
 3. Set environment variables
 4. Deploy automatically
 
-For detailed deployment instructions, see the [Deployment Guide](https://uniroute.co/docs/deployment).
+For Coolify setup (frontend, backend, tunnel from one repo) and other options, see the [Deployment Guide](https://uniroute.co/docs/deployment) in the docs UI.
 
 ---
 
@@ -1326,7 +1326,7 @@ UniRoute is an open-source project built with ❤️ by the community. If you fi
 - ⭐ **Star the repository** on GitHub
 - 🐛 **Report bugs** and suggest features
 - 💻 **Contribute code** via pull requests
-- ☕ **Buy us a coffee** - [Donate via Polar.sh](https://polar.sh/uniroute/donate)
+- ☕ **Buy us a coffee** - [Donate](https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs)
 
 Your support helps us continue developing and maintaining UniRoute!
 
