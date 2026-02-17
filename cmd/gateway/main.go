@@ -18,6 +18,7 @@ import (
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/providers"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage/migrations"
 	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/logger"
 )
 
@@ -67,6 +68,9 @@ func main() {
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to connect to PostgreSQL, using in-memory API keys")
 		} else {
+			if err := migrations.RunMigrations(context.Background(), postgresClient.Pool(), log); err != nil {
+				log.Fatal().Err(err).Msg("Database migrations failed")
+			}
 			apiKeyRepo := storage.NewAPIKeyRepository(postgresClient.Pool())
 			apiKeyServiceV2 = security.NewAPIKeyServiceV2(apiKeyRepo, cfg.APIKeySecret)
 			log.Info().Msg("PostgreSQL connected - database-backed API keys enabled")
