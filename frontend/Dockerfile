@@ -7,7 +7,8 @@ RUN npm ci
 COPY frontend/ .
 ARG VITE_API_BASE_URL=https://app.uniroute.co
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
-RUN npm run build
+# Use vite build only in Docker to avoid vue-tsc/TypeScript compatibility failure
+RUN npx vite build
 
 FROM nginx:alpine
 RUN rm -rf /usr/share/nginx/html/*
