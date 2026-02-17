@@ -106,7 +106,7 @@ sudo mv uniroute /usr/local/bin/
 **CLI Environment Variables** (Recommended for local development):
 
 ```bash
-# Set API server URL (default: auto-detects local mode or uses https://api.uniroute.co)
+# Set API server URL (default: auto-detects local mode or uses https://app.uniroute.co)
 # Use BASE_URL from .env or set explicitly:
 export UNIROUTE_API_URL=${BASE_URL:-http://localhost:8084}
 
@@ -213,7 +213,7 @@ TUNNEL_ORIGINS=http://localhost,https://tunnel.uniroute.co,.uniroute.co
 # Base URL Configuration
 # Base URL for the API server (used in documentation and examples)
 # For local development: http://localhost:8084
-# For production: https://api.uniroute.co (or your domain)
+# For production: https://app.uniroute.co (or your domain)
 BASE_URL=http://localhost:8084
 
 # Tunnel Server Configuration
@@ -261,7 +261,7 @@ UniRoute supports OAuth authentication with Google, GitHub, and X (Twitter). To 
 1. **Google OAuth:**
    - Go to [Google Cloud Console](https://console.cloud.google.com/)
    - Create OAuth 2.0 credentials
-   - Add authorized redirect URI: `{BASE_URL}/auth/google/callback` (e.g., `http://localhost:8084/auth/google/callback` for local dev, or `https://api.uniroute.co/auth/google/callback` for production)
+   - Add authorized redirect URI: `{BASE_URL}/auth/google/callback` (e.g., `http://localhost:8084/auth/google/callback` for local dev, or `https://app.uniroute.co/auth/google/callback` for production)
    - Add to `.env`:
      ```bash
      GOOGLE_OAUTH_CLIENT_ID=your-client-id

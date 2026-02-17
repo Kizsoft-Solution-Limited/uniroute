@@ -5,7 +5,7 @@ UniRoute provides a unified API for all AI providers.
 ## Base URL
 
 ```
-https://api.uniroute.co/v1
+https://app.uniroute.co/v1
 ```
 
 For self-hosted instances:
@@ -18,7 +18,7 @@ http://localhost:8084/v1
 All API requests require authentication via API key:
 
 ```bash
-curl -X POST https://api.uniroute.co/v1/chat \
+curl -X POST https://app.uniroute.co/v1/chat \
   -H "Authorization: Bearer ur_your-api-key" \
   -H "Content-Type: application/json" \
   -d '{...}'
@@ -29,7 +29,7 @@ curl -X POST https://api.uniroute.co/v1/chat \
 ### Standard Request
 
 ```bash
-curl -X POST https://api.uniroute.co/v1/chat \
+curl -X POST https://app.uniroute.co/v1/chat \
   -H "Authorization: Bearer ur_your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -46,7 +46,7 @@ curl -X POST https://api.uniroute.co/v1/chat \
 ### Streaming (SSE)
 
 ```bash
-curl -X POST https://api.uniroute.co/v1/chat/stream \
+curl -X POST https://app.uniroute.co/v1/chat/stream \
   -H "Authorization: Bearer ur_your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -58,7 +58,7 @@ curl -X POST https://api.uniroute.co/v1/chat/stream \
 ### Streaming (WebSocket)
 
 ```javascript
-const ws = new WebSocket('wss://api.uniroute.co/v1/chat/ws?token=ur_your-api-key');
+const ws = new WebSocket('wss://app.uniroute.co/v1/chat/ws?token=ur_your-api-key');
 
 ws.onopen = () => {
   ws.send(JSON.stringify({

@@ -188,7 +188,7 @@
                 <div class="flex items-start space-x-2 min-w-0">
                   <span class="text-slate-500 text-xs md:text-sm flex-shrink-0 mt-0.5">$</span>
                   <div class="flex-1 min-w-0">
-                    <code class="text-xs md:text-sm text-white font-mono break-all block">curl https://api.uniroute.co/v1/chat \</code>
+                    <code class="text-xs md:text-sm text-white font-mono break-all block">curl https://app.uniroute.co/v1/chat \</code>
                     <code class="text-xs md:text-sm text-slate-400 font-mono break-all block mt-1">-H "Authorization: Bearer ur_key"</code>
                   </div>
                 </div>

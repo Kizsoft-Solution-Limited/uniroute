@@ -17,7 +17,7 @@ UniRoute uses intelligent routing to select the best provider for each request b
 Select the cheapest available provider:
 
 ```bash
-curl -X PUT https://api.uniroute.co/auth/routing/strategy \
+curl -X PUT https://app.uniroute.co/auth/routing/strategy \
   -H "Authorization: Bearer your-jwt-token" \
   -H "Content-Type: application/json" \
   -d '{
@@ -30,7 +30,7 @@ curl -X PUT https://api.uniroute.co/auth/routing/strategy \
 Select the fastest provider:
 
 ```bash
-curl -X PUT https://api.uniroute.co/auth/routing/strategy \
+curl -X PUT https://app.uniroute.co/auth/routing/strategy \
   -H "Authorization: Bearer your-jwt-token" \
   -H "Content-Type: application/json" \
   -d '{
@@ -43,7 +43,7 @@ curl -X PUT https://api.uniroute.co/auth/routing/strategy \
 Select based on provider availability:
 
 ```bash
-curl -X PUT https://api.uniroute.co/auth/routing/strategy \
+curl -X PUT https://app.uniroute.co/auth/routing/strategy \
   -H "Authorization: Bearer your-jwt-token" \
   -H "Content-Type: application/json" \
   -d '{
@@ -56,7 +56,7 @@ curl -X PUT https://api.uniroute.co/auth/routing/strategy \
 Define custom rules for specific models or use cases:
 
 ```bash
-curl -X POST https://api.uniroute.co/auth/routing/custom-rules \
+curl -X POST https://app.uniroute.co/auth/routing/custom-rules \
   -H "Authorization: Bearer your-jwt-token" \
   -H "Content-Type: application/json" \
   -d '{

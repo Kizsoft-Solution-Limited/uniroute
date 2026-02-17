@@ -734,11 +734,11 @@ func setCustomDomain(tunnelID, domain, token string) error {
 			}
 		}
 		if apiURL == "" {
-			apiURL = "https://api.uniroute.co"
+			apiURL = "https://app.uniroute.co"
 		}
 	}
 	if apiURL == "" {
-		apiURL = "https://api.uniroute.co"
+		apiURL = "https://app.uniroute.co"
 	}
 
 	// Ensure URL has protocol

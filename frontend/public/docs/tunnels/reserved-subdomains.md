@@ -48,6 +48,7 @@ Error: subdomain 'myapp' is not available
 Some subdomains are reserved for system use and cannot be requested:
 - `www`
 - `api`
+- `app`
 - `admin`
 - `dashboard`
 - `docs`

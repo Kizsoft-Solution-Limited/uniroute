@@ -97,7 +97,7 @@ uniroute keys create --name "My App"
 Include your API key in the `Authorization` header:
 
 ```bash
-curl -X POST https://api.uniroute.co/v1/chat \
+curl -X POST https://app.uniroute.co/v1/chat \
   -H "Authorization: Bearer ur_your-api-key" \
   -H "Content-Type: application/json" \
   -d '{...}'
@@ -109,12 +109,12 @@ For web applications, use JWT tokens obtained from the login endpoint:
 
 ```bash
 # Login and get JWT token
-curl -X POST https://api.uniroute.co/auth/login \
+curl -X POST https://app.uniroute.co/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email": "user@example.com", "password": "password"}'
 
 # Use JWT token
-curl -X GET https://api.uniroute.co/auth/tunnels \
+curl -X GET https://app.uniroute.co/auth/tunnels \
   -H "Authorization: Bearer your-jwt-token"
 ```
 

@@ -4432,7 +4432,12 @@ func validateLocalURL(url string) error {
 	return fmt.Errorf("invalid URL format, must be http://..., https://..., or host:port")
 }
 
-// validateSubdomain validates subdomain format
+// reservedSubdomains are system subdomains that cannot be used for user tunnels (app, api, www, dashboard, etc.)
+var reservedSubdomains = map[string]bool{
+	"www": true, "api": true, "app": true, "admin": true, "dashboard": true, "docs": true,
+}
+
+// validateSubdomain validates subdomain format and rejects reserved names
 func validateSubdomain(subdomain string) error {
 	if len(subdomain) == 0 {
 		return fmt.Errorf("subdomain cannot be empty")
@@ -4440,6 +4445,11 @@ func validateSubdomain(subdomain string) error {
 
 	if len(subdomain) > 63 {
 		return fmt.Errorf("subdomain too long (max 63 characters)")
+	}
+
+	// Reserved for system use (app.uniroute.co, api., www., etc.)
+	if reservedSubdomains[strings.ToLower(subdomain)] {
+		return fmt.Errorf("subdomain is reserved for system use")
 	}
 
 	// Must be alphanumeric and hyphens only, cannot start or end with hyphen

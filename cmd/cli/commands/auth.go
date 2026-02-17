@@ -44,7 +44,7 @@ The server URL is determined by (in priority order):
   2. UNIROUTE_API_URL environment variable
   3. Previously saved server URL from auth config
   4. Auto-detected local mode (http://localhost:8084)
-  5. Default production server (https://api.uniroute.co)
+  5. Default production server (https://app.uniroute.co)
 
 Examples:
   # Email/password login
@@ -322,7 +322,7 @@ func getServerURL() string {
 	}
 	
 	// Priority 4: Default (only used if nothing else is configured)
-	return "https://api.uniroute.co"
+	return "https://app.uniroute.co"
 }
 
 // isLocalMode detects if we're running in local development mode
@@ -561,7 +561,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 	}
 	
 	// Show helpful message about environment variables if using default
-	if os.Getenv("UNIROUTE_API_URL") == "" && serverURL == "https://api.uniroute.co" {
+	if os.Getenv("UNIROUTE_API_URL") == "" && serverURL == "https://app.uniroute.co" {
 		fmt.Printf("   💡 Tip: Set UNIROUTE_API_URL env var to avoid hardcoded defaults\n")
 	}
 	

@@ -97,7 +97,7 @@ uniroute list
 Press `Ctrl+C` in the terminal where the tunnel is running, or use the API:
 
 ```bash
-curl -X POST https://api.uniroute.co/v1/tunnels/{tunnel-id}/disconnect \
+curl -X POST https://app.uniroute.co/v1/tunnels/{tunnel-id}/disconnect \
   -H "Authorization: Bearer ur_your-api-key"
 ```
 

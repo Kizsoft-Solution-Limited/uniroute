@@ -585,7 +585,7 @@ func getAPIURL() string {
 			}
 		}
 		if apiURL == "" {
-			apiURL = "https://api.uniroute.co"
+			apiURL = "https://app.uniroute.co"
 		}
 	}
 

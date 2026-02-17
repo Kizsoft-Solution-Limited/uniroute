@@ -53,7 +53,7 @@ cd examples/tunnel-example
 
 1. **UniRoute Server Running**
    - Local: `http://localhost:8084`
-   - Or production: `https://api.uniroute.co`
+   - Or production: `https://app.uniroute.co`
 
 2. **API Key**
    - Create via CLI: `uniroute keys create`

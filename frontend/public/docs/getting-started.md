@@ -21,7 +21,7 @@ uniroute --version
 uniroute auth login
 
 # Or use the managed service
-uniroute auth login --server https://api.uniroute.co
+uniroute auth login --server https://app.uniroute.co
 ```
 
 ### 3. Create Your First Tunnel
@@ -37,7 +37,7 @@ uniroute http 8080
 
 ```bash
 # Using curl
-curl -X POST https://api.uniroute.co/v1/chat \
+curl -X POST https://app.uniroute.co/v1/chat \
   -H "Authorization: Bearer ur_your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
