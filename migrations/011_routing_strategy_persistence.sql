@@ -25,8 +25,9 @@ CREATE INDEX IF NOT EXISTS idx_system_settings_key ON system_settings(key);
 -- Add routing_strategy column to users table (nullable - NULL means use default)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS routing_strategy VARCHAR(50) NULL;
 
--- Add check constraint for valid strategy values
-ALTER TABLE users ADD CONSTRAINT IF NOT EXISTS check_user_routing_strategy 
+-- Add check constraint for valid strategy values (PostgreSQL does not support ADD CONSTRAINT IF NOT EXISTS)
+ALTER TABLE users DROP CONSTRAINT IF EXISTS check_user_routing_strategy;
+ALTER TABLE users ADD CONSTRAINT check_user_routing_strategy
     CHECK (routing_strategy IS NULL OR routing_strategy IN ('model', 'cost', 'latency', 'balanced', 'custom'));
 
 -- Add comments
