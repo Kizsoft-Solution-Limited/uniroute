@@ -1,5 +1,6 @@
 # Frontend - build Vite app and serve with nginx
 # Build context must be repo root: docker build -f frontend/Dockerfile .
+# Self-hosters: pass your backend URL, e.g. docker build --build-arg VITE_API_BASE_URL=https://api.yourdomain.com -f frontend/Dockerfile .
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY frontend/package*.json ./

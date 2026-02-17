@@ -2,21 +2,16 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, InternalAxiosR
 import DOMPurify from 'dompurify'
 
 // Create axios instance with base configuration
-// For local development, use http://localhost:8084 (gateway port)
-// For production, use https://api.uniroute.co
+// VITE_API_BASE_URL is set at build time (Dockerfile or .env). Self-hosters must set it to their backend URL.
 const getBaseURL = () => {
-  // Check environment variable first
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL
   }
-  
-  // For local development, default to localhost
   if (import.meta.env.DEV) {
     return 'http://localhost:8084'
   }
-  
-  // Production default
-  return 'https://api.uniroute.co'
+  // Production: same origin (works when frontend and API are served behind one domain)
+  return typeof window !== 'undefined' ? window.location.origin : 'https://app.uniroute.co'
 }
 
 export const apiClient: AxiosInstance = axios.create({
