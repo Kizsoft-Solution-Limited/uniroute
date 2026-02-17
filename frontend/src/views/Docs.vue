@@ -131,7 +131,7 @@
           <p class="text-red-400 text-sm sm:text-base">{{ error }}</p>
         </div>
         
-        <div v-else class="prose prose-invert max-w-none relative z-10">
+        <div v-else class="prose prose-invert max-w-none relative z-10" @click="onDocContentClick">
           <div v-html="renderedContent" ref="contentRef"></div>
         </div>
       </div>
@@ -141,13 +141,14 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import type { MarkedOptions } from 'marked'
 import { updateDocumentHead } from '@/utils/head'
 
 const route = useRoute()
+const router = useRouter()
 const loading = ref(true)
 const error = ref<string | null>(null)
 const renderedContent = ref('')
@@ -197,6 +198,21 @@ function setDocHead() {
   const title = getCurrentDocTitle()
   const description = `UniRoute documentation: ${title}. Installation, authentication, tunnels, API reference, and deployment.`
   updateDocumentHead(title, description, route.fullPath)
+}
+
+/** Intercept in-doc links to /docs/* so they use Vue Router (avoids full page request and nginx 403). */
+function onDocContentClick(e: MouseEvent) {
+  const link = (e.target as HTMLElement).closest('a')
+  if (!link || !link.href) return
+  try {
+    const url = new URL(link.href, window.location.origin)
+    if (url.origin === window.location.origin && url.pathname.startsWith('/docs')) {
+      e.preventDefault()
+      router.push(url.pathname + url.search + url.hash)
+    }
+  } catch {
+    // Ignore invalid URLs
+  }
 }
 
 // Configure marked
