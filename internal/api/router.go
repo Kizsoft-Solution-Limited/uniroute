@@ -45,6 +45,13 @@ func SetupRouter(
 	}
 
 	healthHandler := handlers.NewHealthHandler()
+	r.GET("/", func(c *gin.Context) {
+		if frontendURL != "" {
+			c.Redirect(http.StatusFound, frontendURL)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "UniRoute API", "docs": "/swagger", "health": "/health"})
+	})
 	r.GET("/health", healthHandler.HandleHealth)
 	swaggerHandler := handlers.NewSwaggerHandler(jwtService)
 	r.GET("/swagger", swaggerHandler.HandleSwaggerUI)
