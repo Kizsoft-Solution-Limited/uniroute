@@ -59,8 +59,10 @@ frontend/.output/
 frontend/.nuxt/
 frontend/.cache/
 
-# Documentation
+# Documentation (root docs/ is local-only, e.g. COOLIFY_DEPLOY.md)
 docs/
+# Frontend in-app docs are committed (served at /docs in the UI)
+!frontend/public/docs/
 
 # Scripts (sensitive / local-only)
 scripts/update_user_to_admin.sql
