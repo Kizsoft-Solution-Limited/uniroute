@@ -2,6 +2,8 @@
  * Error logging utility - sends errors to backend
  */
 
+
+
 import { apiClient } from '@/services/api/client'
 
 export interface ErrorLogData {
