@@ -2,13 +2,13 @@
   <div class="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 overflow-x-hidden">
     <!-- Navigation -->
     <nav class="fixed top-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur-xl border-b border-slate-800/50">
-      <div class="container mx-auto px-4 sm:px-6 py-4">
+      <div class="container mx-auto px-4 sm:px-6 py-3 sm:py-4">
         <div class="flex items-center justify-between">
-          <router-link to="/" class="flex items-center space-x-3">
-            <div class="w-10 h-10 bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-500 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <span class="text-white font-bold text-lg">U</span>
+          <router-link to="/" class="flex items-center space-x-2 sm:space-x-3 min-w-0">
+            <div class="w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-500 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <span class="text-white font-bold text-base sm:text-lg">U</span>
             </div>
-            <span class="text-lg sm:text-xl font-bold text-white tracking-tight">UniRoute</span>
+            <span class="text-lg sm:text-xl font-bold text-white tracking-tight truncate">UniRoute</span>
           </router-link>
           <div class="hidden md:flex items-center space-x-8">
             <router-link to="/" class="text-sm font-medium text-slate-300 hover:text-white transition-colors">
@@ -27,58 +27,45 @@
               Get started
             </router-link>
           </div>
-          <!-- Mobile menu button -->
-          <div class="md:hidden flex items-center">
-            <button
-              type="button"
-              class="p-2 text-slate-300 hover:text-white transition-colors"
-              aria-label="Toggle menu"
-              @click="mobileMenuOpen = !mobileMenuOpen"
+          <!-- Mobile nav links -->
+          <div class="flex md:hidden items-center gap-2">
+            <router-link
+              to="/login"
+              class="px-3 py-1.5 text-sm font-medium text-slate-300 hover:text-white transition-colors"
             >
-              <svg v-if="!mobileMenuOpen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-              <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+              Sign in
+            </router-link>
+            <router-link
+              to="/register"
+              class="px-3 py-1.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg text-sm font-semibold"
+            >
+              Get started
+            </router-link>
           </div>
-        </div>
-        <!-- Mobile menu -->
-        <div v-if="mobileMenuOpen" class="md:hidden mt-4 pt-4 border-t border-slate-800/50 flex flex-col gap-3">
-          <router-link to="/" class="text-sm font-medium text-slate-300 hover:text-white py-2" @click="mobileMenuOpen = false">
-            Home
-          </router-link>
-          <router-link to="/login" class="text-sm font-medium text-slate-300 hover:text-white py-2" @click="mobileMenuOpen = false">
-            Sign in
-          </router-link>
-          <router-link to="/register" class="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg text-sm font-semibold text-center w-fit" @click="mobileMenuOpen = false">
-            Get started
-          </router-link>
         </div>
       </div>
     </nav>
 
     <!-- Download Section -->
-    <section class="pt-24 sm:pt-28 md:pt-32 pb-12 sm:pb-16 md:pb-24 relative">
+    <section class="pt-24 sm:pt-28 md:pt-32 pb-16 sm:pb-24 relative">
       <div class="container mx-auto px-4 sm:px-6">
         <div class="max-w-4xl mx-auto min-w-0">
           <!-- Header -->
           <div class="text-center mb-10 sm:mb-16">
-            <h1 class="text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-4 sm:mb-6 leading-tight tracking-tight">
+            <h1 class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 sm:mb-6 leading-tight tracking-tight px-1">
               Download UniRoute CLI
             </h1>
-            <p class="text-lg sm:text-xl text-slate-300 max-w-2xl mx-auto px-1">
+            <p class="text-base sm:text-lg md:text-xl text-slate-300 max-w-2xl mx-auto">
               Get the CLI tool for your platform.
             </p>
           </div>
 
           <!-- Detected Platform -->
-          <div v-if="detectedPlatform" class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-4 sm:p-6 md:p-8 mb-6 md:mb-8">
+          <div v-if="detectedPlatform" class="bg-slate-800/60 rounded-xl sm:rounded-2xl border border-slate-700/50 p-4 sm:p-6 md:p-8 mb-6 sm:mb-8">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 sm:mb-6">
               <div class="min-w-0">
                 <h2 class="text-xl sm:text-2xl font-semibold text-white mb-1 sm:mb-2">Your Platform</h2>
-                <p class="text-slate-400 text-sm sm:text-base">
+                <p class="text-sm sm:text-base text-slate-400">
                   {{ detectedPlatform.os }} {{ detectedPlatform.arch }}
                 </p>
               </div>
@@ -96,14 +83,14 @@
           </div>
 
           <!-- Manual Selection -->
-          <div class="bg-slate-800/60 rounded-2xl border border-slate-700/50 p-4 sm:p-6 md:p-8">
+          <div class="bg-slate-800/60 rounded-xl sm:rounded-2xl border border-slate-700/50 p-4 sm:p-6 md:p-8 min-w-0">
             <h2 class="text-xl sm:text-2xl font-semibold text-white mb-4 sm:mb-6">Or choose your platform</h2>
-            <div class="grid sm:grid-cols-2 gap-3 sm:gap-4">
+            <div class="grid sm:grid-cols-2 gap-3 sm:gap-4 min-w-0">
               <!-- macOS -->
-              <div class="bg-slate-900/60 rounded-xl p-4 sm:p-6 border border-slate-700/50 hover:border-blue-500/50 transition-all">
-                <div class="flex items-center justify-between mb-4">
-                  <h3 class="text-lg font-semibold text-white">macOS</h3>
-                  <Apple class="w-8 h-8 text-slate-400" />
+              <div class="bg-slate-900/60 rounded-xl p-4 sm:p-6 border border-slate-700/50 hover:border-blue-500/50 transition-all min-w-0">
+                <div class="flex items-center justify-between mb-3 sm:mb-4">
+                  <h3 class="text-base sm:text-lg font-semibold text-white">macOS</h3>
+                  <Apple class="w-7 h-7 sm:w-8 sm:h-8 text-slate-400 flex-shrink-0" />
                 </div>
                 <div class="space-y-3">
                   <a
@@ -124,10 +111,10 @@
               </div>
 
               <!-- Linux -->
-              <div class="bg-slate-900/60 rounded-xl p-4 sm:p-6 border border-slate-700/50 hover:border-green-500/50 transition-all">
-                <div class="flex items-center justify-between mb-4">
-                  <h3 class="text-lg font-semibold text-white">Linux</h3>
-                  <Server class="w-8 h-8 text-slate-400" />
+              <div class="bg-slate-900/60 rounded-xl p-4 sm:p-6 border border-slate-700/50 hover:border-green-500/50 transition-all min-w-0">
+                <div class="flex items-center justify-between mb-3 sm:mb-4">
+                  <h3 class="text-base sm:text-lg font-semibold text-white">Linux</h3>
+                  <Server class="w-7 h-7 sm:w-8 sm:h-8 text-slate-400 flex-shrink-0" />
                 </div>
                 <div class="space-y-3">
                   <a
@@ -148,10 +135,10 @@
               </div>
 
               <!-- Windows -->
-              <div class="bg-slate-900/60 rounded-xl p-4 sm:p-6 border border-slate-700/50 hover:border-cyan-500/50 transition-all">
-                <div class="flex items-center justify-between mb-4">
-                  <h3 class="text-lg font-semibold text-white">Windows</h3>
-                  <Laptop class="w-8 h-8 text-slate-400" />
+              <div class="bg-slate-900/60 rounded-xl p-4 sm:p-6 border border-slate-700/50 hover:border-cyan-500/50 transition-all min-w-0">
+                <div class="flex items-center justify-between mb-3 sm:mb-4">
+                  <h3 class="text-base sm:text-lg font-semibold text-white">Windows</h3>
+                  <Laptop class="w-7 h-7 sm:w-8 sm:h-8 text-slate-400 flex-shrink-0" />
                 </div>
                 <div class="space-y-3">
                   <a
@@ -165,16 +152,16 @@
               </div>
 
               <!-- Quick Install Script -->
-              <div class="bg-slate-900/60 rounded-xl p-4 sm:p-6 border border-slate-700/50 hover:border-purple-500/50 transition-all">
-                <div class="flex items-center justify-between mb-4">
-                  <h3 class="text-lg font-semibold text-white">Quick Install</h3>
-                  <Zap class="w-8 h-8 text-slate-400 flex-shrink-0" />
+              <div class="bg-slate-900/60 rounded-xl p-4 sm:p-6 border border-slate-700/50 hover:border-purple-500/50 transition-all min-w-0">
+                <div class="flex items-center justify-between mb-3 sm:mb-4 min-w-0">
+                  <h3 class="text-base sm:text-lg font-semibold text-white truncate">Quick Install</h3>
+                  <Zap class="w-7 h-7 sm:w-8 sm:h-8 text-slate-400 flex-shrink-0" />
                 </div>
                 <div class="space-y-3 min-w-0">
-                  <div class="bg-slate-950/60 rounded-lg p-3 sm:p-4 font-mono text-xs sm:text-sm text-slate-300 overflow-x-auto min-w-0" style="-webkit-overflow-scrolling: touch;">
+                  <div class="bg-slate-950/60 rounded-lg p-3 sm:p-4 font-mono text-xs sm:text-sm text-slate-300 min-w-0 overflow-x-auto overflow-y-hidden max-w-full scrollbar-thin" style="-webkit-overflow-scrolling: touch;">
                     <code class="whitespace-nowrap">curl -fsSL https://raw.githubusercontent.com/Kizsoft-Solution-Limited/uniroute/main/scripts/download-cli.sh | bash</code>
                   </div>
-                  <p class="text-sm text-slate-400">
+                  <p class="text-xs sm:text-sm text-slate-400">
                     Automatically detects your platform and installs the CLI
                   </p>
                 </div>
@@ -183,13 +170,13 @@
           </div>
 
           <!-- Installation Instructions -->
-          <div class="mt-8 sm:mt-12 bg-slate-800/60 rounded-2xl border border-slate-700/50 p-4 sm:p-6 md:p-8">
+          <div class="mt-8 sm:mt-12 bg-slate-800/60 rounded-xl sm:rounded-2xl border border-slate-700/50 p-4 sm:p-6 md:p-8">
             <h2 class="text-xl sm:text-2xl font-semibold text-white mb-4 sm:mb-6">Installation Instructions</h2>
-            <div class="space-y-6">
+            <div class="space-y-4 sm:space-y-6">
               <!-- macOS/Linux -->
               <div v-if="detectedPlatform && detectedPlatform.os !== 'Windows'" class="min-w-0">
-                <h3 class="text-lg font-semibold text-white mb-3">macOS / Linux</h3>
-                <div class="bg-slate-950/60 rounded-lg p-3 sm:p-4 font-mono text-xs sm:text-sm text-slate-300 space-y-2 overflow-x-auto min-w-0">
+                <h3 class="text-base sm:text-lg font-semibold text-white mb-2 sm:mb-3">macOS / Linux</h3>
+                <div class="bg-slate-950/60 rounded-lg p-3 sm:p-4 font-mono text-xs sm:text-sm text-slate-300 space-y-2 overflow-x-auto max-w-full" style="-webkit-overflow-scrolling: touch;">
                   <div>
                     <span class="text-slate-500"># Make executable</span><br>
                     <span class="text-green-400">chmod +x uniroute</span>
@@ -207,8 +194,8 @@
 
               <!-- Windows -->
               <div v-if="detectedPlatform && detectedPlatform.os === 'Windows'" class="min-w-0">
-                <h3 class="text-lg font-semibold text-white mb-3">Windows</h3>
-                <div class="bg-slate-950/60 rounded-lg p-3 sm:p-4 font-mono text-xs sm:text-sm text-slate-300 space-y-2 overflow-x-auto min-w-0">
+                <h3 class="text-base sm:text-lg font-semibold text-white mb-2 sm:mb-3">Windows</h3>
+                <div class="bg-slate-950/60 rounded-lg p-3 sm:p-4 font-mono text-xs sm:text-sm text-slate-300 space-y-2 overflow-x-auto max-w-full" style="-webkit-overflow-scrolling: touch;">
                   <div>
                     <span class="text-slate-500"># Add to PATH or use directly</span><br>
                     <span class="text-green-400">.\uniroute.exe --version</span>
@@ -217,11 +204,11 @@
               </div>
 
               <!-- Next Steps -->
-              <div class="pt-6 border-t border-slate-700/50">
+              <div class="pt-6 border-t border-slate-700/50 min-w-0">
                 <h3 class="text-lg font-semibold text-white mb-3">Next Steps</h3>
-                <ol class="list-decimal list-inside space-y-2 text-slate-300 text-sm sm:text-base">
-                  <li class="break-words">Login to your account: <code class="bg-slate-900/60 px-2 py-1 rounded text-xs sm:text-sm break-all">uniroute auth login</code></li>
-                  <li class="break-words">Create an API key: <code class="bg-slate-900/60 px-2 py-1 rounded text-xs sm:text-sm break-all">uniroute keys create</code></li>
+                <ol class="list-decimal list-inside space-y-2 text-slate-300">
+                  <li class="break-words">Login to your account: <code class="bg-slate-900/60 px-2 py-1 rounded text-sm break-all">uniroute auth login</code></li>
+                  <li class="break-words">Create an API key: <code class="bg-slate-900/60 px-2 py-1 rounded text-sm break-all">uniroute keys create</code></li>
                   <li>Start using UniRoute!</li>
                 </ol>
               </div>
@@ -236,8 +223,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { Monitor, Apple, Server, Laptop, Zap } from 'lucide-vue-next'
-
-const mobileMenuOpen = ref(false)
 
 interface Platform {
   os: string
