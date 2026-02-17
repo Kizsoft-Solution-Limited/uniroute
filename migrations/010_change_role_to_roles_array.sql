@@ -14,10 +14,10 @@ UPDATE users SET roles = ARRAY[role]::TEXT[] WHERE roles IS NULL OR array_length
 -- Ensure all users have at least 'user' role
 UPDATE users SET roles = ARRAY['user']::TEXT[] WHERE array_length(roles, 1) IS NULL;
 
--- Add check constraint to ensure roles array only contains valid values
+-- Add check constraint: at least one role, and only 'user' or 'admin' (no subqueries allowed in CHECK)
 ALTER TABLE users ADD CONSTRAINT check_user_roles CHECK (
   array_length(roles, 1) > 0 AND
-  (SELECT bool_and(r IN ('user', 'admin')) FROM unnest(roles) AS r)
+  roles <@ ARRAY['user', 'admin']::TEXT[]
 );
 
 -- Create index on roles array for faster queries
