@@ -179,7 +179,6 @@ const currentSection = computed(() => {
   return navigation.find(section => currentPath === section.path || currentPath.startsWith(section.path + '/'))
 })
 
-/** Current doc page title for SEO (e.g. "Getting Started", "Custom Domains") */
 function getCurrentDocTitle(): string {
   const currentPath = route.path.replace('/docs', '') || '/introduction'
   const path = currentPath.startsWith('/') ? currentPath : '/' + currentPath
@@ -200,7 +199,6 @@ function setDocHead() {
   updateDocumentHead(title, description, route.fullPath)
 }
 
-/** Intercept in-doc links to /docs/* so they use Vue Router (avoids full page request and nginx 403). */
 function onDocContentClick(e: MouseEvent) {
   const link = (e.target as HTMLElement).closest('a')
   if (!link || !link.href) return
@@ -211,11 +209,9 @@ function onDocContentClick(e: MouseEvent) {
       router.push(url.pathname + url.search + url.hash)
     }
   } catch {
-    // Ignore invalid URLs
   }
 }
 
-// Configure marked
 marked.setOptions({
   breaks: true,
   gfm: true,
@@ -232,18 +228,13 @@ const loadDocumentation = async () => {
     if (!path.startsWith('/')) {
       path = '/' + path
     }
-    
-    // Handle nested paths (e.g., /tunnels/opening)
+
     const docPath = `/docs${path}.md`
-    
-    // Try to fetch the markdown file
     const response = await fetch(docPath)
-    
+
     if (!response.ok) {
-      // If not found, try without .md extension or redirect to introduction
       if (response.status === 404) {
         if (path !== '/introduction') {
-          // Redirect to introduction if page not found
           window.location.href = '/docs'
           return
         }
@@ -265,26 +256,23 @@ const loadDocumentation = async () => {
 }
 
 const enhanceNextSteps = () => {
-  // Use nextTick to ensure DOM is updated
   setTimeout(() => {
     const prose = contentRef.value?.closest('.prose') || document.querySelector('.prose')
     if (!prose) return
-    
+
     const headings = prose.querySelectorAll('h2, h3')
     headings.forEach((heading) => {
       if (heading.textContent?.includes('Next Steps')) {
         heading.classList.add('next-steps-heading')
-        
-        // Find the next sibling list
+
         let nextSibling = heading.nextElementSibling
         while (nextSibling && nextSibling.tagName !== 'UL' && nextSibling.tagName !== 'OL') {
           nextSibling = nextSibling.nextElementSibling
         }
-        
+
         if (nextSibling && (nextSibling.tagName === 'UL' || nextSibling.tagName === 'OL')) {
           nextSibling.classList.add('next-steps-list')
-          
-          // Enhance list items
+
           const listItems = nextSibling.querySelectorAll('li')
           listItems.forEach((li) => {
             li.classList.add('next-steps-item')

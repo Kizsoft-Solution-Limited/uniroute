@@ -219,14 +219,11 @@ const loadTunnels = async () => {
 }
 
 const viewTunnelStats = (id: string) => {
-  // Navigate to tunnel detail page
   router.push({ 
     name: 'tunnel-detail', 
     params: { id } 
   }).catch((err) => {
-    // Fallback if route doesn't exist or navigation fails
     console.error('Failed to navigate to tunnel detail:', err)
-    // Try using path instead
     router.push(`/dashboard/tunnels/${id}`).catch((pathErr) => {
       console.error('Failed to navigate using path:', pathErr)
       showToast('Failed to open tunnel details', 'error')

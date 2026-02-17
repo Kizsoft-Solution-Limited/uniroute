@@ -1,8 +1,3 @@
-/**
- * SEO: update document title, meta description, canonical, OG/Twitter, and robots per route.
- * Public pages: index, follow. Dashboard/admin: noindex, nofollow (not for search engines).
- */
-
 const SITE_TITLE = 'UniRoute'
 const DEFAULT_DESCRIPTION = 'One unified gateway for every AI model. Route, secure, and manage traffic to any LLM—cloud or local. Plus secure tunneling for any service.'
 

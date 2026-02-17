@@ -303,23 +303,20 @@ const providerUsage = ref<ProviderUsage[]>([])
 const tunnelChartData = ref<Array<{ time: string; active_tunnels: number; total_tunnels: number }>>([])
 const tunnelChartLoading = ref(false)
 
-// Load chart hours from localStorage, default to 24 if not found
 const getStoredChartHours = (): number => {
   const stored = localStorage.getItem('uniroute_chart_hours')
   if (stored) {
     const hours = parseInt(stored, 10)
-    // Validate that it's one of the allowed values (6, 24, or 168)
     if (hours === 6 || hours === 24 || hours === 168) {
       return hours
     }
   }
-  return 24 // Default to 24h
+  return 24
 }
 
 const chartHours = ref(getStoredChartHours())
 let chartUpdateInterval: number | null = null
 
-// Save chart hours to localStorage whenever it changes
 watch(chartHours, (newHours) => {
   localStorage.setItem('uniroute_chart_hours', newHours.toString())
   if (isAdmin.value) {
@@ -331,7 +328,6 @@ onMounted(async () => {
   await loadDashboardData()
   if (isAdmin.value) {
     await loadTunnelChart()
-    // Update chart every 30 seconds (only for admins)
     chartUpdateInterval = window.setInterval(() => {
       if (isAdmin.value) {
         loadTunnelChart()
@@ -357,17 +353,13 @@ watch(isAdmin, (newVal) => {
 const loadTunnelChart = async () => {
   tunnelChartLoading.value = true
   try {
-    // For time-series views with trend/slope:
-    // - 6h: 30-minute intervals (0.5 hours) for trend visualization
-    // - 24h: 1-hour intervals for trend visualization
-    // - 7d: Daily aggregation (interval=24)
     let interval: number | undefined
     if (chartHours.value >= 168) {
-      interval = 24 // Daily intervals for 7d view
+      interval = 24
     } else if (chartHours.value === 6) {
-      interval = 0.5 // 30-minute intervals for 6h view
+      interval = 0.5
     } else {
-      interval = 1.0 // 1-hour intervals for 24h view
+      interval = 1.0
     }
     const stats = await tunnelsApi.getStats(chartHours.value, interval, true)
     tunnelChartData.value = stats.data || []
@@ -376,7 +368,6 @@ const loadTunnelChart = async () => {
       console.error('Failed to load tunnel chart data:', error?.response?.data || error?.message || error)
     }
     tunnelChartData.value = []
-    // Don't show toast for chart errors to avoid spam
   } finally {
     tunnelChartLoading.value = false
   }
@@ -397,7 +388,6 @@ const loadDashboardData = async () => {
       totalCost: data.total_cost
     }
 
-    // Map recent activity
     recentActivity.value = data.recent_activity.map(activity => ({
       icon: activity.icon,
       iconBg: getIconBg(activity.type),
@@ -405,7 +395,6 @@ const loadDashboardData = async () => {
       time: activity.time
     }))
 
-    // Map provider usage with colors
     const colorMap: Record<string, string> = {
       'Openai': 'bg-blue-600',
       'Anthropic': 'bg-purple-600',
@@ -426,7 +415,6 @@ const loadDashboardData = async () => {
       color: colorMap[provider.name] || 'bg-gray-600'
     }))
 
-    // Animate numbers
     animateNumbers()
   } catch (error: any) {
     console.error('Failed to load dashboard data:', error)
@@ -446,7 +434,6 @@ function getIconBg(type: string): string {
 }
 
 const animateNumbers = () => {
-  // Animate stats counters
   const duration = 1000
   const steps = 60
   const stepDuration = duration / steps

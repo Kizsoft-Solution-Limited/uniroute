@@ -2,7 +2,7 @@
 
 Welcome to the UniRoute documentation!
 
-UniRoute is a fast, secure, and open-source unified gateway platform that allows you to route, secure, and manage traffic to any LLM (cloud or local) with one unified API. It serves as a modern alternative to tools like ngrok, designed specifically for developers who value performance, control, and flexibility.
+UniRoute is a fast, secure, and open-source unified gateway platform that allows you to route, secure, and manage traffic to any LLM (cloud or local) with one unified API. It includes built-in tunneling to expose local services to the internet, designed for developers who value performance, control, and flexibility.
 
 ## Why UniRoute?
 
@@ -29,7 +29,7 @@ UniRoute creates a secure gateway between your applications and AI providers. Wh
 One endpoint for all AI providers. Switch providers without changing your code.
 
 ### Tunneling
-Expose your local services to the internet with built-in tunneling (similar to ngrok).
+Expose your local services to the internet with built-in tunneling.
 
 ### Security
 Enterprise-grade security with API keys, JWT authentication, rate limiting, and IP whitelisting.

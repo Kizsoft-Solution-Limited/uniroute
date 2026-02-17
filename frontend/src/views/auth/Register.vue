@@ -245,27 +245,17 @@ const registerSchema = yup.object({
 
 const { validate } = useValidation(registerSchema)
 
-// Manual validation state tracking - check if form is valid
-// Simplified: just check if fields are filled and passwords match
-// Full validation happens on submit
 const isValid = computed(() => {
-  // Check if all required fields are filled
   const fieldsFilled = email.value.trim() !== '' && 
                        password.value.trim() !== '' && 
                        confirmPassword.value.trim() !== ''
-  
-  // Check if passwords match (allow empty confirm password initially)
   const passwordsMatch = confirmPassword.value === '' || password.value === confirmPassword.value
-  
-  // Only check for errors if they exist (don't block button if no errors yet)
   const hasErrors = emailError.value !== '' || 
                    passwordError.value !== '' || 
                    confirmPasswordError.value !== ''
-  
   return fieldsFilled && passwordsMatch && !hasErrors
 })
 
-// Watch for changes and validate fields
 watch([email], () => {
   if (email.value) {
     validateEmail()

@@ -58,21 +58,12 @@ export type StreamErrorCallback = (error: Error) => void
 export type StreamCompleteCallback = (usage?: StreamChunk['usage']) => void
 
 export const chatApi = {
-  /**
-   * Send a chat completion request
-   * Uses /auth/chat for frontend (JWT auth) or /v1/chat for API keys
-   */
   async chat(data: ChatRequest, useJWT: boolean = true): Promise<ChatResponse> {
-    // Frontend users use JWT auth endpoint, API users use API key endpoint
     const endpoint = useJWT ? '/auth/chat' : '/v1/chat'
     const response = await apiClient.post<ChatResponse>(endpoint, data)
     return response.data
   },
 
-  /**
-   * Send a streaming chat completion request via Server-Sent Events (SSE)
-   * Uses /auth/chat/stream for frontend (JWT auth) or /v1/chat/stream for API keys
-   */
   async chatStream(
     data: ChatRequest,
     onChunk: StreamChunkCallback,
@@ -81,14 +72,12 @@ export const chatApi = {
     useJWT: boolean = true
   ): Promise<void> {
     const endpoint = useJWT ? '/auth/chat/stream' : '/v1/chat/stream'
-    // Get token from localStorage (remember me) or sessionStorage (session only)
     let token = useJWT ? localStorage.getItem('auth_token') : null
     if (!token && useJWT) {
       token = sessionStorage.getItem('auth_token')
     }
 
     try {
-      // Get base URL from apiClient
       const baseURL = apiClient.defaults.baseURL || 'http://localhost:8084'
       const response = await fetch(`${baseURL}${endpoint}`, {
         method: 'POST',
@@ -153,10 +142,6 @@ export const chatApi = {
     }
   },
 
-  /**
-   * Send a streaming chat completion request via WebSocket
-   * Uses /auth/chat/ws for frontend (JWT auth) or /v1/chat/ws for API keys
-   */
   async chatStreamWebSocket(
     data: ChatRequest,
     onChunk: StreamChunkCallback,
@@ -165,35 +150,22 @@ export const chatApi = {
     useJWT: boolean = true
   ): Promise<void> {
     const endpoint = useJWT ? '/auth/chat/ws' : '/v1/chat/ws'
-    // Get token from localStorage (remember me) or sessionStorage (session only)
     let token = useJWT ? localStorage.getItem('auth_token') : null
     if (!token && useJWT) {
       token = sessionStorage.getItem('auth_token')
     }
 
-    // Get base URL for WebSocket connection
-    // When accessed through tunnel, use tunnel URL for WebSocket (tunnel should proxy it)
-    // When accessed directly, use gateway server URL
     let baseURL = apiClient.defaults.baseURL || 'http://localhost:8084'
-    
-    // If running in browser and accessed through tunnel, use tunnel URL
     if (typeof window !== 'undefined' && window.location) {
       const currentHost = window.location.host
       const currentProtocol = window.location.protocol
-      
-      // If accessing through tunnel (e.g., *.localhost:8055), use tunnel URL
-      // The tunnel server should proxy WebSocket connections to the gateway
       if (currentHost.includes('.localhost:8055') || currentHost.includes('.localhost:')) {
         baseURL = `${currentProtocol}//${currentHost}`
       }
     }
-    
-    // Convert http/https to ws/wss
+
     const wsProtocol = baseURL.startsWith('https') ? 'wss' : 'ws'
     const baseURLWithoutProtocol = baseURL.replace(/^https?:\/\//, '')
-    
-    // For WebSocket, we need to include token in query or use subprotocol
-    // Since middleware should handle auth, we can pass token in query as fallback
     const wsURL = `${wsProtocol}://${baseURLWithoutProtocol}${endpoint}${token ? `?token=${encodeURIComponent(token)}` : ''}`
 
     return new Promise((resolve, reject) => {
@@ -201,7 +173,6 @@ export const chatApi = {
         const ws = new WebSocket(wsURL)
 
         ws.onopen = () => {
-          // Send chat request
           ws.send(JSON.stringify({
             type: 'request',
             request: data
@@ -210,15 +181,12 @@ export const chatApi = {
 
         ws.onmessage = (event) => {
           try {
-            // Handle binary ping/pong frames
             if (event.data instanceof Blob || event.data instanceof ArrayBuffer) {
-              // Binary message (ping/pong) - ignore
               return
             }
 
             const response: StreamChunk = JSON.parse(event.data)
 
-            // Check for error
             if (response.error) {
               onError?.(new Error(response.error))
               ws.close()
@@ -226,7 +194,6 @@ export const chatApi = {
               return
             }
 
-            // Process chunk
             onChunk({
               id: response.id,
               content: response.content || '',
@@ -258,12 +225,10 @@ export const chatApi = {
 
         ws.onclose = (event) => {
           if (event.code !== 1000 && event.code !== 1001) {
-            // Abnormal closure
             const errorMsg = `WebSocket closed unexpectedly: ${event.code} ${event.reason || ''}`
             onError?.(new Error(errorMsg))
             reject(new Error(errorMsg))
           } else {
-            // Normal closure
             resolve()
           }
         }

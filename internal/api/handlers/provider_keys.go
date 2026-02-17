@@ -10,18 +10,15 @@ import (
 	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/errors"
 )
 
-// ProviderKeyValidator validates a provider API key with an outbound call to the provider.
 type ProviderKeyValidator interface {
 	ValidateKey(ctx context.Context, provider string, apiKey string) error
 }
 
-// ProviderKeyHandler handles provider key management (BYOK)
 type ProviderKeyHandler struct {
 	providerKeyService *security.ProviderKeyService
 	keyValidator       ProviderKeyValidator // optional; if set, TestProviderKey calls the provider API
 }
 
-// NewProviderKeyHandler creates a new provider key handler. keyValidator may be nil (test endpoint will only check key existence).
 func NewProviderKeyHandler(providerKeyService *security.ProviderKeyService, keyValidator ProviderKeyValidator) *ProviderKeyHandler {
 	return &ProviderKeyHandler{
 		providerKeyService: providerKeyService,
@@ -29,13 +26,11 @@ func NewProviderKeyHandler(providerKeyService *security.ProviderKeyService, keyV
 	}
 }
 
-// AddProviderKeyRequest represents a request to add a provider key
 type AddProviderKeyRequest struct {
 	Provider string `json:"provider" binding:"required"` // 'openai', 'anthropic', 'google'
 	APIKey   string `json:"api_key" binding:"required"`  // Plaintext API key (will be encrypted)
 }
 
-// AddProviderKey handles POST /auth/provider-keys (user route - users manage their own provider keys BYOK)
 func (h *ProviderKeyHandler) AddProviderKey(c *gin.Context) {
 	var req AddProviderKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -46,7 +41,6 @@ func (h *ProviderKeyHandler) AddProviderKey(c *gin.Context) {
 		return
 	}
 
-	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -63,7 +57,6 @@ func (h *ProviderKeyHandler) AddProviderKey(c *gin.Context) {
 		return
 	}
 
-	// Add provider key (will encrypt it)
 	if err := h.providerKeyService.AddProviderKey(c.Request.Context(), userID, req.Provider, req.APIKey); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
@@ -77,9 +70,7 @@ func (h *ProviderKeyHandler) AddProviderKey(c *gin.Context) {
 	})
 }
 
-// ListProviderKeys handles GET /auth/provider-keys (user route - users manage their own provider keys BYOK)
 func (h *ProviderKeyHandler) ListProviderKeys(c *gin.Context) {
-	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -96,7 +87,6 @@ func (h *ProviderKeyHandler) ListProviderKeys(c *gin.Context) {
 		return
 	}
 
-	// List provider keys (without decrypting)
 	keys, err := h.providerKeyService.ListProviderKeys(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -105,7 +95,6 @@ func (h *ProviderKeyHandler) ListProviderKeys(c *gin.Context) {
 		return
 	}
 
-	// Return keys without sensitive data
 	response := make([]map[string]interface{}, len(keys))
 	for i, key := range keys {
 		response[i] = map[string]interface{}{
@@ -122,12 +111,10 @@ func (h *ProviderKeyHandler) ListProviderKeys(c *gin.Context) {
 	})
 }
 
-// UpdateProviderKeyRequest represents a request to update a provider key
 type UpdateProviderKeyRequest struct {
 	APIKey string `json:"api_key" binding:"required"` // Plaintext API key (will be encrypted)
 }
 
-// UpdateProviderKey handles PUT /auth/provider-keys/:provider (user route - users manage their own provider keys BYOK)
 func (h *ProviderKeyHandler) UpdateProviderKey(c *gin.Context) {
 	provider := c.Param("provider")
 	if provider == "" {
@@ -146,7 +133,6 @@ func (h *ProviderKeyHandler) UpdateProviderKey(c *gin.Context) {
 		return
 	}
 
-	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -163,7 +149,6 @@ func (h *ProviderKeyHandler) UpdateProviderKey(c *gin.Context) {
 		return
 	}
 
-	// Update provider key (will encrypt it)
 	if err := h.providerKeyService.UpdateProviderKey(c.Request.Context(), userID, provider, req.APIKey); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
@@ -177,7 +162,6 @@ func (h *ProviderKeyHandler) UpdateProviderKey(c *gin.Context) {
 	})
 }
 
-// DeleteProviderKey handles DELETE /auth/provider-keys/:provider (user route - users manage their own provider keys BYOK)
 func (h *ProviderKeyHandler) DeleteProviderKey(c *gin.Context) {
 	provider := c.Param("provider")
 	if provider == "" {
@@ -187,7 +171,6 @@ func (h *ProviderKeyHandler) DeleteProviderKey(c *gin.Context) {
 		return
 	}
 
-	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -204,7 +187,6 @@ func (h *ProviderKeyHandler) DeleteProviderKey(c *gin.Context) {
 		return
 	}
 
-	// Delete provider key
 	if err := h.providerKeyService.DeleteProviderKey(c.Request.Context(), userID, provider); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
@@ -218,7 +200,6 @@ func (h *ProviderKeyHandler) DeleteProviderKey(c *gin.Context) {
 	})
 }
 
-// TestProviderKey handles POST /auth/provider-keys/:provider/test (user route - users manage their own provider keys BYOK)
 func (h *ProviderKeyHandler) TestProviderKey(c *gin.Context) {
 	provider := c.Param("provider")
 	if provider == "" {
@@ -228,7 +209,6 @@ func (h *ProviderKeyHandler) TestProviderKey(c *gin.Context) {
 		return
 	}
 
-	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -245,7 +225,6 @@ func (h *ProviderKeyHandler) TestProviderKey(c *gin.Context) {
 		return
 	}
 
-	// Get and test provider key
 	apiKey, err := h.providerKeyService.GetProviderKey(c.Request.Context(), userID, provider)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{

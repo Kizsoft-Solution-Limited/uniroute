@@ -44,6 +44,13 @@ type Config struct {
 	CORSOrigins []string
 	// Allowed tunnel origins (comma-separated, optional)
 	TunnelOrigins []string
+	// Seed admin: if set, ensure this user exists with admin role at startup
+	SeedAdminEmail    string
+	SeedAdminName     string
+	SeedAdminPassword string
+	// vLLM (OpenAI-compatible local server)
+	VLLMBaseURL string
+	VLLMAPIKey  string
 }
 
 // Load loads configuration from environment variables
@@ -94,6 +101,11 @@ func Load() *Config {
 		BackendURL:               getEnv("BACKEND_URL", ""), // Empty = auto-detect from PORT
 		CORSOrigins:              parseCORSOrigins(getEnv("CORS_ORIGINS", "")),
 		TunnelOrigins:            parseCORSOrigins(getEnv("TUNNEL_ORIGINS", "")),
+		SeedAdminEmail:           getEnv("SEED_ADMIN_EMAIL", "adikekizinho@gmail.com"),
+		SeedAdminName:            getEnv("SEED_ADMIN_NAME", "Adike Kizito"),
+		SeedAdminPassword:        getEnv("SEED_ADMIN_PASSWORD", ""),
+		VLLMBaseURL:              getEnv("VLLM_BASE_URL", ""),
+		VLLMAPIKey:               getEnv("VLLM_API_KEY", ""),
 	}
 }
 

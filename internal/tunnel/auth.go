@@ -11,12 +11,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// TokenService handles tunnel token generation and validation
 type TokenService struct {
 	logger zerolog.Logger
 }
 
-// NewTokenService creates a new token service
 func NewTokenService(logger zerolog.Logger) *TokenService {
 	return &TokenService{
 		logger: logger,
@@ -66,7 +64,6 @@ func (ts *TokenService) VerifyBcryptHash(token, hash string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(token)) == nil
 }
 
-// TokenInfo represents token metadata
 type TokenInfo struct {
 	TokenHash  string
 	Name       string

@@ -150,7 +150,6 @@ const mobileMenuOpen = ref(false)
 const userEmail = computed(() => authStore.user?.email || 'user@example.com')
 const userRoles = computed(() => authStore.user?.roles || ['user'])
 const userRole = computed(() => {
-  // For display purposes, show primary role (admin if present, otherwise user)
   if (userRoles.value.includes('admin')) return 'admin'
   return 'user'
 })
@@ -250,7 +249,6 @@ const navItems = computed(() => {
     }
   ]
 
-  // Add admin routes only if user is admin
   if (isAdmin.value) {
     items.push(
       {
@@ -285,15 +283,10 @@ const navItems = computed(() => {
 })
 
 const isActive = (path: string) => {
-  // Exact match
   if (route.path === path) return true
-  
-  // For dashboard root, only match exact path (not child routes)
   if (path === '/dashboard') {
     return route.path === '/dashboard' || route.path === '/dashboard/'
   }
-  
-  // For other paths, match if route starts with the path
   return route.path.startsWith(path + '/')
 }
 

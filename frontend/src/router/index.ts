@@ -221,51 +221,41 @@ const router = createRouter({
   history: createWebHistory(),
   routes,
   scrollBehavior(to, from, savedPosition) {
-    // If there's a saved position (e.g., browser back/forward), use it
     if (savedPosition) {
       return savedPosition
     }
-    // If there's a hash in the URL, scroll to that element
     if (to.hash) {
       return {
         el: to.hash,
         behavior: 'smooth',
-        top: 80 // Offset for fixed header
+        top: 80
       }
     }
-    // Otherwise, scroll to top
     return { top: 0, behavior: 'instant' }
   }
 })
 
-// Navigation guards
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
 
-  // Skip auth check for login/register pages to avoid redirect loops
   if (to.name === 'login' || to.name === 'register' || to.name === 'forgot-password' || to.name === 'verify-email' || to.name === 'oauth-callback') {
     next()
     return
   }
 
-  // Check if we have a token but no user - need to verify auth
   const hasToken = authStore.token || localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')
   const hasUser = !!authStore.user
 
-  // If we have a token but no user, try to check auth
   if (hasToken && !hasUser) {
     try {
       const authResult = await authStore.checkAuth()
-      // If checkAuth failed, it will clear the token
       if (!authResult) {
-        // Auth check failed, redirect to login if route requires auth
         if (to.meta.requiresAuth) {
           next({ name: 'login', query: { redirect: to.fullPath } })
           return
         }
       }
     } catch (err) {
-      // Auth check failed, redirect to login if route requires auth
       if (to.meta.requiresAuth) {
         next({ name: 'login', query: { redirect: to.fullPath } })
         return
@@ -275,19 +265,16 @@ router.beforeEach(async (to, from, next) => {
 
   const isAuthenticated = authStore.isAuthenticated
 
-  // Check if route requires authentication
   if (to.meta.requiresAuth && !isAuthenticated) {
     next({ name: 'login', query: { redirect: to.fullPath } })
     return
   }
 
-  // Check if route requires guest (not authenticated)
   if (to.meta.requiresGuest && isAuthenticated) {
     next({ name: 'dashboard' })
     return
   }
 
-  // Check permissions
   if (to.meta.permission && !authStore.hasPermission(to.meta.permission as string)) {
     next({ name: 'dashboard' })
     return
@@ -296,7 +283,6 @@ router.beforeEach(async (to, from, next) => {
   next()
 })
 
-// SEO: update document title, meta, canonical, and robots per route. Dashboard/admin = noindex, nofollow.
 router.afterEach((to) => {
   const title = to.meta.title as string | undefined
   const description = to.meta.description as string | undefined

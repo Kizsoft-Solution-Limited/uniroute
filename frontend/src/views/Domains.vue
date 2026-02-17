@@ -268,7 +268,6 @@ const verifyDomain = async (domainId: string) => {
     const result = await domainsApi.verify(domainId)
     if (result.dns_configured) {
       showToast('DNS is properly configured!', 'success')
-      // Reload domains to update status
       await loadDomains()
     } else {
       showToast(

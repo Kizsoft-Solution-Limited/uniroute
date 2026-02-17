@@ -14,7 +14,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// AuthHandler handles authentication requests
 type AuthHandler struct {
 	userRepo        *storage.UserRepository
 	jwtService      *security.JWTService
@@ -24,7 +23,6 @@ type AuthHandler struct {
 	logger          zerolog.Logger
 }
 
-// NewAuthHandler creates a new auth handler
 func NewAuthHandler(userRepo *storage.UserRepository, jwtService *security.JWTService, emailService *email.EmailService, authRateLimiter *security.AuthRateLimiter, frontendURL string, logger zerolog.Logger) *AuthHandler {
 	return &AuthHandler{
 		userRepo:        userRepo,
@@ -36,26 +34,22 @@ func NewAuthHandler(userRepo *storage.UserRepository, jwtService *security.JWTSe
 	}
 }
 
-// RegisterRequest represents a registration request
 type RegisterRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8"`
 	Name     string `json:"name,omitempty"`
 }
 
-// LoginRequest represents a login request
 type LoginRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
 }
 
-// AuthResponse represents an authentication response
 type AuthResponse struct {
 	Token string        `json:"token"`
 	User  *UserResponse `json:"user"`
 }
 
-// UserResponse represents a user in the response
 type UserResponse struct {
 	ID            string    `json:"id"`
 	Email         string    `json:"email"`
@@ -65,18 +59,14 @@ type UserResponse struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
-// HandleRegister handles user registration
-// SECURITY: This endpoint ALWAYS sets user role to ['user'] - it cannot be overridden
+// HandleRegister: SECURITY - role is always set to ['user'] at DB level and cannot be overridden.
 func (h *AuthHandler) HandleRegister(c *gin.Context) {
-	// Security: First check raw request for any role/roles fields
-	// This prevents hackers from trying to set admin role during registration
 	var rawRequest map[string]interface{}
 	if err := c.ShouldBindJSON(&rawRequest); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Reject registration if roles or role field is present
 	if roles, exists := rawRequest["roles"]; exists {
 		h.logger.Warn().
 			Str("ip", c.ClientIP()).
@@ -98,8 +88,6 @@ func (h *AuthHandler) HandleRegister(c *gin.Context) {
 		return
 	}
 
-	// Extract only allowed fields to prevent any role injection
-	// RegisterRequest struct doesn't include roles field, so it's safe
 	var req RegisterRequest
 	if email, ok := rawRequest["email"].(string); ok {
 		req.Email = email
@@ -111,7 +99,6 @@ func (h *AuthHandler) HandleRegister(c *gin.Context) {
 		req.Name = name
 	}
 
-	// Validate required fields
 	if req.Email == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Email is required"})
 		return
@@ -121,9 +108,6 @@ func (h *AuthHandler) HandleRegister(c *gin.Context) {
 		return
 	}
 
-	// Create user - roles are ALWAYS set to ['user'] in the database
-	// This is enforced at the database level and cannot be overridden
-	// Even if someone tries to pass roles, it will be ignored
 	user, err := h.userRepo.CreateUser(c.Request.Context(), req.Email, req.Password, req.Name)
 	if err != nil {
 		if err == storage.ErrUserAlreadyExists {
@@ -135,18 +119,14 @@ func (h *AuthHandler) HandleRegister(c *gin.Context) {
 		return
 	}
 
-	// Generate email verification token
 	verificationToken := uuid.New().String()
-	expiresAt := time.Now().Add(24 * time.Hour) // Token expires in 24 hours
+	expiresAt := time.Now().Add(24 * time.Hour)
 
-	// Create verification token
 	err = h.userRepo.CreateEmailVerificationToken(c.Request.Context(), user.ID, verificationToken, expiresAt)
 	if err != nil {
 		h.logger.Error().Err(err).Str("email", user.Email).Msg("Failed to create email verification token")
-		// Continue anyway - user is created, they can request resend
 	}
 
-	// Send verification email
 	if h.emailService != nil {
 		smtpConfig := h.emailService.GetConfig()
 		if configured, ok := smtpConfig["configured"].(bool); ok && configured {
@@ -161,8 +141,6 @@ func (h *AuthHandler) HandleRegister(c *gin.Context) {
 		}
 	}
 
-	// Don't auto-login - require email verification first
-	// But return success message
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Registration successful. Please check your email to verify your account.",
 		"user": &UserResponse{
@@ -175,12 +153,10 @@ func (h *AuthHandler) HandleRegister(c *gin.Context) {
 	})
 }
 
-// HandleLogin handles user login
 func (h *AuthHandler) HandleLogin(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Error().Err(err).Msg("Failed to bind login request")
-		// Provide more helpful error message
 		if err.Error() == "EOF" {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "Invalid request body. Please ensure the request contains valid JSON with email and password fields.",
@@ -191,16 +167,12 @@ func (h *AuthHandler) HandleLogin(c *gin.Context) {
 		return
 	}
 
-	// Get identifier for rate limiting (use email for more accurate tracking)
-	// This prevents issues with shared IPs (NAT, VPN, etc.)
 	identifier := "email:" + req.Email
 	ipIdentifier := "ip:" + c.ClientIP()
 
-	// Get user by email
 	user, err := h.userRepo.GetUserByEmail(c.Request.Context(), req.Email)
 	if err != nil {
 		if err == storage.ErrUserNotFound {
-			// Record failed attempt on both email and IP
 			if h.authRateLimiter != nil {
 				h.authRateLimiter.RecordFailedAttempt(c.Request.Context(), identifier)
 				h.authRateLimiter.RecordFailedAttempt(c.Request.Context(), ipIdentifier)
@@ -213,9 +185,7 @@ func (h *AuthHandler) HandleLogin(c *gin.Context) {
 		return
 	}
 
-	// Verify password
 	if err := h.userRepo.VerifyPassword(user.PasswordHash, req.Password); err != nil {
-		// Record failed attempt on both email and IP
 		if h.authRateLimiter != nil {
 			h.authRateLimiter.RecordFailedAttempt(c.Request.Context(), identifier)
 			h.authRateLimiter.RecordFailedAttempt(c.Request.Context(), ipIdentifier)
@@ -224,23 +194,17 @@ func (h *AuthHandler) HandleLogin(c *gin.Context) {
 		return
 	}
 
-	// Check if email is verified - require verification before login
-	// Handle both false and NULL (for existing users before migration)
 	if !user.EmailVerified {
-		// Automatically send verification email
 		if h.emailService != nil {
 			smtpConfig := h.emailService.GetConfig()
 			if configured, ok := smtpConfig["configured"].(bool); ok && configured {
-				// Generate new verification token
 				verificationToken := uuid.New().String()
-				expiresAt := time.Now().Add(24 * time.Hour) // Token expires in 24 hours
+				expiresAt := time.Now().Add(24 * time.Hour)
 
-				// Create verification token
 				err = h.userRepo.CreateEmailVerificationToken(c.Request.Context(), user.ID, verificationToken, expiresAt)
 				if err != nil {
 					h.logger.Error().Err(err).Str("email", user.Email).Msg("Failed to create email verification token during login")
 				} else {
-					// Send verification email
 					userName := user.Name
 					if userName == "" {
 						userName = user.Email
@@ -254,7 +218,6 @@ func (h *AuthHandler) HandleLogin(c *gin.Context) {
 			}
 		}
 
-		// Don't record as failed attempt - credentials are correct, just need verification
 		c.JSON(http.StatusForbidden, gin.H{
 			"error":      "Email not verified",
 			"code":       "EMAIL_NOT_VERIFIED",
@@ -265,19 +228,16 @@ func (h *AuthHandler) HandleLogin(c *gin.Context) {
 		return
 	}
 
-	// Success - reset rate limit for both email and IP
 	if h.authRateLimiter != nil {
 		h.authRateLimiter.RecordSuccess(c.Request.Context(), identifier)
 		h.authRateLimiter.RecordSuccess(c.Request.Context(), ipIdentifier)
 	}
 
-	// Get user roles (default to ["user"] if not set)
 	roles := user.Roles
 	if len(roles) == 0 {
 		roles = []string{"user"}
 	}
 
-	// Generate JWT token
 	token, err := h.jwtService.GenerateToken(user.ID.String(), user.Email, roles, 24*time.Hour)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to generate token")
@@ -298,16 +258,11 @@ func (h *AuthHandler) HandleLogin(c *gin.Context) {
 	})
 }
 
-// HandleLogout handles user logout
 func (h *AuthHandler) HandleLogout(c *gin.Context) {
-	// In a stateless JWT system, logout is handled client-side by removing the token
-	// We could implement token blacklisting here if needed
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }
 
-// HandleProfile handles getting user profile
 func (h *AuthHandler) HandleProfile(c *gin.Context) {
-	// Get user ID from JWT claims (set by JWT middleware)
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -320,7 +275,6 @@ func (h *AuthHandler) HandleProfile(c *gin.Context) {
 		return
 	}
 
-	// Get user from database
 	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
 		if err == storage.ErrUserNotFound {
@@ -332,7 +286,6 @@ func (h *AuthHandler) HandleProfile(c *gin.Context) {
 		return
 	}
 
-	// Get user roles (default to ["user"] if not set)
 	roles := user.Roles
 	if len(roles) == 0 {
 		roles = []string{"user"}
@@ -348,9 +301,7 @@ func (h *AuthHandler) HandleProfile(c *gin.Context) {
 	})
 }
 
-// HandleRefresh handles token refresh
 func (h *AuthHandler) HandleRefresh(c *gin.Context) {
-	// Get user ID, email, and role from JWT claims (set by JWT middleware)
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -363,7 +314,6 @@ func (h *AuthHandler) HandleRefresh(c *gin.Context) {
 		return
 	}
 
-	// Get roles from context (set by JWT middleware), default to ["user"]
 	roles, exists := c.Get("user_roles")
 	rolesSlice := []string{"user"}
 	if exists {
@@ -372,7 +322,6 @@ func (h *AuthHandler) HandleRefresh(c *gin.Context) {
 		}
 	}
 
-	// Generate new token
 	token, err := h.jwtService.GenerateToken(userIDStr.(string), email.(string), rolesSlice, 24*time.Hour)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to generate token")
@@ -383,18 +332,15 @@ func (h *AuthHandler) HandleRefresh(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
-// PasswordResetRequest represents a password reset request
 type PasswordResetRequest struct {
 	Email string `json:"email" binding:"required,email"`
 }
 
-// PasswordResetConfirmRequest represents a password reset confirmation
 type PasswordResetConfirmRequest struct {
 	Token    string `json:"token" binding:"required"`
 	Password string `json:"password" binding:"required,min=8"`
 }
 
-// HandlePasswordResetRequest handles password reset requests
 func (h *AuthHandler) HandlePasswordResetRequest(c *gin.Context) {
 	var req PasswordResetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -402,16 +348,11 @@ func (h *AuthHandler) HandlePasswordResetRequest(c *gin.Context) {
 		return
 	}
 
-	// Use email-based tracking for more accurate rate limiting
-	// This prevents issues with shared IPs (NAT, VPN, corporate networks)
 	identifier := "email:" + req.Email
 	ipIdentifier := "ip:" + c.ClientIP()
 
-	// Get user by email
 	user, err := h.userRepo.GetUserByEmail(c.Request.Context(), req.Email)
 	if err != nil {
-		// Don't reveal if user exists or not (security best practice)
-		// Record failed attempt on both email and IP
 		if h.authRateLimiter != nil {
 			h.authRateLimiter.RecordFailedAttempt(c.Request.Context(), identifier)
 			h.authRateLimiter.RecordFailedAttempt(c.Request.Context(), ipIdentifier)
@@ -420,11 +361,9 @@ func (h *AuthHandler) HandlePasswordResetRequest(c *gin.Context) {
 		return
 	}
 
-	// Generate reset token (in production, use crypto/rand)
 	token := uuid.New().String()
-	expiresAt := time.Now().Add(1 * time.Hour) // Token expires in 1 hour
+	expiresAt := time.Now().Add(1 * time.Hour)
 
-	// Create reset token
 	err = h.userRepo.CreatePasswordResetToken(c.Request.Context(), user.ID, token, expiresAt)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to create password reset token")
@@ -432,7 +371,6 @@ func (h *AuthHandler) HandlePasswordResetRequest(c *gin.Context) {
 		return
 	}
 
-	// Send password reset email
 	if h.emailService != nil {
 		userName := user.Name
 		if userName == "" {
@@ -446,13 +384,11 @@ func (h *AuthHandler) HandlePasswordResetRequest(c *gin.Context) {
 		}
 	} else {
 		h.logger.Warn().Msg("Email service not configured - password reset email not sent")
-		// In development, log the token for testing
 		if gin.Mode() == gin.DebugMode {
 			h.logger.Info().Str("token", token).Str("email", user.Email).Msg("Password reset token generated (email service not configured)")
 		}
 	}
 
-	// Success - reset rate limit for both email and IP
 	if h.authRateLimiter != nil {
 		h.authRateLimiter.RecordSuccess(c.Request.Context(), identifier)
 		h.authRateLimiter.RecordSuccess(c.Request.Context(), ipIdentifier)
@@ -463,7 +399,6 @@ func (h *AuthHandler) HandlePasswordResetRequest(c *gin.Context) {
 	})
 }
 
-// HandlePasswordResetConfirm handles password reset confirmation
 func (h *AuthHandler) HandlePasswordResetConfirm(c *gin.Context) {
 	var req PasswordResetConfirmRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -471,13 +406,10 @@ func (h *AuthHandler) HandlePasswordResetConfirm(c *gin.Context) {
 		return
 	}
 
-	// Get identifier for rate limiting
 	identifier := "ip:" + c.ClientIP()
 
-	// Get reset token
 	resetToken, err := h.userRepo.GetPasswordResetToken(c.Request.Context(), req.Token)
 	if err != nil {
-		// Record failed attempt
 		if h.authRateLimiter != nil {
 			h.authRateLimiter.RecordFailedAttempt(c.Request.Context(), identifier)
 		}
@@ -485,7 +417,6 @@ func (h *AuthHandler) HandlePasswordResetConfirm(c *gin.Context) {
 		return
 	}
 
-	// Update password
 	err = h.userRepo.UpdatePassword(c.Request.Context(), resetToken.UserID, req.Password)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to update password")
@@ -493,14 +424,11 @@ func (h *AuthHandler) HandlePasswordResetConfirm(c *gin.Context) {
 		return
 	}
 
-	// Mark token as used
 	err = h.userRepo.MarkPasswordResetTokenAsUsed(c.Request.Context(), req.Token)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to mark token as used")
-		// Don't fail the request if this fails
 	}
 
-	// Success - reset rate limit
 	if h.authRateLimiter != nil {
 		h.authRateLimiter.RecordSuccess(c.Request.Context(), identifier)
 	}
@@ -508,12 +436,10 @@ func (h *AuthHandler) HandlePasswordResetConfirm(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully"})
 }
 
-// VerifyEmailRequest represents an email verification request
 type VerifyEmailRequest struct {
 	Token string `json:"token" binding:"required"`
 }
 
-// HandleVerifyEmail handles email verification
 func (h *AuthHandler) HandleVerifyEmail(c *gin.Context) {
 	var req VerifyEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -521,13 +447,10 @@ func (h *AuthHandler) HandleVerifyEmail(c *gin.Context) {
 		return
 	}
 
-	// Get identifier for rate limiting
 	identifier := "ip:" + c.ClientIP()
 
-	// Get verification token
 	verificationToken, err := h.userRepo.GetEmailVerificationToken(c.Request.Context(), req.Token)
 	if err != nil {
-		// Record failed attempt
 		if h.authRateLimiter != nil {
 			h.authRateLimiter.RecordFailedAttempt(c.Request.Context(), identifier)
 		}
@@ -535,7 +458,6 @@ func (h *AuthHandler) HandleVerifyEmail(c *gin.Context) {
 		return
 	}
 
-	// Verify email
 	err = h.userRepo.VerifyEmail(c.Request.Context(), verificationToken.UserID)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to verify email")
@@ -543,19 +465,15 @@ func (h *AuthHandler) HandleVerifyEmail(c *gin.Context) {
 		return
 	}
 
-	// Mark token as used
 	err = h.userRepo.MarkEmailVerificationTokenAsUsed(c.Request.Context(), req.Token)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to mark token as used")
-		// Don't fail the request if this fails
 	}
 
-	// Success - reset rate limit
 	if h.authRateLimiter != nil {
 		h.authRateLimiter.RecordSuccess(c.Request.Context(), identifier)
 	}
 
-	// Generate JWT token for auto-login after verification
 	user, err := h.userRepo.GetUserByID(c.Request.Context(), verificationToken.UserID)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to get user after verification")
@@ -563,16 +481,13 @@ func (h *AuthHandler) HandleVerifyEmail(c *gin.Context) {
 		return
 	}
 
-	// Send welcome email after successful verification
 	if h.emailService != nil {
 		dashboardURL := fmt.Sprintf("%s/dashboard", strings.TrimSuffix(h.frontendURL, "/"))
 		if err := h.emailService.SendWelcomeEmail(user.Email, user.Name, dashboardURL); err != nil {
-			// Log error but don't fail the verification
 			h.logger.Error().Err(err).Str("email", user.Email).Msg("Failed to send welcome email")
 		}
 	}
 
-	// Get user roles (default to ["user"] if not set)
 	roles := user.Roles
 	if len(roles) == 0 {
 		roles = []string{"user"}
@@ -597,12 +512,10 @@ func (h *AuthHandler) HandleVerifyEmail(c *gin.Context) {
 	})
 }
 
-// ResendVerificationRequest represents a resend verification request
 type ResendVerificationRequest struct {
 	Email string `json:"email" binding:"required,email"`
 }
 
-// HandleResendVerification handles resending verification email
 func (h *AuthHandler) HandleResendVerification(c *gin.Context) {
 	h.logger.Info().
 		Str("ip", c.ClientIP()).
@@ -624,15 +537,11 @@ func (h *AuthHandler) HandleResendVerification(c *gin.Context) {
 		Str("email", req.Email).
 		Msg("Processing resend verification request")
 
-	// Use email-based tracking for more accurate rate limiting
 	identifier := "email:" + req.Email
 	ipIdentifier := "ip:" + c.ClientIP()
 
-	// Get user by email
 	user, err := h.userRepo.GetUserByEmail(c.Request.Context(), req.Email)
 	if err != nil {
-		// Don't reveal if user exists or not (security best practice)
-		// Record failed attempt on both email and IP
 		if h.authRateLimiter != nil {
 			h.authRateLimiter.RecordFailedAttempt(c.Request.Context(), identifier)
 			h.authRateLimiter.RecordFailedAttempt(c.Request.Context(), ipIdentifier)
@@ -641,17 +550,14 @@ func (h *AuthHandler) HandleResendVerification(c *gin.Context) {
 		return
 	}
 
-	// Check if already verified
 	if user.EmailVerified {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Email is already verified"})
 		return
 	}
 
-	// Generate new verification token
 	verificationToken := uuid.New().String()
-	expiresAt := time.Now().Add(24 * time.Hour) // Token expires in 24 hours
+	expiresAt := time.Now().Add(24 * time.Hour)
 
-	// Create verification token
 	err = h.userRepo.CreateEmailVerificationToken(c.Request.Context(), user.ID, verificationToken, expiresAt)
 	if err != nil {
 		h.logger.Error().Err(err).Str("email", user.Email).Msg("Failed to create email verification token")
@@ -659,7 +565,6 @@ func (h *AuthHandler) HandleResendVerification(c *gin.Context) {
 		return
 	}
 
-	// Send verification email
 	if h.emailService == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Email service not available"})
 		return
@@ -683,7 +588,6 @@ func (h *AuthHandler) HandleResendVerification(c *gin.Context) {
 		return
 	}
 
-	// Success - reset rate limit for both email and IP
 	if h.authRateLimiter != nil {
 		h.authRateLimiter.RecordSuccess(c.Request.Context(), identifier)
 		h.authRateLimiter.RecordSuccess(c.Request.Context(), ipIdentifier)

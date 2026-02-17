@@ -194,6 +194,8 @@ func isValidProvider(provider string) bool {
 		"openai":    true,
 		"anthropic": true,
 		"google":    true,
+		"ollama":    true,
+		"vllm":      true,
 	}
 	return validProviders[provider]
 }

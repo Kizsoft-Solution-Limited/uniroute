@@ -75,6 +75,42 @@ func (r *UserRepository) CreateUser(ctx context.Context, email, password, name s
 	return &user, nil
 }
 
+// EnsureSeedAdmin ensures the given user exists and has admin role. Used only at startup when
+// SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD are set. If the user exists, promotes to admin;
+// if not, creates the user with roles ['user', 'admin']. Password must be non-empty to create.
+func (r *UserRepository) EnsureSeedAdmin(ctx context.Context, email, name, password string) error {
+	if email == "" || password == "" {
+		return nil
+	}
+	existing, err := r.GetUserByEmail(ctx, email)
+	if err == nil && existing != nil {
+		hasAdmin := false
+		for _, role := range existing.Roles {
+			if role == "admin" {
+				hasAdmin = true
+				break
+			}
+		}
+		if hasAdmin {
+			return nil
+		}
+		return r.UpdateUserRoles(ctx, existing.ID, []string{"user", "admin"})
+	}
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash seed admin password: %w", err)
+	}
+	query := `
+		INSERT INTO users (id, email, name, password_hash, email_verified, roles, created_at, updated_at)
+		VALUES (gen_random_uuid(), $1, $2, $3, false, ARRAY['user', 'admin']::TEXT[], NOW(), NOW())
+	`
+	_, err = r.client.pool.Exec(ctx, query, email, name, string(hashedPassword))
+	if err != nil {
+		return fmt.Errorf("failed to create seed admin user: %w", err)
+	}
+	return nil
+}
+
 // GetUserByEmail retrieves a user by email
 func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	// Use COALESCE to handle NULL values (for existing users before migration)

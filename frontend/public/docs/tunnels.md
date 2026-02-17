@@ -1,6 +1,6 @@
 # Tunnels
 
-UniRoute tunnels allow you to expose local services to the internet, similar to ngrok.
+UniRoute tunnels allow you to expose local services to the internet.
 
 ## Overview
 

@@ -247,7 +247,6 @@ function detectPlatform() {
   let icon = Monitor
   let binary = ''
 
-  // Detect OS
   if (platform.includes('win') || userAgent.includes('windows')) {
     os = 'Windows'
     icon = Laptop
@@ -256,19 +255,16 @@ function detectPlatform() {
   } else if (platform.includes('mac') || userAgent.includes('mac')) {
     os = 'macOS'
     icon = Apple
-    // Detect architecture for macOS
     if (navigator.userAgent.includes('Intel') || platform.includes('x86')) {
       arch = 'amd64'
       binary = 'uniroute-darwin-amd64'
     } else {
-      // Assume Apple Silicon for modern Macs
       arch = 'arm64'
       binary = 'uniroute-darwin-arm64'
     }
   } else if (platform.includes('linux') || userAgent.includes('linux')) {
     os = 'Linux'
     icon = Server
-    // Default to amd64 for Linux (can't reliably detect arch in browser)
     arch = 'amd64'
     binary = 'uniroute-linux-amd64'
   }
@@ -283,7 +279,6 @@ function detectPlatform() {
 
 function trackDownload(platform?: string) {
   const platformName = platform || detectedPlatform.value?.binary || 'unknown'
-  // Track download analytics
   if (typeof window !== 'undefined' && (window as any).gtag) {
     ;(window as any).gtag('event', 'download', {
       platform: platformName

@@ -186,6 +186,20 @@ const providers: Provider[] = [
     icon: '🔍',
     description: 'Gemini and other Google AI models',
     placeholder: 'AIza...'
+  },
+  {
+    name: 'ollama',
+    displayName: 'Ollama',
+    icon: '🦙',
+    description: 'Local models via Ollama',
+    placeholder: 'Optional (leave empty for default)'
+  },
+  {
+    name: 'vllm',
+    displayName: 'vLLM',
+    icon: '⚡',
+    description: 'Self-hosted vLLM (OpenAI-compatible)',
+    placeholder: 'Optional (leave empty for gateway default)'
   }
 ]
 

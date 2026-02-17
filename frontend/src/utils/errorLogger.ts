@@ -1,9 +1,3 @@
-/**
- * Error logging utility - sends errors to backend
- */
-
-
-
 import { apiClient } from '@/services/api/client'
 
 export interface ErrorLogData {
@@ -15,15 +9,10 @@ export interface ErrorLogData {
   severity?: 'error' | 'warning' | 'info'
 }
 
-/**
- * Log an error to the backend
- */
 export async function logError(data: ErrorLogData): Promise<void> {
   try {
-    // Get current URL
     const url = data.url || window.location.href
 
-    // Get stack trace if not provided
     let stackTrace = data.stack_trace
     if (!stackTrace && data.error_type === 'exception') {
       stackTrace = new Error().stack
@@ -42,16 +31,12 @@ export async function logError(data: ErrorLogData): Promise<void> {
       severity: data.severity || 'error',
     })
   } catch (err) {
-    // Silently fail - don't break the app if error logging fails
     if (import.meta.env.DEV) {
       console.warn('Failed to log error to backend:', err)
     }
   }
 }
 
-/**
- * Log an exception
- */
 export function logException(error: Error, context?: Record<string, any>): void {
   logError({
     error_type: 'exception',
@@ -65,9 +50,6 @@ export function logException(error: Error, context?: Record<string, any>): void 
   })
 }
 
-/**
- * Log a message (non-exception error)
- */
 export function logMessage(message: string, severity: 'error' | 'warning' | 'info' = 'error', context?: Record<string, any>): void {
   logError({
     error_type: 'message',
@@ -77,9 +59,6 @@ export function logMessage(message: string, severity: 'error' | 'warning' | 'inf
   })
 }
 
-/**
- * Log a network error
- */
 export function logNetworkError(message: string, context?: Record<string, any>): void {
   logError({
     error_type: 'network',
@@ -89,9 +68,6 @@ export function logNetworkError(message: string, context?: Record<string, any>):
   })
 }
 
-/**
- * Log a server error
- */
 export function logServerError(message: string, statusCode?: number, context?: Record<string, any>): void {
   logError({
     error_type: 'server',

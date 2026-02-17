@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"net/http"
 	"os"
 
@@ -20,10 +22,8 @@ import (
 )
 
 func main() {
-	// Load configuration
 	cfg := config.Load()
 
-	// Initialize logger
 	var log zerolog.Logger
 	if cfg.Environment == "development" {
 		log = logger.NewDebug()
@@ -43,21 +43,17 @@ func main() {
 		}
 	}
 
-	// Initialize in-memory API key service (fallback when database is not available)
 	apiKeyService := security.NewAPIKeyService(cfg.APIKeySecret)
 
-	// Initialize database and Redis services (optional, enables advanced features)
 	var apiKeyServiceV2 *security.APIKeyServiceV2
 	var jwtService *security.JWTService
 	var rateLimiter *security.RateLimiter
 	var authRateLimiter *security.AuthRateLimiter
 	var postgresClient *storage.PostgresClient
 
-	// Initialize database and Redis if configured
 	if cfg.DatabaseURL != "" && cfg.RedisURL != "" {
 		log.Info().Msg("Initializing database and Redis services...")
 
-		// Initialize Redis
 		redisClient, err := storage.NewRedisClient(cfg.RedisURL, log)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to connect to Redis, continuing without rate limiting")
@@ -65,30 +61,23 @@ func main() {
 			rateLimiter = security.NewRateLimiter(redisClient)
 			authRateLimiter = security.NewAuthRateLimiter(redisClient)
 			log.Info().Msg("Redis connected - rate limiting enabled")
-			// Note: redisClient will be closed when the process exits
 		}
 
-		// Initialize PostgreSQL
 		postgresClient, err = storage.NewPostgresClient(cfg.DatabaseURL, log)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to connect to PostgreSQL, using in-memory API keys")
 		} else {
-			// Initialize API key repository
 			apiKeyRepo := storage.NewAPIKeyRepository(postgresClient.Pool())
 			apiKeyServiceV2 = security.NewAPIKeyServiceV2(apiKeyRepo, cfg.APIKeySecret)
 			log.Info().Msg("PostgreSQL connected - database-backed API keys enabled")
-			// Note: postgresClient will be closed when the process exits
 		}
 
-		// Initialize JWT service
 		if cfg.JWTSecret != "" {
 			jwtService = security.NewJWTService(cfg.JWTSecret)
 			log.Info().Msg("JWT service initialized")
 		}
 	}
 
-	// Generate a default API key for testing (when database is not available)
-	// SECURITY: Only log in development mode, never in production
 	if apiKeyServiceV2 == nil {
 		defaultKey, err := apiKeyService.GenerateAPIKey()
 		if err != nil {
@@ -97,16 +86,13 @@ func main() {
 		if cfg.Environment == "development" {
 			log.Info().Str("api_key", defaultKey).Msg("Generated default API key (save this!)")
 		} else {
-			// In production, log to stderr only (not to log files)
 			fmt.Fprintf(os.Stderr, "⚠️  Generated default API key: %s (save this securely!)\n", defaultKey)
 			log.Info().Msg("Generated default API key (check stderr for the key)")
 		}
 	}
 
-	// Initialize router
 	router := gateway.NewRouter()
 
-	// Load default routing strategy from database if available
 	if postgresClient != nil {
 		settingsRepo := storage.NewSystemSettingsRepository(postgresClient.Pool())
 		ctx := context.Background()
@@ -118,17 +104,14 @@ func main() {
 				Str("strategy", strategy).
 				Msg("Loaded default routing strategy from database")
 
-			// If custom strategy, load custom rules
 			if strategyType == gateway.StrategyCustom {
 				customRulesRepo := storage.NewCustomRoutingRulesRepository(postgresClient.Pool())
 				rules, err := customRulesRepo.GetActiveRules(ctx)
 				if err == nil && len(rules) > 0 {
-					// Convert database rules to gateway routing rules
 					costCalculator := router.GetCostCalculator()
 					latencyTracker := router.GetLatencyTracker()
 					routingRules := make([]gateway.RoutingRule, 0, len(rules))
 					for _, rule := range rules {
-						// Build condition function
 						condition := func(rule *storage.CustomRoutingRule, costCalc *gateway.CostCalculator, latTracker *gateway.LatencyTracker) func(providers.ChatRequest) bool {
 							return func(req providers.ChatRequest) bool {
 								switch rule.ConditionType {
@@ -137,15 +120,12 @@ func main() {
 										return req.Model == model
 									}
 								case "cost_threshold":
-									// Check if estimated cost is below threshold
 									if maxCost, ok := rule.ConditionValue["max_cost"].(float64); ok {
-										// Estimate cost for the request
 										estimatedCost := costCalc.EstimateCost(rule.ProviderName, req.Model, req.Messages)
 										return estimatedCost <= maxCost
 									}
 									return false
 								case "latency_threshold":
-									// Check if average latency is below threshold
 									if maxLatencyMs, ok := rule.ConditionValue["max_latency_ms"].(float64); ok {
 										avgLatency := latTracker.GetAverageLatency(rule.ProviderName)
 										return avgLatency.Milliseconds() <= int64(maxLatencyMs)
@@ -182,7 +162,6 @@ func main() {
 		}
 	}
 
-	// Register local LLM provider (always available)
 	localProvider := providers.NewLocalProvider(cfg.OllamaBaseURL, log)
 	router.RegisterProvider(localProvider)
 	log.Info().
@@ -190,7 +169,6 @@ func main() {
 		Str("base_url", cfg.OllamaBaseURL).
 		Msg("Registered local LLM provider")
 
-	// Register cloud providers (if API keys are configured)
 	if cfg.OpenAIAPIKey != "" {
 		openAIProvider := providers.NewOpenAIProvider(cfg.OpenAIAPIKey, "", log)
 		router.RegisterProvider(openAIProvider)
@@ -221,28 +199,31 @@ func main() {
 		log.Debug().Msg("Google API key not configured, skipping Google provider")
 	}
 
+	if cfg.VLLMBaseURL != "" {
+		vllmProvider := providers.NewVLLMProvider(cfg.VLLMBaseURL, cfg.VLLMAPIKey, log)
+		router.RegisterProvider(vllmProvider)
+		log.Info().
+			Str("provider", "vllm").
+			Str("base_url", cfg.VLLMBaseURL).
+			Msg("Registered vLLM provider")
+	}
+
 	log.Info().
 		Strs("providers", router.ListProviders()).
 		Msg("All providers registered")
 
-	// Initialize request repository for analytics and usage tracking
 	var requestRepo *storage.RequestRepository
 	if postgresClient != nil {
 		requestRepo = storage.NewRequestRepository(postgresClient.Pool())
 		log.Info().Msg("Request repository initialized - usage tracking enabled")
 	}
 
-	// BYOK: Initialize provider key service if database is available
 	var providerKeyService *security.ProviderKeyService
 	if postgresClient != nil && cfg.ProviderKeyEncryptionKey != "" {
-		// Create provider key repository
 		providerKeyRepo := storage.NewProviderKeyRepository(postgresClient.Pool())
-
-		// Create provider key service with encryption
-		// Use JWT secret as encryption key if provider key encryption key not set
 		encryptionKey := cfg.ProviderKeyEncryptionKey
 		if encryptionKey == "" {
-			encryptionKey = cfg.JWTSecret // Fallback to JWT secret
+			encryptionKey = cfg.JWTSecret
 		}
 
 		service, err := security.NewProviderKeyService(providerKeyRepo, encryptionKey)
@@ -255,14 +236,12 @@ func main() {
 		}
 	}
 
-	// Set server-level provider keys (fallback)
 	router.SetServerProviderKeys(gateway.ServerProviderKeys{
 		OpenAI:    cfg.OpenAIAPIKey,
 		Anthropic: cfg.AnthropicAPIKey,
 		Google:    cfg.GoogleAPIKey,
 	})
 
-	// Set custom rules service for user-specific custom routing rules
 	if postgresClient != nil {
 		customRulesRepo := storage.NewCustomRoutingRulesRepository(postgresClient.Pool())
 		costCalculator := router.GetCostCalculator()
@@ -272,10 +251,7 @@ func main() {
 		log.Info().Msg("Custom rules service initialized - user-specific custom routing rules enabled")
 	}
 
-	// Initialize email service (reads config from environment variables)
 	emailService := email.NewEmailService(log)
-
-	// Log SMTP configuration status
 	smtpConfig := emailService.GetConfig()
 	if configured, ok := smtpConfig["configured"].(bool); ok && configured {
 		if host, ok := smtpConfig["host"].(string); ok {
@@ -290,18 +266,38 @@ func main() {
 		log.Warn().Msg("SMTP not configured - set SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD environment variables")
 	}
 
-	// Initialize OAuth service if configured
+	if cfg.SeedAdminEmail != "" && postgresClient != nil {
+		userRepo := storage.NewUserRepository(postgresClient, log)
+		password := cfg.SeedAdminPassword
+		generatedPassword := false
+		if password == "" {
+			password = generateStrongPassword()
+			generatedPassword = true
+			log.Info().Str("email", cfg.SeedAdminEmail).Msg("Seed admin: generated password")
+			fmt.Fprintf(os.Stderr, "Seed admin login: %s\nPassword: %s\n(Save this or check your email.)\n", cfg.SeedAdminEmail, password)
+		}
+		if err := userRepo.EnsureSeedAdmin(context.Background(), cfg.SeedAdminEmail, cfg.SeedAdminName, password); err != nil {
+			log.Warn().Err(err).Str("email", cfg.SeedAdminEmail).Msg("Seed admin failed")
+		} else {
+			log.Info().Str("email", cfg.SeedAdminEmail).Msg("Seed admin ensured (user exists with admin role)")
+			if generatedPassword {
+				if err := emailService.SendSeedAdminPasswordEmail(cfg.SeedAdminEmail, cfg.SeedAdminName, password); err != nil {
+					log.Warn().Err(err).Str("email", cfg.SeedAdminEmail).Msg("Failed to send seed admin password email")
+				} else {
+					log.Info().Str("email", cfg.SeedAdminEmail).Msg("Seed admin password sent by email")
+				}
+			}
+		}
+	}
+
 	var oauthService *oauth.OAuthService
 	if postgresClient != nil && (cfg.GoogleOAuthClientID != "" || cfg.XOAuthClientID != "" || cfg.GithubOAuthClientID != "") {
 		userRepo := storage.NewUserRepository(postgresClient, log)
-		// Backend URL for OAuth callbacks (OAuth providers redirect here)
 		backendURL := cfg.BackendURL
 		if backendURL == "" {
-			// Auto-detect: use localhost for development, or construct from PORT
 			if cfg.Environment == "development" || cfg.Environment == "local" {
 				backendURL = fmt.Sprintf("http://localhost:%s", cfg.Port)
 			} else {
-				// Production: must be set via BACKEND_URL env var
 				log.Warn().Msg("BACKEND_URL not set in production - OAuth may not work correctly")
 				backendURL = fmt.Sprintf("http://localhost:%s", cfg.Port) // Fallback
 			}
@@ -328,7 +324,6 @@ func main() {
 		}
 	}
 
-	// Setup API routes with all available services
 	httpRouter := api.SetupRouter(
 		router,
 		apiKeyService,      // In-memory API key service (fallback)
@@ -343,10 +338,9 @@ func main() {
 		emailService,       // Email service
 		cfg.FrontendURL,    // Frontend URL
 		oauthService,       // OAuth service
-		cfg.CORSOrigins,    // CORS origins from environment
+		cfg.CORSOrigins,
 	)
 
-	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Info().
 		Str("address", addr).
@@ -356,4 +350,20 @@ func main() {
 	if err := http.ListenAndServe(addr, httpRouter); err != nil {
 		log.Fatal().Err(err).Msg("Failed to start server")
 	}
+}
+
+const passwordChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*"
+
+func generateStrongPassword() string {
+	const length = 24
+	b := make([]byte, length)
+	max := big.NewInt(int64(len(passwordChars)))
+	for i := range b {
+		n, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return ""
+		}
+		b[i] = passwordChars[n.Int64()]
+	}
+	return string(b)
 }

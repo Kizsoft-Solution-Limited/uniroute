@@ -17,7 +17,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// RequestEvent represents an HTTP request event for CLI display
 type RequestEvent struct {
 	Time       time.Time
 	Method     string
@@ -27,14 +26,10 @@ type RequestEvent struct {
 	LatencyMs  int64 // Response time in milliseconds
 }
 
-// RequestEventHandler is a callback function for HTTP request events
 type RequestEventHandler func(event RequestEvent)
 
-// ConnectionStatusChangeHandler is a callback function for connection status changes
-// Called immediately when connection state changes (connected/disconnected/reconnecting)
 type ConnectionStatusChangeHandler func(status string)
 
-// TunnelClient connects local server to tunnel server
 type TunnelClient struct {
 	serverURL             string
 	localURL              string
@@ -72,16 +67,11 @@ type TunnelClient struct {
 	lastNotifiedStatus    string                        // Last status that was notified to prevent duplicate notifications
 }
 
-// TunnelInfo is defined in types.go
-
-// NewTunnelClient creates a new tunnel client
 func NewTunnelClient(serverURL, localURL string, logger zerolog.Logger) *TunnelClient {
 	return NewTunnelClientWithOptions(serverURL, localURL, "http", "", logger)
 }
 
-// NewTunnelClientWithOptions creates a new tunnel client with protocol and host options
 func NewTunnelClientWithOptions(serverURL, localURL, protocol, host string, logger zerolog.Logger) *TunnelClient {
-	// Default to http if protocol not specified
 	if protocol == "" {
 		protocol = ProtocolHTTP
 	}
@@ -92,11 +82,9 @@ func NewTunnelClientWithOptions(serverURL, localURL, protocol, host string, logg
 		protocol:  protocol,
 		host:      host,
 		httpClient: &http.Client{
-			Timeout: 120 * time.Second, // Increased timeout to allow very slow local servers (like Vite with large apps) to respond
-			// Use longer timeouts for reliable connections
-			// Don't follow redirects - we need to pass them through to the browser
+			Timeout: 120 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				return http.ErrUseLastResponse // Don't follow redirects, return the redirect response
+				return http.ErrUseLastResponse
 			},
 		},
 		logger:         logger,
@@ -105,19 +93,12 @@ func NewTunnelClientWithOptions(serverURL, localURL, protocol, host string, logg
 		persistence:    NewTunnelPersistence(logger),
 	}
 
-	// CRITICAL CHANGE: Don't load saved tunnel state into client.subdomain/tunnelID
 	if state, err := client.persistence.Load(); err == nil && state != nil {
-		// Normalize server URLs for comparison (remove http://, https://, ws://, wss:// prefixes)
 		savedServer := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(state.ServerURL, "http://"), "https://"), "ws://"), "wss://")
 		currentServer := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(serverURL, "http://"), "https://"), "ws://"), "wss://")
-
-		// Only use saved state if server URL matches (to avoid resuming wrong server)
-		// Also check if protocol matches (if saved state has protocol)
 		protocolMatches := state.Protocol == "" || state.Protocol == protocol
 
 		if savedServer == currentServer && protocolMatches {
-			// Don't set client.subdomain/tunnelID - let server auto-find from DB
-			// Saved state is kept for reference but not used for resume
 			logger.Debug().
 				Str("subdomain", state.Subdomain).
 				Str("tunnel_id", state.TunnelID).
@@ -136,7 +117,6 @@ func NewTunnelClientWithOptions(serverURL, localURL, protocol, host string, logg
 	return client
 }
 
-// SetResumeInfo sets subdomain and tunnel ID for resumption
 func (tc *TunnelClient) SetResumeInfo(subdomain, tunnelID string) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
@@ -144,29 +124,24 @@ func (tc *TunnelClient) SetResumeInfo(subdomain, tunnelID string) {
 	tc.tunnelID = tunnelID
 }
 
-// SetToken sets the authentication token for the tunnel client
 func (tc *TunnelClient) SetToken(token string) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
 	tc.token = token
 }
 
-// SetRequestHandler sets a callback function to be called for each HTTP request
 func (tc *TunnelClient) SetRequestHandler(handler RequestEventHandler) {
 	tc.requestHandlerMu.Lock()
 	defer tc.requestHandlerMu.Unlock()
 	tc.requestHandler = handler
 }
 
-// SetConnectionStatusChangeHandler sets a callback function to be called when connection status changes
 func (tc *TunnelClient) SetConnectionStatusChangeHandler(handler ConnectionStatusChangeHandler) {
 	tc.statusChangeHandlerMu.Lock()
 	defer tc.statusChangeHandlerMu.Unlock()
 	tc.statusChangeHandler = handler
 }
 
-// notifyStatusChange notifies the status change handler if set
-// Uses internal state tracking to prevent duplicate notifications
 func (tc *TunnelClient) notifyStatusChange() {
 	tc.statusChangeHandlerMu.RLock()
 	handler := tc.statusChangeHandler
@@ -175,26 +150,20 @@ func (tc *TunnelClient) notifyStatusChange() {
 	if handler != nil {
 		status := tc.GetConnectionStatus()
 
-		// Only notify if status actually changed from last notification
 		tc.mu.RLock()
 		lastNotifiedStatus := tc.lastNotifiedStatus
 		tc.mu.RUnlock()
 
-		// Only notify if status actually changed
 		if status != lastNotifiedStatus {
-			// Update last notified status
 			tc.mu.Lock()
 			tc.lastNotifiedStatus = status
 			tc.mu.Unlock()
 
-			// Call handler in a goroutine to avoid blocking
 			go handler(status)
 		}
-		// If status hasn't changed, don't notify (prevents false positives)
 	}
 }
 
-// ClearResumeInfo clears saved subdomain and tunnel ID to force new tunnel creation
 func (tc *TunnelClient) ClearResumeInfo() {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
@@ -203,19 +172,16 @@ func (tc *TunnelClient) ClearResumeInfo() {
 	tc.forceNew = true // Set forceNew flag to prevent server from auto-finding tunnels
 }
 
-// SetForceNew sets the forceNew flag to force creating a new tunnel
 func (tc *TunnelClient) SetForceNew(forceNew bool) {
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
 	tc.forceNew = forceNew
 }
 
-// Connect connects to the tunnel server
 func (tc *TunnelClient) Connect() error {
 	tc.reconnectMu.Lock()
 	defer tc.reconnectMu.Unlock()
 
-	// Connect to WebSocket and measure initial connection latency
 	wsURL := fmt.Sprintf("ws://%s/tunnel", tc.serverURL)
 	tc.logger.Debug().Str("url", wsURL).Msg("Connecting to tunnel server")
 
@@ -226,13 +192,11 @@ func (tc *TunnelClient) Connect() error {
 	}
 	tc.wsConn = conn
 
-	// Measure initial connection latency
 	connectLatency := time.Since(connectStart)
 	tc.latencyMu.Lock()
 	tc.latencyMs = connectLatency.Milliseconds()
 	tc.latencyMu.Unlock()
 
-	// Send initialization message
 	tc.mu.RLock()
 	authToken := tc.token
 	forceNew := tc.forceNew
@@ -276,14 +240,12 @@ func (tc *TunnelClient) Connect() error {
 		return fmt.Errorf("failed to send init message: %w", err)
 	}
 
-	// Read response - could be InitResponse or error response
 	var responseData map[string]interface{}
 	if err := conn.ReadJSON(&responseData); err != nil {
 		conn.Close()
 		return fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Check if response contains an error (authentication failure, etc.)
 	if errorMsg, hasError := responseData["error"].(string); hasError {
 		conn.Close()
 		errorMessage, _ := responseData["message"].(string)
@@ -295,12 +257,10 @@ func (tc *TunnelClient) Connect() error {
 		   strings.Contains(strings.ToLower(errorMsg), "authentication") ||
 		   strings.Contains(strings.ToLower(errorMsg), "expired") ||
 		   strings.Contains(strings.ToLower(errorMsg), "invalid") {
-			// Clear expired/invalid token
 			tc.mu.Lock()
 			tc.token = ""
 			tc.mu.Unlock()
-			
-			// Try to clear token from CLI auth config if available
+
 			tc.logger.Info().
 				Str("error", errorMsg).
 				Msg("Authentication failed - token cleared. Please run 'uniroute auth login' to authenticate again")
@@ -309,7 +269,6 @@ func (tc *TunnelClient) Connect() error {
 		return fmt.Errorf("%s: %s", errorMsg, errorMessage)
 	}
 
-	// Parse as InitResponse
 	var response InitResponse
 	response.Type, _ = responseData["type"].(string)
 	response.TunnelID, _ = responseData["tunnel_id"].(string)
@@ -324,7 +283,6 @@ func (tc *TunnelClient) Connect() error {
 		PublicURL: response.PublicURL,
 		Status:    response.Status,
 	}
-	// Save subdomain and tunnel ID for future reconnections
 	tc.subdomain = response.Subdomain
 	tc.tunnelID = response.TunnelID
 	tc.isConnected = true
@@ -332,15 +290,12 @@ func (tc *TunnelClient) Connect() error {
 	tc.lastNotifiedStatus = "" // Reset last notified status to force notification
 	tc.mu.Unlock()
 
-	// Notify status change immediately
 	tc.notifyStatusChange()
 
-	// Initialize last pong time for heartbeat monitoring
 	tc.pongMu.Lock()
 	tc.lastPongTime = time.Now()
 	tc.pongMu.Unlock()
 
-	// Save tunnel state to file for persistence across restarts
 	if tc.persistence != nil {
 		state := &TunnelState{
 			TunnelID:  response.TunnelID,
@@ -364,7 +319,6 @@ func (tc *TunnelClient) Connect() error {
 		}
 	}
 
-	// Process any queued requests after reconnection
 	go tc.processQueuedRequests()
 
 	tc.logger.Debug().
@@ -374,16 +328,13 @@ func (tc *TunnelClient) Connect() error {
 		Str("local_url", tc.localURL).
 		Msg("Tunnel connected")
 
-	// Start handling messages
 	go tc.handleMessages()
 
-	// Start heartbeat
 	go tc.heartbeat()
 
 	return nil
 }
 
-// handleMessages handles messages from tunnel server
 func (tc *TunnelClient) handleMessages() {
 	readDeadline := 90 * time.Second
 
@@ -543,7 +494,6 @@ func (tc *TunnelClient) handleMessages() {
 	}
 }
 
-// forwardToLocal forwards request to local server
 func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 	if req == nil {
 		tc.logger.Error().Msg("Received nil request")
@@ -844,8 +794,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		Msg("Request completed")
 }
 
-// sendResponse sends response through tunnel
-// WebSocket writes must be serialized to prevent concurrent write panics
 func (tc *TunnelClient) sendResponse(resp *HTTPResponse) {
 	if resp == nil {
 		return
@@ -885,7 +833,6 @@ func (tc *TunnelClient) sendResponse(resp *HTTPResponse) {
 	}
 }
 
-// sendError sends error response through tunnel
 func (tc *TunnelClient) sendError(requestID, errorType, message string) {
 	msg := TunnelMessage{
 		Type:      MsgTypeHTTPError,
@@ -924,7 +871,6 @@ func (tc *TunnelClient) sendError(requestID, errorType, message string) {
 	}
 }
 
-// heartbeat sends periodic ping to keep connection alive and detects connection loss
 func (tc *TunnelClient) heartbeat() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -1024,7 +970,6 @@ func (tc *TunnelClient) heartbeat() {
 	}
 }
 
-// reconnect attempts to reconnect to tunnel server
 func (tc *TunnelClient) reconnect() {
 	tc.reconnectMu.Lock()
 	defer tc.reconnectMu.Unlock()
@@ -1116,7 +1061,6 @@ func (tc *TunnelClient) reconnect() {
 	}
 }
 
-// processQueuedRequests processes requests that were queued during disconnection
 func (tc *TunnelClient) processQueuedRequests() {
 	tc.queueMu.Lock()
 	queued := make([]*HTTPRequest, len(tc.requestQueue))
@@ -1132,7 +1076,6 @@ func (tc *TunnelClient) processQueuedRequests() {
 	}
 }
 
-// Close closes the tunnel connection gracefully
 func (tc *TunnelClient) Close() error {
 	tc.mu.Lock()
 
@@ -1182,36 +1125,30 @@ func (tc *TunnelClient) Close() error {
 	return nil
 }
 
-// GetTunnelInfo returns tunnel information
 func (tc *TunnelClient) GetTunnelInfo() *TunnelInfo {
 	tc.mu.RLock()
 	defer tc.mu.RUnlock()
 	return tc.tunnel
 }
 
-// IsConnected returns connection status
 func (tc *TunnelClient) IsConnected() bool {
 	tc.mu.RLock()
 	defer tc.mu.RUnlock()
 	return tc.isConnected
 }
 
-// IsReconnecting returns whether the client is currently attempting to reconnect
 func (tc *TunnelClient) IsReconnecting() bool {
 	tc.mu.RLock()
 	defer tc.mu.RUnlock()
 	return tc.isReconnecting
 }
 
-// ShouldExit returns whether the client should exit (tunnel was disconnected from dashboard)
 func (tc *TunnelClient) ShouldExit() bool {
 	tc.mu.RLock()
 	defer tc.mu.RUnlock()
 	return tc.shouldExit
 }
 
-// GetConnectionStatus returns a string describing the connection status
-// This is the source of truth for connection status
 func (tc *TunnelClient) GetConnectionStatus() string {
 	tc.mu.RLock()
 	isConnected := tc.isConnected
@@ -1230,21 +1167,18 @@ func (tc *TunnelClient) GetConnectionStatus() string {
 	}
 }
 
-// GetLatency returns the current latency in milliseconds
 func (tc *TunnelClient) GetLatency() int64 {
 	tc.latencyMu.RLock()
 	defer tc.latencyMu.RUnlock()
 	return tc.latencyMs
 }
 
-// GetProtocol returns the tunnel protocol (http, tcp, tls, udp)
 func (tc *TunnelClient) GetProtocol() string {
 	tc.mu.RLock()
 	defer tc.mu.RUnlock()
 	return tc.protocol
 }
 
-// GetConnectionStats fetches connection statistics from the tunnel server
 func (tc *TunnelClient) GetConnectionStats(serverURL string, tunnelID string) (*ConnectionStats, error) {
 	tc.mu.RLock()
 	token := tc.token
@@ -1282,7 +1216,6 @@ func (tc *TunnelClient) GetConnectionStats(serverURL string, tunnelID string) (*
 	return &result.Connections, nil
 }
 
-// handleTCPData handles TCP/TLS data from tunnel server
 func (tc *TunnelClient) handleTCPData(connectionID string, data []byte, isTLS bool) {
 	// Check if connection exists
 	tc.tcpConnMu.RLock()
@@ -1334,7 +1267,6 @@ func (tc *TunnelClient) handleTCPData(connectionID string, data []byte, isTLS bo
 	}
 }
 
-// establishTCPConnection establishes a TCP/TLS connection to local service
 func (tc *TunnelClient) establishTCPConnection(connectionID string, useTLS bool) error {
 	// Parse local URL (format: host:port for TCP/TLS)
 	localAddr := tc.localURL
@@ -1380,7 +1312,6 @@ func (tc *TunnelClient) establishTCPConnection(connectionID string, useTLS bool)
 	return nil
 }
 
-// forwardTCPToTunnel reads from local TCP connection and forwards to tunnel
 func (tc *TunnelClient) forwardTCPToTunnel(connectionID string, conn net.Conn, isTLS bool) {
 	defer tc.closeTCPConnection(connectionID)
 
@@ -1449,7 +1380,6 @@ func (tc *TunnelClient) forwardTCPToTunnel(connectionID string, conn net.Conn, i
 	}
 }
 
-// handleTCPError handles TCP/TLS errors from tunnel server
 func (tc *TunnelClient) handleTCPError(connectionID string, err *HTTPError) {
 	tc.logger.Error().
 		Str("connection_id", connectionID).
@@ -1460,7 +1390,6 @@ func (tc *TunnelClient) handleTCPError(connectionID string, err *HTTPError) {
 	tc.closeTCPConnection(connectionID)
 }
 
-// sendTCPError sends a TCP/TLS error to tunnel server
 func (tc *TunnelClient) sendTCPError(connectionID, errorType, message string) {
 	msg := TunnelMessage{
 		Type:      MsgTypeTCPError,
@@ -1502,7 +1431,6 @@ func (tc *TunnelClient) sendTCPError(connectionID, errorType, message string) {
 	}
 }
 
-// closeTCPConnection closes and removes a TCP connection
 func (tc *TunnelClient) closeTCPConnection(connectionID string) {
 	tc.tcpConnMu.Lock()
 	defer tc.tcpConnMu.Unlock()
@@ -1519,7 +1447,6 @@ func (tc *TunnelClient) closeTCPConnection(connectionID string) {
 	}
 }
 
-// handleUDPData handles UDP data from tunnel server
 func (tc *TunnelClient) handleUDPData(connectionID string, data []byte) {
 	// Ensure UDP connection is established
 	tc.udpConnMu.Lock()
@@ -1580,7 +1507,6 @@ func (tc *TunnelClient) handleUDPData(connectionID string, data []byte) {
 	}
 }
 
-// forwardUDPToTunnel reads from local UDP connection and forwards to tunnel
 func (tc *TunnelClient) forwardUDPToTunnel() {
 	tc.udpConnMu.RLock()
 	conn := tc.udpConn
@@ -1643,7 +1569,6 @@ func (tc *TunnelClient) forwardUDPToTunnel() {
 	}
 }
 
-// handleUDPError handles UDP errors from tunnel server
 func (tc *TunnelClient) handleUDPError(connectionID string, err *HTTPError) {
 	tc.logger.Error().
 		Str("connection_id", connectionID).
@@ -1652,8 +1577,6 @@ func (tc *TunnelClient) handleUDPError(connectionID string, err *HTTPError) {
 		Msg("UDP connection error from tunnel")
 }
 
-// sendUDPError sends a UDP error to tunnel server
-// WebSocket writes must be serialized to prevent concurrent write panics
 func (tc *TunnelClient) sendUDPError(connectionID, errorType, message string) {
 	msg := TunnelMessage{
 		Type:      MsgTypeUDPError,

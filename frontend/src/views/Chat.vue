@@ -104,35 +104,13 @@
             class="flex-1 sm:flex-initial px-2 sm:px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs sm:text-sm"
             aria-label="Select AI model"
           >
-            <!-- OpenAI Models -->
-            <optgroup label="OpenAI">
-              <option value="gpt-4o">GPT-4o (Latest)</option>
-              <option value="gpt-4o-mini">GPT-4o Mini</option>
-              <option value="gpt-4-turbo">GPT-4 Turbo</option>
-              <option value="gpt-4">GPT-4</option>
-              <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-            </optgroup>
-            <!-- Anthropic Models -->
-            <optgroup label="Anthropic (Claude)">
-              <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (Latest)</option>
-              <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
-              <option value="claude-3-opus-20240229">Claude 3 Opus</option>
-              <option value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
-              <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
-            </optgroup>
-            <!-- Google Models -->
-            <optgroup label="Google (Gemini)">
-              <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
-              <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro (Latest)</option>
-              <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-              <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-              <option value="gemini-pro">Gemini Pro</option>
-            </optgroup>
-            <!-- Local Models -->
-            <optgroup label="Local">
-              <option value="llama2">Llama 2</option>
-              <option value="mistral">Mistral</option>
-            </optgroup>
+            <template v-for="group in modelGroups" :key="group.label">
+              <optgroup :label="group.label">
+                <option v-for="opt in group.options" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </option>
+              </optgroup>
+            </template>
           </select>
         </div>
         <!-- Settings -->
@@ -613,11 +591,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import Card from '@/components/ui/Card.vue'
 import { MessageSquare, Send, Settings, Image as ImageIcon, X } from 'lucide-vue-next'
 import { chatApi, type Message, type ChatResponse, type ContentPart, type StreamChunk } from '@/services/api/chat'
 import { conversationsApi, type Conversation } from '@/services/api/conversations'
+import { providersApi, type ProviderInfo } from '@/services/api/providers'
 import { useToast } from '@/composables/useToast'
 
 const { showToast } = useToast()
@@ -680,6 +659,52 @@ const suggestions = [
   'What is machine learning?',
   'Help me debug this code'
 ]
+
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic (Claude)',
+  google: 'Google (Gemini)',
+  vllm: 'vLLM',
+  ollama: 'Ollama',
+  local: 'Local'
+}
+
+const staticModelGroups = [
+  { label: 'OpenAI', options: [
+    { value: 'gpt-4o', label: 'GPT-4o (Latest)' },
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+    { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+    { value: 'gpt-4', label: 'GPT-4' },
+    { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' }
+  ]},
+  { label: 'Anthropic (Claude)', options: [
+    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet (Latest)' },
+    { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
+    { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
+    { value: 'claude-3-sonnet-20240229', label: 'Claude 3 Sonnet' },
+    { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' }
+  ]},
+  { label: 'Google (Gemini)', options: [
+    { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash (Experimental)' },
+    { value: 'gemini-1.5-pro-latest', label: 'Gemini 1.5 Pro (Latest)' },
+    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+    { value: 'gemini-pro', label: 'Gemini Pro' }
+  ]},
+  { label: 'Local', options: [
+    { value: 'llama2', label: 'Llama 2' },
+    { value: 'mistral', label: 'Mistral' }
+  ]}
+]
+
+const apiProviders = ref<ProviderInfo[]>([])
+const modelGroups = computed(() => {
+  if (apiProviders.value.length === 0) return staticModelGroups
+  return apiProviders.value.map((p) => ({
+    label: PROVIDER_DISPLAY_NAMES[p.name] || p.name,
+    options: p.models.map((m) => ({ value: m, label: m }))
+  }))
+})
 
 // Auto-scroll to bottom when new messages arrive
 watch(messages, () => {
@@ -1290,6 +1315,12 @@ const handlePreviewImageError = (_event: Event, index: number) => {
 // Load conversations on mount
 onMounted(async () => {
   scrollToBottom()
+  try {
+    const res = await providersApi.list()
+    if (res.providers?.length) apiProviders.value = res.providers
+  } catch {
+    // use static model list
+  }
   await loadConversations()
   
   // Initialize speech synthesis

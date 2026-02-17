@@ -50,7 +50,7 @@ func (s *EmailService) getSMTPConfig() (host string, port int, username, passwor
 	from = strings.TrimSpace(os.Getenv("SMTP_FROM"))
 
 	if portStr == "" {
-		port = 587 // Default port
+		port = 587
 	} else {
 		if p, err := strconv.Atoi(portStr); err == nil {
 			port = p
@@ -76,13 +76,8 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 		return fmt.Errorf("SMTP not configured: set SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD environment variables")
 	}
 
-	// Setup authentication
 	auth := smtp.PlainAuth("", username, password, host)
-
-	// Build message
 	message := s.buildMessage(from, to, subject, body)
-
-	// Send email
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	err := smtp.SendMail(addr, auth, from, []string{to}, []byte(message))
 	if err != nil {
@@ -251,6 +246,25 @@ func (s *EmailService) SendPasswordResetEmail(to, name, token, frontendURL strin
 		"",
 		footerText,
 	)
+
+	return s.SendEmail(to, subject, body)
+}
+
+// SendSeedAdminPasswordEmail sends the seed admin password to the given email using the shared email template.
+func (s *EmailService) SendSeedAdminPasswordEmail(to, name, password string) error {
+	subject := "UniRoute: Your admin account password"
+
+	greeting := fmt.Sprintf("Hi %s,<br><br>Your UniRoute seed admin account has been created. Use the credentials below to sign in:", name)
+
+	mainContent := fmt.Sprintf(`
+<p style="margin: 0 0 16px 0; font-size: 16px; line-height: 1.6; color: #1f2937;"><strong>Email:</strong> %s</p>
+<p style="margin: 0 0 24px 0; font-size: 16px; line-height: 1.6; color: #1f2937;"><strong>Password:</strong> %s</p>
+<p style="margin: 0; font-size: 14px; line-height: 1.6; color: #6b7280;">Save this password securely. You can change it after logging in.</p>
+`, to, password)
+
+	footerText := "You're receiving this email because seed admin was enabled at startup for this UniRoute instance."
+
+	body := s.buildEmailTemplate(subject, greeting, mainContent, "", "", footerText)
 
 	return s.SendEmail(to, subject, body)
 }
