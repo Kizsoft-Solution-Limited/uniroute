@@ -236,6 +236,7 @@ func (ts *TunnelServer) Start() error {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/tunnel", ts.handleTunnelConnection)
+	mux.HandleFunc("/health", ts.handleHealth)
 	mux.HandleFunc("/", ts.handleHTTPRequest)
 
 	// Web interface endpoint

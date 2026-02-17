@@ -1465,7 +1465,7 @@
               <li><a href="/about" class="text-slate-400 hover:text-white transition-colors">About</a></li>
               <li>
                 <a 
-                  href="https://polar.sh/uniroute/donate" 
+                  href="https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   class="text-slate-400 hover:text-white transition-colors inline-flex items-center gap-1"
@@ -1497,10 +1497,13 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { useToast } from '@/composables/useToast'
 
 const mobileMenuOpen = ref(false)
 const route = useRoute()
+const router = useRouter()
+const { showToast } = useToast()
 
 // Real-time request simulation
 interface LiveRequest {
@@ -1571,6 +1574,12 @@ const handleScroll = () => {
 }
 
 onMounted(() => {
+  // Donation success: show thank-you toast and clean URL (Polar redirect)
+  if (route.query.donation === 'success') {
+    showToast('Thank you for your support! We really appreciate it.', 'success', 6000)
+    router.replace({ path: route.path, query: {} })
+  }
+
   // Ensure all content is visible immediately (no scroll reveal animations)
   // This prevents the "opening" effect when scrolling
   const allSections = document.querySelectorAll('section')

@@ -51,7 +51,7 @@ var httpQuotes = []weightedQuote{
 	{quote: "🌐 From 127.0.0.1 to the world wide web!", weight: 10, protocol: "http"},
 	{quote: "🚀 Your localhost just became a world-class web citizen!", weight: 10, protocol: "http"},
 	// Donation link - appears most frequently (much higher weight)
-	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 200, protocol: "http"},
+	{quote: "💝 Love UniRoute? Support us: https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs", weight: 200, protocol: "http"},
 }
 
 var tcpQuotes = []weightedQuote{
@@ -76,7 +76,7 @@ var tcpQuotes = []weightedQuote{
 	{quote: "🔌 From localhost to global TCP connectivity!", weight: 10, protocol: "tcp"},
 	{quote: "🚀 Your TCP server just became a global citizen!", weight: 10, protocol: "tcp"},
 	// Donation link - appears most frequently (much higher weight)
-	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 200, protocol: "tcp"},
+	{quote: "💝 Love UniRoute? Support us: https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs", weight: 200, protocol: "tcp"},
 }
 
 var tlsQuotes = []weightedQuote{
@@ -101,7 +101,7 @@ var tlsQuotes = []weightedQuote{
 	{quote: "🔒 From localhost to global encrypted TLS connectivity!", weight: 10, protocol: "tls"},
 	{quote: "🚀 Your secure TLS server just became a global citizen!", weight: 10, protocol: "tls"},
 	// Donation link - appears most frequently (much higher weight)
-	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 200, protocol: "tls"},
+	{quote: "💝 Love UniRoute? Support us: https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs", weight: 200, protocol: "tls"},
 }
 
 var udpQuotes = []weightedQuote{
@@ -126,7 +126,7 @@ var udpQuotes = []weightedQuote{
 	{quote: "📡 From localhost to global UDP connectivity!", weight: 10, protocol: "udp"},
 	{quote: "🚀 Your UDP server just became a global citizen!", weight: 10, protocol: "udp"},
 	// Donation link - appears most frequently (much higher weight)
-	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 200, protocol: "udp"},
+	{quote: "💝 Love UniRoute? Support us: https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs", weight: 200, protocol: "udp"},
 }
 
 // Custom domain quotes (when user uses their own domain)
@@ -152,7 +152,7 @@ var domainQuotes = []weightedQuote{
 	{quote: "👑 Your domain is now ruling the internet!", weight: 10, protocol: ""},
 	{quote: "🌟 Your custom domain is now a global superstar!", weight: 10, protocol: ""},
 	// Donation link - appears most frequently (much higher weight)
-	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 200, protocol: ""},
+	{quote: "💝 Love UniRoute? Support us: https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs", weight: 200, protocol: ""},
 }
 
 // Generic quotes that work for all protocols
@@ -190,7 +190,7 @@ var genericQuotes = []weightedQuote{
 	{quote: "🎯 Direct hit! Your tunnel is perfectly connected!", weight: 10, protocol: ""},
 	{quote: "🎪 The tunnel is alive! Your app is breathing the global air!", weight: 10, protocol: ""},
 	// Donation link - appears most frequently (much higher weight = most likely)
-	{quote: "💝 Love UniRoute? Support us: https://polar.sh/uniroute/donate", weight: 200, protocol: ""},
+	{quote: "💝 Love UniRoute? Support us: https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs", weight: 200, protocol: ""},
 }
 
 // isCustomDomain checks if the PublicURL contains a custom domain (not .localhost)

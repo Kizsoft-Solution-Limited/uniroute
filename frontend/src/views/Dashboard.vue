@@ -129,7 +129,7 @@
         </router-link>
 
         <a
-          href="https://polar.sh/uniroute/donate"
+          href="https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs"
           target="_blank"
           rel="noopener noreferrer"
           class="flex items-center space-x-3 p-4 border-2 border-dashed border-slate-700/50 rounded-lg hover:border-pink-500 transition-colors group"

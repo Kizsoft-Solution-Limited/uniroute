@@ -60,7 +60,7 @@
             </div>
           </div>
           <a
-            href="https://polar.sh/uniroute/donate"
+            href="https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs"
             target="_blank"
             rel="noopener noreferrer"
             class="w-full flex items-center space-x-3 px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-800/60 transition-colors mb-2"

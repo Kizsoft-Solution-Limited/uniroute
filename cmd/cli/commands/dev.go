@@ -57,6 +57,8 @@ Supported projects (auto-detected from current directory):
   - Go                          go.mod                         -> port 8080 (go run .)
   - Ruby on Rails               Gemfile + config.ru          -> port 3000
 
+Custom domains work with dev/run: assign a domain to the tunnel (dashboard or uniroute domain <domain> <subdomain>); traffic to your domain goes to this HTTP tunnel.
+
 Examples:
   uniroute dev                    # Option 1: we start dev server + tunnel
   uniroute dev --attach           # Option 2: tunnel only (you run your command in another terminal)
