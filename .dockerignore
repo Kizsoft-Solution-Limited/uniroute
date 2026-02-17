@@ -15,6 +15,9 @@ coverage.html
 # Documentation
 *.md
 !README.md
+# Frontend in-app docs (served at /docs in the UI) must be in the image
+!frontend/public/docs/
+!frontend/public/docs/**/*.md
 
 # Git
 .git

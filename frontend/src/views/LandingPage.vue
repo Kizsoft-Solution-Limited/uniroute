@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 overflow-x-hidden relative overscroll-none">
+  <div class="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 overflow-x-hidden relative">
     <!-- Navigation -->
     <nav class="fixed top-0 left-0 right-0 z-[9999] bg-slate-950/80 backdrop-blur-md border-b border-slate-800/50 transition-all duration-300 will-change-auto">
       <div class="container mx-auto px-6 py-4">
@@ -121,13 +121,14 @@
       </div>
     </nav>
 
-    <!-- Hero Section -->
-    <section class="relative overflow-hidden pt-24 pb-16 md:pb-24 min-h-screen flex items-center overscroll-contain">
+    <main id="main-content" role="main" aria-label="Primary content">
+      <!-- Hero Section -->
+      <section class="relative overflow-hidden pt-24 pb-16 md:pb-24 min-h-screen flex items-center" aria-labelledby="hero-heading">
       <div class="container mx-auto px-6 relative z-10">
         <!-- Main Hero Content -->
         <div class="max-w-6xl mx-auto mb-12">
           <div class="text-center mb-12">
-            <h1 class="text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-4 leading-tight tracking-tight">
+            <h1 id="hero-heading" class="text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-4 leading-tight tracking-tight">
             The AI Gateway
             <span class="block mt-2 bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
                 & Secure Tunneling
@@ -241,10 +242,10 @@
     </section>
 
     <!-- Features Section -->
-    <section id="features" class="py-20 md:py-24 relative overscroll-contain">
+    <section id="features" class="py-20 md:py-24 relative" aria-labelledby="features-heading">
       <div class="container mx-auto px-6">
         <div class="text-center mb-16">
-          <h2 class="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">
+          <h2 id="features-heading" class="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">
             Everything you need
           </h2>
           <p class="text-lg text-slate-400 max-w-2xl mx-auto">
@@ -412,7 +413,7 @@
     </section>
 
     <!-- Unified API Section -->
-    <section id="providers" class="py-20 md:py-24 relative overflow-hidden overscroll-contain">
+    <section id="providers" class="py-20 md:py-24 relative overflow-hidden" aria-labelledby="providers-heading">
       <!-- Background gradient -->
       <div class="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-purple-500/5 to-indigo-500/5"></div>
       
@@ -424,7 +425,7 @@
             </svg>
             <span class="text-sm font-medium text-blue-400">Unified Gateway</span>
           </div>
-          <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 tracking-tight">
+          <h2 id="providers-heading" class="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 tracking-tight">
             One API,<br/>
             <span class="bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
               Every AI Model
@@ -593,7 +594,7 @@
     </section>
 
     <!-- Use Cases Section -->
-    <section class="py-20 md:py-24 relative overflow-hidden overscroll-contain">
+    <section class="py-20 md:py-24 relative overflow-hidden">
       <!-- Background gradient -->
       <div class="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-purple-500/5 to-pink-500/5"></div>
       
@@ -802,7 +803,7 @@
     </section>
 
     <!-- Tunnel Flow Visualization -->
-    <section class="py-12 md:py-16 lg:py-20 relative overflow-hidden overscroll-contain">
+    <section class="py-12 md:py-16 lg:py-20 relative overflow-hidden">
       <div class="container mx-auto px-6">
         <!-- Unique Title -->
         <div class="text-center mb-12">
@@ -918,7 +919,7 @@
     </section>
 
     <!-- Custom Domain Support -->
-    <section class="py-16 md:py-20 lg:py-24 relative overflow-hidden overscroll-contain">
+    <section class="py-16 md:py-20 lg:py-24 relative overflow-hidden">
       <!-- Background effects -->
       <div class="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-purple-500/5 to-pink-500/5"></div>
       <div class="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl"></div>
@@ -1108,7 +1109,7 @@
 
 
     <!-- Get Started Section -->
-    <section class="py-20 md:py-24 relative overflow-hidden overscroll-contain">
+    <section class="py-20 md:py-24 relative overflow-hidden">
       <!-- Background gradient -->
       <div class="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-indigo-500/5 to-purple-500/5"></div>
       
@@ -1244,7 +1245,7 @@
     </section>
 
     <!-- Open Source Section -->
-    <section class="py-20 md:py-24 lg:py-28 relative overflow-hidden overscroll-contain">
+    <section class="py-20 md:py-24 lg:py-28 relative overflow-hidden">
       <!-- Background effects -->
       <div class="absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-teal-500/5 to-cyan-500/5"></div>
       <div class="absolute top-1/4 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl"></div>
@@ -1435,8 +1436,10 @@
       </div>
     </section>
 
+    </main>
+
     <!-- Footer -->
-    <footer class="bg-slate-950 border-t border-slate-800">
+    <footer class="bg-slate-950 border-t border-slate-800" role="contentinfo" aria-label="Site footer">
       <div class="container mx-auto px-6 py-12">
         <div class="grid md:grid-cols-4 gap-12 mb-12">
           <div>
@@ -1650,8 +1653,6 @@ onUnmounted(() => {
   background-color: #020617; /* slate-950 */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Prevent scroll chaining between sections */
-  overscroll-behavior-y: none;
 }
 
 :deep(body) {
@@ -1661,9 +1662,9 @@ onUnmounted(() => {
   padding: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Prevent scroll chaining - prevents sections from interfering */
-  overscroll-behavior-y: none;
-  /* Don't use contain - it causes layout issues with fixed nav */
+  /* Allow touch scroll on mobile (overscroll-behavior was blocking it) */
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
 }
 
 /* Ensure no white background shows through */
@@ -1690,11 +1691,9 @@ onUnmounted(() => {
   background-color: transparent;
   position: relative;
   z-index: 1;
-  /* Prevent scroll chaining between sections - prevents interference */
-  overscroll-behavior: contain;
+  /* Don't use overscroll-behavior: contain - it blocks touch scroll on mobile */
   /* Sections already have overflow-hidden class - don't override */
   /* Ensure absolute backgrounds stay within section bounds */
-  /* Don't use isolation or contain - they cause stacking context issues */
 }
 
 /* Smooth transitions for all sections - optimized for scroll performance */
@@ -1706,9 +1705,7 @@ section {
   background-color: transparent;
   position: relative;
   opacity: 1 !important; /* Always visible */
-  /* Prevent scroll chaining - sections won't interfere with each other */
-  overscroll-behavior: contain;
-  /* Sections already have overflow-hidden class - ensures absolute backgrounds are clipped */
+  /* Don't use overscroll-behavior: contain - it blocks touch scroll on mobile */
   /* Ensure sections stay in document flow - no stacking context issues with nav */
   isolation: auto;
   /* Only allow safe transitions that don't affect scroll */
@@ -1772,8 +1769,6 @@ section > .container {
   background-size: 100% 100%;
   background-repeat: no-repeat;
   /* Don't use background-attachment: fixed - it causes "following" effect */
-  /* Prevent scroll chaining and improve performance */
-  overscroll-behavior-y: none;
 }
 
 /* Fixed navigation - ensure it stays above all content */

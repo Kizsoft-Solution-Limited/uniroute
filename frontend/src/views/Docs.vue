@@ -145,6 +145,7 @@ import { useRoute } from 'vue-router'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import type { MarkedOptions } from 'marked'
+import { updateDocumentHead } from '@/utils/head'
 
 const route = useRoute()
 const loading = ref(true)
@@ -176,6 +177,27 @@ const currentSection = computed(() => {
   const currentPath = route.path.replace('/docs', '')
   return navigation.find(section => currentPath === section.path || currentPath.startsWith(section.path + '/'))
 })
+
+/** Current doc page title for SEO (e.g. "Getting Started", "Custom Domains") */
+function getCurrentDocTitle(): string {
+  const currentPath = route.path.replace('/docs', '') || '/introduction'
+  const path = currentPath.startsWith('/') ? currentPath : '/' + currentPath
+  for (const section of navigation) {
+    if (section.path === path) return section.title
+    const children = (section as { children?: { path: string; title: string }[] }).children
+    if (children) {
+      const child = children.find(c => c.path === path)
+      if (child) return child.title
+    }
+  }
+  return 'Documentation'
+}
+
+function setDocHead() {
+  const title = getCurrentDocTitle()
+  const description = `UniRoute documentation: ${title}. Installation, authentication, tunnels, API reference, and deployment.`
+  updateDocumentHead(title, description, route.fullPath)
+}
 
 // Configure marked
 marked.setOptions({
@@ -258,9 +280,9 @@ const enhanceNextSteps = () => {
 }
 
 watch(() => route.path, () => {
-  loadDocumentation()
-  // Close mobile menu when route changes
   mobileMenuOpen.value = false
+  loadDocumentation()
+  setDocHead()
 })
 
 watch(() => renderedContent.value, () => {
@@ -268,8 +290,10 @@ watch(() => renderedContent.value, () => {
 })
 
 onMounted(() => {
-  loadDocumentation()
-  enhanceNextSteps()
+  loadDocumentation().then(() => {
+    enhanceNextSteps()
+    setDocHead()
+  })
 })
 </script>
 

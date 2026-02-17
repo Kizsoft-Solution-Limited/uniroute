@@ -4,23 +4,79 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="UniRoute - One unified gateway for every AI model. Route, secure, and manage traffic to any LLM—cloud or local." />
-    
+    <meta name="theme-color" content="#020617" />
+    <meta name="description" content="UniRoute - One unified gateway for every AI model. Route, secure, and manage traffic to any LLM—cloud or local. Plus secure tunneling for any service." />
+    <meta name="keywords" content="AI gateway, LLM, API gateway, secure tunneling, OpenAI, Anthropic, Claude, GPT, uniroute" />
+    <meta name="author" content="UniRoute" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://uniroute.co/" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://uniroute.co/" />
+    <meta property="og:title" content="UniRoute - AI Gateway &amp; Secure Tunneling" />
+    <meta property="og:description" content="One unified API for all AI models. Plus secure tunneling for any service. Route, secure, and manage traffic to any LLM—cloud or local." />
+    <meta property="og:image" content="https://uniroute.co/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="UniRoute" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://uniroute.co/" />
+    <meta name="twitter:title" content="UniRoute - AI Gateway &amp; Secure Tunneling" />
+    <meta name="twitter:description" content="One unified API for all AI models. Plus secure tunneling for any service." />
+    <meta name="twitter:image" content="https://uniroute.co/og-image.png" />
+
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    
+
     <!-- Security Headers -->
-    <!-- Note: X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy, and Permissions-Policy 
+    <!-- Note: X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy, and Permissions-Policy
          must be set via HTTP headers, not meta tags. They are configured in the backend middleware (security_headers.go)
-         for production and should be set by the web server in production. Permissions-Policy allows microphone access
-         for voice recording features. -->
+         for production and should be set by the web server in production. -->
     <!-- CSP: Allow localhost for development, production URLs for production -->
-    <!-- Note: WebSocket connections need explicit ws:// and wss:// entries in connect-src -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' http://localhost:8084 http://localhost:8080 http://localhost:3002 http://*.localhost:* https://api.uniroute.co wss://tunnel.uniroute.co ws://localhost:8080 ws://localhost:3002 ws://*.localhost:* wss://*.localhost:*;" />
-    
-    <title>UniRoute - AI Gateway</title>
+
+    <title>UniRoute - AI Gateway &amp; Secure Tunneling</title>
+
+    <!-- Structured Data (JSON-LD) for SEO -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://uniroute.co/#organization",
+          "name": "UniRoute",
+          "url": "https://uniroute.co",
+          "logo": { "@type": "ImageObject", "url": "https://uniroute.co/vite.svg" },
+          "description": "One unified gateway for every AI model. Route, secure, and manage traffic to any LLM—cloud or local. Secure tunneling for any service."
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://uniroute.co/#website",
+          "url": "https://uniroute.co",
+          "name": "UniRoute",
+          "description": "AI Gateway and Secure Tunneling - One API for all AI models.",
+          "publisher": { "@id": "https://uniroute.co/#organization" },
+          "inLanguage": "en-US"
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "UniRoute",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "Web, Windows, macOS, Linux",
+          "description": "UniRoute is an AI gateway and secure tunneling platform. One unified API for OpenAI, Anthropic, Google, and other LLMs; plus HTTP/TCP/TLS tunnels with custom domains.",
+          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+          "url": "https://uniroute.co"
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="app"></div>
