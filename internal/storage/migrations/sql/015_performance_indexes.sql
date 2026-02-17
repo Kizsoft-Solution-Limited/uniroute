@@ -27,5 +27,5 @@ CREATE INDEX IF NOT EXISTS idx_messages_conversation_id_created_at ON messages(c
 -- Partial index for active API keys (only index active keys for faster lookups)
 CREATE INDEX IF NOT EXISTS idx_api_keys_active_lookup ON api_keys(lookup_hash) WHERE is_active = true;
 
--- Partial index for active provider keys
-CREATE INDEX IF NOT EXISTS idx_provider_keys_user_active ON provider_keys(user_id, provider) WHERE is_active = true;
+-- Partial index for active user provider keys (BYOK)
+CREATE INDEX IF NOT EXISTS idx_user_provider_keys_user_active ON user_provider_keys(user_id, provider) WHERE is_active = true;
