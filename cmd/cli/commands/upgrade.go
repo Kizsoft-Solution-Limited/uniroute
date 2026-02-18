@@ -61,8 +61,14 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	var upgradeCmd []string
 	var upgradeInstructions string
 	
-	goInstallCmd := []string{"go", "install", "github.com/Kizsoft-Solution-Limited/uniroute/cmd/cli@latest"}
-	goInstallInstructions := "Run: go install github.com/Kizsoft-Solution-Limited/uniroute/cmd/cli@latest"
+	goInstallVersion := info.LatestVersion
+	if goInstallVersion == "" {
+		goInstallVersion = "latest"
+	} else if !strings.HasPrefix(goInstallVersion, "v") {
+		goInstallVersion = "v" + goInstallVersion
+	}
+	goInstallCmd := []string{"go", "install", fmt.Sprintf("github.com/Kizsoft-Solution-Limited/uniroute/cmd/cli@%s", goInstallVersion)}
+	goInstallInstructions := fmt.Sprintf("Run: go install github.com/Kizsoft-Solution-Limited/uniroute/cmd/cli@%s", goInstallVersion)
 
 	switch runtime.GOOS {
 	case "darwin":
