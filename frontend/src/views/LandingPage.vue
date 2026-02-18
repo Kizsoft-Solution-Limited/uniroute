@@ -1334,7 +1334,7 @@
                       <span class="text-slate-400">MIT License</span>
                     </div>
                   </div>
-                  <div class="text-slate-500">View on GitHub →</div>
+                  <a href="https://github.com/Kizsoft-Solution-Limited/uniroute" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-emerald-400 transition-colors inline-flex items-center gap-1">View on GitHub →</a>
                 </div>
               </div>
             </div>
@@ -1410,7 +1410,7 @@
           <!-- CTA Buttons -->
           <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <a
-              href="https://github.com/uniroute/uniroute"
+              href="https://github.com/Kizsoft-Solution-Limited/uniroute"
               target="_blank"
               rel="noopener noreferrer"
               class="group px-8 py-4 bg-slate-800/50 backdrop-blur-sm text-white rounded-xl font-semibold border-2 border-slate-700/50 hover:border-emerald-500/50 hover:bg-slate-800/70 transition-all flex items-center gap-3"
@@ -1466,6 +1466,7 @@
             <h4 class="font-semibold text-white mb-4">Company</h4>
             <ul class="space-y-3 text-sm">
               <li><a href="/about" class="text-slate-400 hover:text-white transition-colors">About</a></li>
+              <li><a href="https://github.com/Kizsoft-Solution-Limited/uniroute" target="_blank" rel="noopener noreferrer" class="text-slate-400 hover:text-white transition-colors">GitHub</a></li>
               <li>
                 <a 
                   href="https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs" 
