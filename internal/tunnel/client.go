@@ -178,11 +178,36 @@ func (tc *TunnelClient) SetForceNew(forceNew bool) {
 	tc.forceNew = forceNew
 }
 
+func (tc *TunnelClient) websocketURL() (scheme, host string) {
+	u := strings.TrimSpace(tc.serverURL)
+	if idx := strings.Index(u, "/"); idx >= 0 {
+		u = u[:idx]
+	}
+	host = u
+	for _, prefix := range []string{"wss://", "ws://", "https://", "http://"} {
+		if strings.HasPrefix(strings.ToLower(u), prefix) {
+			host = u[len(prefix):]
+			if idx := strings.Index(host, "/"); idx >= 0 {
+				host = host[:idx]
+			}
+			if prefix == "https://" || prefix == "wss://" {
+				return "wss", host
+			}
+			return "ws", host
+		}
+	}
+	if strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "127.0.0.1") {
+		return "ws", host
+	}
+	return "wss", host
+}
+
 func (tc *TunnelClient) Connect() error {
 	tc.reconnectMu.Lock()
 	defer tc.reconnectMu.Unlock()
 
-	wsURL := fmt.Sprintf("ws://%s/tunnel", tc.serverURL)
+	scheme, host := tc.websocketURL()
+	wsURL := fmt.Sprintf("%s://%s/tunnel", scheme, host)
 	tc.logger.Debug().Str("url", wsURL).Msg("Connecting to tunnel server")
 
 	connectStart := time.Now()
