@@ -151,7 +151,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 				if out, err := exec.Command("go", "env", "GOPATH").Output(); err == nil {
 					gopath := strings.TrimSpace(string(out))
 					if gopath != "" {
-						newBin := filepath.Join(gopath, "bin", "uniroute")
+						newBin := filepath.Join(gopath, "bin", "cli")
 						if currentExe != newBin {
 							if _, err := os.Stat(newBin); err == nil {
 								fmt.Println(color.Yellow("  You're running the CLI from a different location. To use the new version, run:"))
