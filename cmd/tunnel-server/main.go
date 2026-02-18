@@ -22,10 +22,17 @@ func getEnv(key, defaultValue string) string {
 }
 
 func main() {
+	defaultPort := 8080
+	if p := os.Getenv("PORT"); p != "" {
+		var n int
+		if _, err := fmt.Sscanf(p, "%d", &n); err == nil && n > 0 {
+			defaultPort = n
+		}
+	}
 	var (
-		port     = flag.Int("port", 8080, "Port to run tunnel server on")
-		env      = flag.String("env", "development", "Environment (development/production)")
-		logLevel = flag.String("log-level", "info", "Log level (debug/info/warn/error)")
+		port     = flag.Int("port", defaultPort, "Port to run tunnel server on")
+		env      = flag.String("env", getEnv("ENV", "development"), "Environment (development/production)")
+		logLevel = flag.String("log-level", getEnv("LOG_LEVEL", "info"), "Log level (debug/info/warn/error)")
 	)
 	flag.Parse()
 

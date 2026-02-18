@@ -107,7 +107,7 @@ func TestAuthMiddleware_Integration(t *testing.T) {
 	c.Request = httptest.NewRequest("GET", "/test", nil)
 	c.Request.Header.Set("Authorization", "Bearer "+key)
 	
-	middleware := middleware.AuthMiddleware(apiKeyService)
+	middleware := middleware.AuthMiddleware(apiKeyService, nil)
 	middleware(c)
 	
 	if c.Writer.Status() == http.StatusUnauthorized {
@@ -214,7 +214,7 @@ func TestFullMiddlewareFlow_Integration(t *testing.T) {
 	r.Use(middleware.SecurityHeadersMiddleware())
 	
 	api := r.Group("/v1")
-	api.Use(middleware.AuthMiddleware(apiKeyService))
+	api.Use(middleware.AuthMiddleware(apiKeyService, nil))
 	api.Use(middleware.RateLimitMiddleware(rateLimiter, func(identifier string) (int, int) {
 		// Use the API key's limits
 		return apiKey.RateLimitPerMinute, apiKey.RateLimitPerDay

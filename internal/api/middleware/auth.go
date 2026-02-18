@@ -5,11 +5,13 @@ import (
 	"strings"
 
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
 	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/errors"
 	"github.com/gin-gonic/gin"
 )
 
-func AuthMiddleware(apiKeyService *security.APIKeyServiceV2) gin.HandlerFunc {
+// AuthMiddleware validates API key and, when userRepo is set, requires the user's email to be verified.
+func AuthMiddleware(apiKeyService *security.APIKeyServiceV2, userRepo *storage.UserRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var apiKey string
 
@@ -46,6 +48,19 @@ func AuthMiddleware(apiKeyService *security.APIKeyServiceV2) gin.HandlerFunc {
 			})
 			c.Abort()
 			return
+		}
+
+		if userRepo != nil {
+			user, err := userRepo.GetUserByID(c.Request.Context(), keyRecord.UserID)
+			if err == nil && user != nil && !user.EmailVerified {
+				c.JSON(http.StatusForbidden, gin.H{
+					"error":   "Email not verified",
+					"code":    "EMAIL_NOT_VERIFIED",
+					"message": "Please verify your email address before using the API.",
+				})
+				c.Abort()
+				return
+			}
 		}
 
 		c.Set("api_key", apiKey)

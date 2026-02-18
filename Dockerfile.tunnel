@@ -17,6 +17,7 @@ COPY --from=builder /app/tunnel-server .
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost:8080/health || exit 1
+  CMD sh -c 'wget --quiet --tries=1 --spider "http://localhost:${PORT:-8080}/health" || exit 1'
 
-CMD ["./tunnel-server"]
+# Use PORT env at runtime so Coolify/docker port mapping works (e.g. PORT=8081)
+CMD ["sh", "-c", "exec ./tunnel-server -port ${PORT:-8080}"]

@@ -202,7 +202,11 @@ func SetupRouter(
 
 	api := r.Group("/v1")
 	if apiKeyServiceV2 != nil {
-		api.Use(middleware.AuthMiddleware(apiKeyServiceV2))
+		var apiUserRepo *storage.UserRepository
+		if postgresClient != nil {
+			apiUserRepo = storage.NewUserRepository(postgresClient, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		}
+		api.Use(middleware.AuthMiddleware(apiKeyServiceV2, apiUserRepo))
 
 		api.Use(middleware.RateLimitMiddleware(rateLimiter, func(identifier string) (int, int) {
 			return 60, 10000
