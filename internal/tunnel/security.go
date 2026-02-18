@@ -7,13 +7,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// SecurityMiddleware handles security-related HTTP headers and validation
 type SecurityMiddleware struct {
 	allowedOrigins map[string]bool
 	logger         zerolog.Logger
 }
 
-// NewSecurityMiddleware creates a new security middleware
 func NewSecurityMiddleware(logger zerolog.Logger) *SecurityMiddleware {
 	return &SecurityMiddleware{
 		allowedOrigins: make(map[string]bool),
@@ -21,26 +19,20 @@ func NewSecurityMiddleware(logger zerolog.Logger) *SecurityMiddleware {
 	}
 }
 
-// AddAllowedOrigin adds an allowed origin for CORS
 func (sm *SecurityMiddleware) AddAllowedOrigin(origin string) {
 	sm.allowedOrigins[origin] = true
 }
 
-// ValidateOrigin validates the Origin header
 func (sm *SecurityMiddleware) ValidateOrigin(origin string) bool {
 	if len(sm.allowedOrigins) == 0 {
-		// No restrictions if no origins configured
 		return true
 	}
 	return sm.allowedOrigins[origin]
 }
 
-// AddSecurityHeaders adds security headers to HTTP responses
 func (sm *SecurityMiddleware) AddSecurityHeaders(w http.ResponseWriter, r *http.Request) {
-	// CORS headers - allow all origins if no restrictions configured (for development)
 	origin := r.Header.Get("Origin")
 	if len(sm.allowedOrigins) == 0 {
-		// No restrictions configured, allow all origins (development mode)
 		if origin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 		} else {
@@ -50,29 +42,24 @@ func (sm *SecurityMiddleware) AddSecurityHeaders(w http.ResponseWriter, r *http.
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		w.Header().Set("Access-Control-Max-Age", "3600")
 	} else if origin != "" && sm.ValidateOrigin(origin) {
-		// Origin restrictions configured, validate
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		w.Header().Set("Access-Control-Max-Age", "3600")
 	}
 
-	// Security headers
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-XSS-Protection", "1; mode=block")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
-	// Handle preflight requests
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 }
 
-// ValidateRequest validates incoming HTTP requests
 func (sm *SecurityMiddleware) ValidateRequest(r *http.Request) error {
-	// Validate method
 	allowedMethods := map[string]bool{
 		http.MethodGet:     true,
 		http.MethodPost:    true,
@@ -87,12 +74,10 @@ func (sm *SecurityMiddleware) ValidateRequest(r *http.Request) error {
 		return ErrInvalidRequest
 	}
 
-	// Validate path length
 	if len(r.URL.Path) > 2048 {
 		return ErrInvalidRequest
 	}
 
-	// Validate header size (basic check)
 	totalHeaderSize := 0
 	for k, v := range r.Header {
 		totalHeaderSize += len(k)
@@ -109,12 +94,10 @@ func (sm *SecurityMiddleware) ValidateRequest(r *http.Request) error {
 
 // SanitizePath sanitizes the request path
 func (sm *SecurityMiddleware) SanitizePath(path string) string {
-	// Remove path traversal attempts (more comprehensive)
 	path = strings.ReplaceAll(path, "..", "")
 	path = strings.ReplaceAll(path, "//", "/")
-	path = strings.ReplaceAll(path, "\\", "/") // Normalize backslashes
-	
-	// Remove null bytes and control characters
+	path = strings.ReplaceAll(path, "\\", "/")
+
 	path = strings.ReplaceAll(path, "\x00", "")
 	path = strings.Map(func(r rune) rune {
 		if r < 32 && r != '\t' && r != '\n' && r != '\r' {
@@ -122,16 +105,14 @@ func (sm *SecurityMiddleware) SanitizePath(path string) string {
 		}
 		return r
 	}, path)
-	
-	// Remove leading/trailing slashes and normalize
+
 	path = strings.Trim(path, "/")
 	if path == "" {
 		path = "/"
 	} else if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
-	
-	// Limit path length
+
 	if len(path) > 2048 {
 		path = path[:2048]
 	}

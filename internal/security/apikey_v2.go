@@ -14,13 +14,11 @@ import (
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
 )
 
-// APIKeyServiceV2 handles API key operations with database storage
 type APIKeyServiceV2 struct {
 	repo   storage.APIKeyRepositoryInterface
 	secret string
 }
 
-// NewAPIKeyServiceV2 creates a new API key service with database
 func NewAPIKeyServiceV2(repo storage.APIKeyRepositoryInterface, secret string) *APIKeyServiceV2 {
 	return &APIKeyServiceV2{
 		repo:   repo,
@@ -28,7 +26,6 @@ func NewAPIKeyServiceV2(repo storage.APIKeyRepositoryInterface, secret string) *
 	}
 }
 
-// CreateAPIKey creates a new API key and stores it in the database
 func (s *APIKeyServiceV2) CreateAPIKey(ctx context.Context, userID uuid.UUID, name string, rateLimitPerMinute, rateLimitPerDay int, expiresAt *time.Time) (string, *storage.APIKey, error) {
 	// Generate random bytes
 	bytes := make([]byte, 32)
@@ -70,7 +67,6 @@ func (s *APIKeyServiceV2) CreateAPIKey(ctx context.Context, userID uuid.UUID, na
 	return key, apiKey, nil
 }
 
-// ValidateAPIKey validates an API key against the database
 func (s *APIKeyServiceV2) ValidateAPIKey(ctx context.Context, key string) (*storage.APIKey, error) {
 	// Create lookup hash to find the key
 	lookupHash := s.hashForLookup(key)
@@ -93,17 +89,14 @@ func (s *APIKeyServiceV2) ValidateAPIKey(ctx context.Context, key string) (*stor
 	return apiKey, nil
 }
 
-// ListAPIKeysByUser lists all API keys for a user
 func (s *APIKeyServiceV2) ListAPIKeysByUser(ctx context.Context, userID uuid.UUID) ([]*storage.APIKey, error) {
 	return s.repo.ListByUserID(ctx, userID)
 }
 
-// DeleteAPIKey deletes (revokes) an API key
 func (s *APIKeyServiceV2) DeleteAPIKey(ctx context.Context, keyID uuid.UUID) error {
 	return s.repo.Delete(ctx, keyID)
 }
 
-// hashForLookup creates a SHA256 hash for database lookup
 func (s *APIKeyServiceV2) hashForLookup(key string) string {
 	hash := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(hash[:])

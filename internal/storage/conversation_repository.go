@@ -10,17 +10,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ConversationRepository handles conversation and message database operations
 type ConversationRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewConversationRepository creates a new conversation repository
 func NewConversationRepository(pool *pgxpool.Pool) *ConversationRepository {
 	return &ConversationRepository{pool: pool}
 }
 
-// CreateConversation creates a new conversation
 func (r *ConversationRepository) CreateConversation(ctx context.Context, userID uuid.UUID, title *string, model *string) (*Conversation, error) {
 	conv := &Conversation{
 		ID:        uuid.New(),
@@ -62,7 +59,6 @@ func (r *ConversationRepository) CreateConversation(ctx context.Context, userID 
 	return conv, nil
 }
 
-// GetConversation retrieves a conversation by ID
 func (r *ConversationRepository) GetConversation(ctx context.Context, conversationID uuid.UUID, userID uuid.UUID) (*Conversation, error) {
 	conv := &Conversation{}
 
@@ -88,7 +84,6 @@ func (r *ConversationRepository) GetConversation(ctx context.Context, conversati
 	return conv, nil
 }
 
-// ListConversations retrieves all conversations for a user, ordered by updated_at DESC
 func (r *ConversationRepository) ListConversations(ctx context.Context, userID uuid.UUID, limit, offset int) ([]Conversation, error) {
 	query := `
 		SELECT id, user_id, title, model, created_at, updated_at
@@ -124,7 +119,6 @@ func (r *ConversationRepository) ListConversations(ctx context.Context, userID u
 	return conversations, nil
 }
 
-// UpdateConversation updates a conversation's title and/or model
 func (r *ConversationRepository) UpdateConversation(ctx context.Context, conversationID uuid.UUID, userID uuid.UUID, title *string, model *string) error {
 	query := `
 		UPDATE conversations
@@ -146,7 +140,6 @@ func (r *ConversationRepository) UpdateConversation(ctx context.Context, convers
 	return nil
 }
 
-// DeleteConversation deletes a conversation and all its messages (CASCADE)
 func (r *ConversationRepository) DeleteConversation(ctx context.Context, conversationID uuid.UUID, userID uuid.UUID) error {
 	query := `
 		DELETE FROM conversations
@@ -165,7 +158,6 @@ func (r *ConversationRepository) DeleteConversation(ctx context.Context, convers
 	return nil
 }
 
-// AddMessage adds a message to a conversation
 func (r *ConversationRepository) AddMessage(ctx context.Context, conversationID uuid.UUID, role string, content interface{}, metadata map[string]interface{}) (*Message, error) {
 	// Convert content to JSONB
 	contentJSON, err := json.Marshal(content)
@@ -245,7 +237,6 @@ func (r *ConversationRepository) AddMessage(ctx context.Context, conversationID 
 	return msg, nil
 }
 
-// GetMessages retrieves all messages for a conversation, ordered by created_at ASC
 func (r *ConversationRepository) GetMessages(ctx context.Context, conversationID uuid.UUID, userID uuid.UUID) ([]Message, error) {
 	// First verify the conversation belongs to the user
 	_, err := r.GetConversation(ctx, conversationID, userID)

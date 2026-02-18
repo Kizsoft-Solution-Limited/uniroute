@@ -10,13 +10,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// TunnelPersistence handles saving/loading tunnel information
 type TunnelPersistence struct {
 	filePath string
 	logger   zerolog.Logger
 }
 
-// TunnelState represents saved tunnel state (for backward compatibility - single tunnel)
+// For backward compatibility - single tunnel.
 type TunnelState struct {
 	TunnelID    string    `json:"tunnel_id"`
 	Subdomain   string    `json:"subdomain"`
@@ -29,12 +28,10 @@ type TunnelState struct {
 	LastUsed    time.Time `json:"last_used"`
 }
 
-// MultiTunnelState represents saved state for multiple tunnels
 type MultiTunnelState struct {
 	Tunnels map[string]*TunnelState `json:"tunnels"` // Key is tunnel name or local URL
 }
 
-// NewTunnelPersistence creates a new tunnel persistence manager
 func NewTunnelPersistence(logger zerolog.Logger) *TunnelPersistence {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -52,7 +49,6 @@ func NewTunnelPersistence(logger zerolog.Logger) *TunnelPersistence {
 	}
 }
 
-// Save saves tunnel state to file
 func (tp *TunnelPersistence) Save(state *TunnelState) error {
 	state.LastUsed = time.Now()
 	
@@ -73,12 +69,11 @@ func (tp *TunnelPersistence) Save(state *TunnelState) error {
 	return nil
 }
 
-// Load loads tunnel state from file
 func (tp *TunnelPersistence) Load() (*TunnelState, error) {
 	data, err := os.ReadFile(tp.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil // No saved state
+			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to read tunnel state: %w", err)
 	}
@@ -99,7 +94,7 @@ func (tp *TunnelPersistence) Load() (*TunnelState, error) {
 func (tp *TunnelPersistence) Clear() error {
 	if err := os.Remove(tp.filePath); err != nil {
 		if os.IsNotExist(err) {
-			return nil // Already cleared
+			return nil
 		}
 		return fmt.Errorf("failed to remove tunnel state: %w", err)
 	}
@@ -108,7 +103,6 @@ func (tp *TunnelPersistence) Clear() error {
 	return nil
 }
 
-// Exists checks if saved tunnel state exists
 func (tp *TunnelPersistence) Exists() bool {
 	_, err := os.Stat(tp.filePath)
 	return err == nil

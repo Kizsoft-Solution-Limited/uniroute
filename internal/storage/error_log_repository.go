@@ -10,17 +10,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ErrorLogRepository handles error log database operations
 type ErrorLogRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewErrorLogRepository creates a new error log repository
 func NewErrorLogRepository(pool *pgxpool.Pool) *ErrorLogRepository {
 	return &ErrorLogRepository{pool: pool}
 }
 
-// CreateErrorLog saves a new error log to the database
 func (r *ErrorLogRepository) CreateErrorLog(ctx context.Context, log *ErrorLog) error {
 	// Convert context map to JSONB
 	var contextJSON []byte
@@ -63,7 +60,6 @@ func (r *ErrorLogRepository) CreateErrorLog(ctx context.Context, log *ErrorLog) 
 	return nil
 }
 
-// GetErrorLogs retrieves error logs with optional filters
 func (r *ErrorLogRepository) GetErrorLogs(ctx context.Context, filters ErrorLogFilters) ([]ErrorLog, error) {
 	query := `
 		SELECT id, user_id, error_type, message, stack_trace, url, user_agent,
@@ -175,7 +171,6 @@ func (r *ErrorLogRepository) GetErrorLogs(ctx context.Context, filters ErrorLogF
 	return logs, nil
 }
 
-// MarkResolved marks an error log as resolved
 func (r *ErrorLogRepository) MarkResolved(ctx context.Context, id uuid.UUID) error {
 	query := `UPDATE error_logs SET resolved = true WHERE id = $1`
 	_, err := r.pool.Exec(ctx, query, id)
@@ -185,7 +180,6 @@ func (r *ErrorLogRepository) MarkResolved(ctx context.Context, id uuid.UUID) err
 	return nil
 }
 
-// ErrorLogFilters represents filters for querying error logs
 type ErrorLogFilters struct {
 	UserID    *uuid.UUID
 	ErrorType string

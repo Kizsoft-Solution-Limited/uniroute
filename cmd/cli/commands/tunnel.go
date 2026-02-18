@@ -96,11 +96,8 @@ func init() {
 	tunnelCmd.Flags().StringVar(&tunnelProtocol, "protocol", "http", "Tunnel protocol: http, tcp, tls, or udp")
 	tunnelCmd.Flags().StringVar(&tunnelHost, "host", "", "Request specific host/subdomain")
 	tunnelCmd.Flags().StringVar(&customDomain, "domain", "", "Set custom domain for tunnel (requires DNS configuration)")
-	
-	// Auto-detect local mode and set default tunnel server URL
+
 	defaultTunnelServer := getTunnelServerURL()
-	
-	// Advanced option - hide from help by default (users can still use it)
 	tunnelCmd.Flags().StringVarP(&tunnelServerURL, "server", "s", defaultTunnelServer, "Tunnel server URL (default: auto-detected based on environment)")
 	tunnelCmd.Flags().MarkHidden("server") // Hide from help output
 	
@@ -116,12 +113,10 @@ func runTunnel(cmd *cobra.Command, args []string) error {
 	log := logger.New()
 	persistence := tunnel.NewTunnelPersistence(log)
 
-	// Handle --init: create example config file
 	if createConfig {
 		return createExampleConfig(log)
 	}
 
-	// Handle list/clear commands
 	if listSaved {
 		return listAllTunnels()
 	}
@@ -134,21 +129,17 @@ func runTunnel(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Handle --all flag: start all enabled tunnels from config
 	if startAll {
 		return runAllTunnels(cmd, args)
 	}
 
-	// Always use built-in tunnel (default behavior)
 	return runBuiltInTunnel(cmd, args)
 }
 
-// runAllTunnels starts all enabled tunnels from configuration file
 func runAllTunnels(cmd *cobra.Command, args []string) error {
 	log := logger.New()
 	configManager := tunnel.NewConfigManager(log)
 
-	// Load enabled tunnels from config
 	tunnels, err := configManager.GetEnabledTunnels()
 	if err != nil {
 		return fmt.Errorf("failed to load tunnel configuration: %w", err)
@@ -197,7 +188,6 @@ func runAllTunnels(cmd *cobra.Command, args []string) error {
 	fmt.Println(color.Cyan(fmt.Sprintf("🚀 Starting %d tunnel(s)...", len(tunnels))))
 	fmt.Println()
 
-	// Start each tunnel in a goroutine
 	var wg sync.WaitGroup
 	errors := make(chan error, len(tunnels))
 
@@ -211,11 +201,9 @@ func runAllTunnels(cmd *cobra.Command, args []string) error {
 		}(tunnelConfig)
 	}
 
-	// Wait for all tunnels to start
 	wg.Wait()
 	close(errors)
 
-	// Check for errors
 	var hasErrors bool
 	for err := range errors {
 		fmt.Println(color.Red(fmt.Sprintf("❌ %s", err.Error())))
@@ -230,7 +218,6 @@ func runAllTunnels(cmd *cobra.Command, args []string) error {
 	fmt.Println(color.Green("✓ All tunnels started successfully"))
 	fmt.Println(color.Gray("Press Ctrl+C to stop all tunnels"))
 
-	// Wait for interrupt
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	<-sigChan
@@ -240,11 +227,9 @@ func runAllTunnels(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// startTunnelFromConfig starts a single tunnel from configuration
 func startTunnelFromConfig(tc tunnel.TunnelConfig) error {
 	log := logger.New()
 
-	// Determine local URL based on protocol
 	var localURL string
 	if tc.Protocol == "http" {
 		if !strings.HasPrefix(tc.LocalAddr, "http://") && !strings.HasPrefix(tc.LocalAddr, "https://") {
@@ -253,11 +238,9 @@ func startTunnelFromConfig(tc tunnel.TunnelConfig) error {
 			localURL = tc.LocalAddr
 		}
 	} else {
-		// For TCP/TLS, use host:port format
 		localURL = tc.LocalAddr
 	}
 
-	// Use server URL from config, or auto-detect, or use default
 	serverURL := tc.ServerURL
 	if serverURL == "" {
 		if tunnelServerURL != "" && tunnelServerURL != "tunnel.uniroute.co" {
@@ -273,18 +256,14 @@ func startTunnelFromConfig(tc tunnel.TunnelConfig) error {
 		color.Gray(tc.Protocol),
 		color.Cyan(localURL))
 
-	// Create tunnel client with protocol from config
 	client := tunnel.NewTunnelClientWithOptions(serverURL, localURL, tc.Protocol, tc.Host, log)
 
-	// Connect to tunnel server
 	if err := client.Connect(); err != nil {
 		errStr := err.Error()
-		// Check if this is an authentication error - automatically log out
 		if strings.Contains(strings.ToLower(errStr), "token") ||
 		   strings.Contains(strings.ToLower(errStr), "authentication") ||
 		   strings.Contains(strings.ToLower(errStr), "expired") ||
 		   strings.Contains(strings.ToLower(errStr), "invalid") {
-			// Clear expired/invalid token
 			clearExpiredToken()
 			log.Warn().Msg("Authentication failed - token cleared. Please run 'uniroute auth login' to authenticate again")
 			return fmt.Errorf("authentication failed: %w\n\nPlease run 'uniroute auth login' to authenticate again", err)
@@ -292,7 +271,6 @@ func startTunnelFromConfig(tc tunnel.TunnelConfig) error {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 
-	// Get tunnel info
 	info := client.GetTunnelInfo()
 	if info == nil {
 		return fmt.Errorf("failed to get tunnel information")
@@ -300,23 +278,16 @@ func startTunnelFromConfig(tc tunnel.TunnelConfig) error {
 
 	fmt.Printf("      %s %s\n", color.Gray("Public URL:"), color.Cyan(info.PublicURL))
 
-	// Keep tunnel running (in real implementation, this would be managed)
-	// For now, just log that it's started
 	return nil
 }
 
-// runBuiltInTunnel uses the built-in tunnel client
 func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
-	// Auto-detect tunnel server URL if not explicitly set or if using default production URL
-	// Always re-check to ensure we use local mode when appropriate
 	if tunnelServerURL == "" || 
 		tunnelServerURL == "tunnel.uniroute.co" || 
 		tunnelServerURL == "https://tunnel.uniroute.co" {
 		tunnelServerURL = getTunnelServerURL()
 	}
-	
-	// Check if using public server - require authentication
-	// Allow localhost for development/testing without auth
+
 	isLocalTunnel := tunnelServerURL == "localhost:8055" ||
 		tunnelServerURL == "http://localhost:8055" ||
 		tunnelServerURL == "localhost:8080" ||
@@ -336,64 +307,47 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 
 	log := logger.New()
 
-	// Validate protocol
 	if tunnelProtocol != "http" && tunnelProtocol != "tcp" && tunnelProtocol != "tls" && tunnelProtocol != "udp" {
 		return fmt.Errorf("invalid protocol '%s'. Must be: http, tcp, tls, or udp", tunnelProtocol)
 	}
 
-	// Determine local URL based on protocol
 	var localURL string
 	if tunnelProtocol == "http" {
 		localURL = fmt.Sprintf("http://localhost:%s", tunnelPort)
 	} else {
-		// For TCP/TLS, use host:port format
 		localURL = fmt.Sprintf("localhost:%s", tunnelPort)
 	}
 
-	// Use Bubble Tea for UI if available, otherwise fall back to ANSI approach
-	// For now, we'll use Bubble Tea
-	// Note: "Starting UniRoute Tunnel..." is now shown in the Bubble Tea header
-
-	// Create tunnel client with protocol and host
 	client := tunnel.NewTunnelClientWithOptions(tunnelServerURL, localURL, tunnelProtocol, tunnelHost, log)
-	
-	// Set auth token if user is authenticated (for automatic tunnel-user association)
+
 	token := getAuthToken()
 	if token != "" {
 		client.SetToken(token)
 		log.Debug().Msg("Auth token set - tunnel will be automatically associated with your account")
 	}
-	
-	// Request handler is set up in Bubble Tea model
 
-	// If --new flag is set, clear resume info and set forceNew flag to force new tunnel
 	if forceNew {
-		client.ClearResumeInfo() // This also sets forceNew = true internally
-		client.SetForceNew(true)  // Explicitly set forceNew flag
+		client.ClearResumeInfo()
+		client.SetForceNew(true)
 		log.Info().Msg("--new flag set: forcing new tunnel creation (not resuming or auto-finding)")
 	}
 
-	// If --resume flag is set, use that subdomain instead of saved state
 	if resumeSubdomain != "" {
-		// Load saved state to get tunnel ID if available
 		persistence := tunnel.NewTunnelPersistence(log)
 		if state, err := persistence.Load(); err == nil && state != nil {
 			if state.Subdomain == resumeSubdomain {
-				// Use saved tunnel ID if subdomain matches
 				client.SetResumeInfo(resumeSubdomain, state.TunnelID)
 				log.Info().
 					Str("subdomain", resumeSubdomain).
 					Str("tunnel_id", state.TunnelID).
 					Msg("Resuming tunnel with saved tunnel ID")
 			} else {
-				// Just use subdomain, let server find the tunnel
 				client.SetResumeInfo(resumeSubdomain, "")
 				log.Info().
 					Str("subdomain", resumeSubdomain).
 					Msg("Resuming tunnel by subdomain")
 			}
 		} else {
-			// No saved state, just use subdomain
 			client.SetResumeInfo(resumeSubdomain, "")
 			log.Info().
 				Str("subdomain", resumeSubdomain).
@@ -401,15 +355,12 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Connect to tunnel server
 	if err := client.Connect(); err != nil {
 		errStr := err.Error()
-		// Check if this is an authentication error - automatically log out
 		if strings.Contains(strings.ToLower(errStr), "token") ||
 		   strings.Contains(strings.ToLower(errStr), "authentication") ||
 		   strings.Contains(strings.ToLower(errStr), "expired") ||
 		   strings.Contains(strings.ToLower(errStr), "invalid") {
-			// Clear expired/invalid token
 			clearExpiredToken()
 			log.Warn().Msg("Authentication failed - token cleared. Please run 'uniroute auth login' to authenticate again")
 			return fmt.Errorf("authentication failed: %w\n\nPlease run 'uniroute auth login' to authenticate again", err)
@@ -417,13 +368,11 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to connect to tunnel server: %w", err)
 	}
 
-	// Get tunnel info
 	info := client.GetTunnelInfo()
 	if info == nil {
 		return fmt.Errorf("failed to get tunnel information")
 	}
 
-	// Set custom domain if provided
 	if customDomain != "" {
 		if err := setCustomDomain(info.ID, customDomain, token); err != nil {
 			log.Warn().Err(err).Str("domain", customDomain).Msg("Failed to set custom domain (tunnel will still work with subdomain)")
@@ -432,7 +381,6 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Get account display
 	accountDisplay := "Free"
 	homeDir, err := os.UserHomeDir()
 	if err == nil {
@@ -447,34 +395,25 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Use Bubble Tea for UI
 	return runTunnelWithBubbleTea(client, info, accountDisplay, tunnelServerURL, localURL)
 }
 
-// listAllTunnels lists all tunnels (both from config and from server)
 func listAllTunnels() error {
 	fmt.Println()
 	fmt.Println(color.Cyan("📋 UniRoute Tunnels"))
 	fmt.Println()
 
-	// List tunnels from local config file
 	listLocalTunnels()
-
-	// List tunnels from server (if authenticated)
 	listServerTunnels()
-
-	// Show usage
 	showTunnelUsage()
 
 	return nil
 }
 
-// createExampleConfig creates an example tunnel configuration file
 func createExampleConfig(log zerolog.Logger) error {
 	configManager := tunnel.NewConfigManager(log)
 	configPath := configManager.GetConfigPath()
 
-	// Check if config file already exists
 	if _, err := os.Stat(configPath); err == nil {
 		fmt.Println(color.Yellow(fmt.Sprintf("⚠️  Configuration file already exists at: %s", configPath)))
 		fmt.Println()
@@ -486,7 +425,6 @@ func createExampleConfig(log zerolog.Logger) error {
 		return nil
 	}
 
-	// Create example config
 	exampleConfig := &tunnel.TunnelConfigFile{
 		Version: "1.0",
 		Tunnels: []tunnel.TunnelConfig{
@@ -523,7 +461,6 @@ func createExampleConfig(log zerolog.Logger) error {
 		},
 	}
 
-	// Save config
 	if err := configManager.Save(exampleConfig); err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
@@ -537,7 +474,6 @@ func createExampleConfig(log zerolog.Logger) error {
 	return nil
 }
 
-// listLocalTunnels lists tunnels from the local config file
 func listLocalTunnels() {
 	log := logger.New()
 	configManager := tunnel.NewConfigManager(log)
@@ -557,7 +493,6 @@ func listLocalTunnels() {
 	fmt.Println(color.Bold("📁 Local Configuration Tunnels"))
 	fmt.Println()
 
-	// Table header
 	fmt.Printf("  %-20s %-10s %-25s %-10s\n",
 		color.Bold("Name"),
 		color.Bold("Protocol"),
@@ -565,7 +500,6 @@ func listLocalTunnels() {
 		color.Bold("Status"))
 	fmt.Println()
 
-	// Table rows
 	for _, tc := range config.Tunnels {
 		status := color.Red("Disabled")
 		if tc.Enabled {
@@ -580,7 +514,6 @@ func listLocalTunnels() {
 	fmt.Println()
 }
 
-// listServerTunnels lists tunnels from the server (subdomain tunnels)
 func listServerTunnels() {
 	token := getAuthToken()
 	if token == "" {
@@ -589,13 +522,11 @@ func listServerTunnels() {
 		return
 	}
 
-	// Get tunnel server URL
 	serverURL := getTunnelServerURL()
 	if serverURL == "" {
 		serverURL = "tunnel.uniroute.co"
 	}
 
-	// Make API request to list tunnels
 	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/tunnels", serverURL), nil)
 	if err != nil {
@@ -643,7 +574,6 @@ func listServerTunnels() {
 	fmt.Println(color.Bold("🌐 Server Tunnels (Subdomain Tunnels)"))
 	fmt.Println()
 
-	// Table header
 	fmt.Printf("  %-20s %-10s %-30s %-10s\n",
 		color.Bold("Subdomain"),
 		color.Bold("Protocol"),
@@ -651,7 +581,6 @@ func listServerTunnels() {
 		color.Bold("Status"))
 	fmt.Println()
 
-	// Table rows
 	for _, t := range result.Tunnels {
 		publicURL := fmt.Sprintf("http://%s.localhost:8055", t.Subdomain)
 		status := color.Green("Active")
@@ -667,7 +596,6 @@ func listServerTunnels() {
 	fmt.Println()
 }
 
-// showTunnelUsage shows usage examples and help
 func showTunnelUsage() {
 	fmt.Println(color.Bold("📖 Usage Examples"))
 	fmt.Println()
@@ -713,15 +641,12 @@ func showTunnelUsage() {
 	fmt.Println()
 }
 
-// setCustomDomain sets a custom domain for a tunnel via API
 func setCustomDomain(tunnelID, domain, token string) error {
-	// Get API URL from auth config or environment
 	var apiURL string
 	if envURL := os.Getenv("UNIROUTE_API_URL"); envURL != "" {
 		apiURL = envURL
 	} else {
-		// Try to load from auth config
-	homeDir, err := os.UserHomeDir()
+		homeDir, err := os.UserHomeDir()
 		if err == nil {
 	configPath := filepath.Join(homeDir, ".uniroute", "auth.json")
 			if data, err := os.ReadFile(configPath); err == nil {
@@ -741,20 +666,17 @@ func setCustomDomain(tunnelID, domain, token string) error {
 		apiURL = "https://app.uniroute.co"
 	}
 
-	// Ensure URL has protocol
 	if !strings.HasPrefix(apiURL, "http://") && !strings.HasPrefix(apiURL, "https://") {
 		apiURL = "https://" + apiURL
 	}
 
-	// Create request
 	reqBody := map[string]string{"domain": domain}
 	jsonData, err := json.Marshal(reqBody)
-		if err != nil {
+	if err != nil {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	// Use /auth/tunnels for JWT auth (frontend/CLI), /v1/tunnels for API keys
 	endpoint := fmt.Sprintf("%s/auth/tunnels/%s/domain", apiURL, tunnelID)
 	req, err := http.NewRequest("POST", endpoint, strings.NewReader(string(jsonData)))
 	if err != nil {

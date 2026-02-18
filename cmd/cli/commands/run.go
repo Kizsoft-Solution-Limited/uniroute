@@ -48,7 +48,6 @@ func init() {
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
-	// Parse command: everything after "--", or all args
 	var userCmd []string
 	for i, a := range args {
 		if a == "--" {
@@ -127,12 +126,9 @@ func runRun(cmd *cobra.Command, args []string) error {
 	return runBuiltInTunnel(cmd, args)
 }
 
-// parsePortFromCommand extracts port from common flags in the user's command.
-// Supports: --port=8080, --port 8080, -p 8080, --port:8080 (Laravel-style).
 func parsePortFromCommand(args []string) string {
 	for i, a := range args {
 		a = strings.TrimSpace(a)
-		// --port=8080 or --port:8080
 		if strings.HasPrefix(a, "--port=") || strings.HasPrefix(a, "--port:") {
 			port := strings.TrimPrefix(a, "--port=")
 			port = strings.TrimPrefix(port, "--port:")
@@ -140,7 +136,6 @@ func parsePortFromCommand(args []string) string {
 				return port
 			}
 		}
-		// --port 8080 or -p 8080 (next arg is the port)
 		if (a == "--port" || a == "-p") && i+1 < len(args) {
 			port := strings.TrimSpace(args[i+1])
 			if _, err := strconv.Atoi(port); err == nil {

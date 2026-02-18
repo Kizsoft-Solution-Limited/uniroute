@@ -8,7 +8,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// PendingRequest represents a pending HTTP request waiting for response
 type PendingRequest struct {
 	RequestID   string
 	ResponseChan chan *HTTPResponse
@@ -17,7 +16,6 @@ type PendingRequest struct {
 	Timeout     time.Duration
 }
 
-// RequestTracker tracks pending requests for request/response matching
 type RequestTracker struct {
 	pendingRequests map[string]*PendingRequest
 	mu              sync.RWMutex
@@ -33,17 +31,14 @@ func NewRequestTracker(logger zerolog.Logger) *RequestTracker {
 	}
 }
 
-// RegisterRequest registers a new pending request
 func (rt *RequestTracker) RegisterRequest(requestID string) (*PendingRequest, error) {
 	return rt.RegisterRequestWithTimeout(requestID, rt.defaultTimeout)
 }
 
-// RegisterRequestWithTimeout registers a new pending request with custom timeout
 func (rt *RequestTracker) RegisterRequestWithTimeout(requestID string, timeout time.Duration) (*PendingRequest, error) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 
-	// Check if request already exists
 	if _, exists := rt.pendingRequests[requestID]; exists {
 		return nil, ErrDuplicateRequestID
 	}
@@ -58,7 +53,6 @@ func (rt *RequestTracker) RegisterRequestWithTimeout(requestID string, timeout t
 
 	rt.pendingRequests[requestID] = req
 
-	// Auto-cleanup after timeout
 	go rt.cleanupAfterTimeout(requestID, timeout)
 
 	return req, nil
@@ -102,7 +96,6 @@ func (rt *RequestTracker) FailRequest(requestID string, err error) error {
 	}
 }
 
-// GetRequest retrieves a pending request
 func (rt *RequestTracker) GetRequest(requestID string) (*PendingRequest, bool) {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
@@ -120,7 +113,6 @@ func (rt *RequestTracker) cleanupAfterTimeout(requestID string, timeout time.Dur
 		delete(rt.pendingRequests, requestID)
 		rt.mu.Unlock()
 
-		// Send timeout error
 		select {
 		case req.ErrorChan <- ErrRequestTimeout:
 		default:
@@ -147,14 +139,12 @@ func (rt *RequestTracker) CleanupStaleRequests(maxAge time.Duration) {
 	}
 }
 
-// GetPendingCount returns the number of pending requests
 func (rt *RequestTracker) GetPendingCount() int {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
 	return len(rt.pendingRequests)
 }
 
-// WaitForResponse waits for a response to a pending request
 func (req *PendingRequest) WaitForResponse(ctx context.Context) (*HTTPResponse, error) {
 	timeout := req.Timeout
 	if timeout > 120*time.Second {

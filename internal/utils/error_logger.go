@@ -11,13 +11,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// ErrorLogger provides utilities for logging errors to the database
 type ErrorLogger struct {
 	errorLogRepo *storage.ErrorLogRepository
 	logger       zerolog.Logger
 }
 
-// NewErrorLogger creates a new error logger
 func NewErrorLogger(errorLogRepo *storage.ErrorLogRepository, logger zerolog.Logger) *ErrorLogger {
 	return &ErrorLogger{
 		errorLogRepo: errorLogRepo,
@@ -25,16 +23,13 @@ func NewErrorLogger(errorLogRepo *storage.ErrorLogRepository, logger zerolog.Log
 	}
 }
 
-// LogError logs a backend error to the database
 func (e *ErrorLogger) LogError(ctx context.Context, err error, contextData map[string]interface{}, userID *uuid.UUID) {
 	if err == nil {
 		return
 	}
 
-	// Get stack trace
 	stackTrace := getStackTrace()
 
-	// Get caller information
 	pc, file, line, ok := runtime.Caller(1)
 	var callerInfo string
 	if ok {
@@ -46,14 +41,12 @@ func (e *ErrorLogger) LogError(ctx context.Context, err error, contextData map[s
 		}
 	}
 
-	// Add caller info to context
 	if contextData == nil {
 		contextData = make(map[string]interface{})
 	}
 	contextData["caller"] = callerInfo
 	contextData["error_type"] = "backend"
 
-	// Create error log
 	errorLog := &storage.ErrorLog{
 		UserID:     userID,
 		ErrorType:  "exception",
@@ -64,7 +57,6 @@ func (e *ErrorLogger) LogError(ctx context.Context, err error, contextData map[s
 		Resolved:   false,
 	}
 
-	// Log to database (async, don't block)
 	go func() {
 		if err := e.errorLogRepo.CreateErrorLog(ctx, errorLog); err != nil {
 			e.logger.Error().Err(err).Msg("Failed to log error to database")
@@ -76,7 +68,6 @@ func (e *ErrorLogger) LogError(ctx context.Context, err error, contextData map[s
 		}
 	}()
 
-	// Also log to console
 	e.logger.Error().
 		Err(err).
 		Fields(contextData).
@@ -84,7 +75,6 @@ func (e *ErrorLogger) LogError(ctx context.Context, err error, contextData map[s
 		Msg("Backend error occurred")
 }
 
-// LogErrorWithContext logs an error with additional context
 func (e *ErrorLogger) LogErrorWithContext(ctx context.Context, err error, message string, contextData map[string]interface{}, userID *uuid.UUID) {
 	if contextData == nil {
 		contextData = make(map[string]interface{})
@@ -93,7 +83,6 @@ func (e *ErrorLogger) LogErrorWithContext(ctx context.Context, err error, messag
 	e.LogError(ctx, err, contextData, userID)
 }
 
-// LogWarning logs a warning (non-critical error)
 func (e *ErrorLogger) LogWarning(ctx context.Context, message string, contextData map[string]interface{}, userID *uuid.UUID) {
 	if contextData == nil {
 		contextData = make(map[string]interface{})
@@ -109,7 +98,6 @@ func (e *ErrorLogger) LogWarning(ctx context.Context, message string, contextDat
 		Resolved:  false,
 	}
 
-	// Log to database (async)
 	go func() {
 		if err := e.errorLogRepo.CreateErrorLog(ctx, errorLog); err != nil {
 			e.logger.Error().Err(err).Msg("Failed to log warning to database")
@@ -121,16 +109,12 @@ func (e *ErrorLogger) LogWarning(ctx context.Context, message string, contextDat
 		Msg(message)
 }
 
-// getStackTrace gets a formatted stack trace
 func getStackTrace() string {
 	buf := make([]byte, 4096)
 	n := runtime.Stack(buf, false)
 	stack := string(buf[:n])
-	
-	// Clean up the stack trace (remove goroutine info, etc.)
 	lines := strings.Split(stack, "\n")
 	if len(lines) > 10 {
-		// Limit stack trace to 10 frames
 		lines = lines[:10]
 	}
 	return strings.Join(lines, "\n")

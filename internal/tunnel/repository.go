@@ -13,13 +13,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// TunnelRepository handles tunnel database operations
 type TunnelRepository struct {
 	pool   *pgxpool.Pool
 	logger zerolog.Logger
 }
 
-// NewTunnelRepository creates a new tunnel repository
 func NewTunnelRepository(pool *pgxpool.Pool, logger zerolog.Logger) *TunnelRepository {
 	return &TunnelRepository{
 		pool:   pool,
@@ -27,12 +25,8 @@ func NewTunnelRepository(pool *pgxpool.Pool, logger zerolog.Logger) *TunnelRepos
 	}
 }
 
-// CreateTunnel creates a new tunnel in the database
-// If a tunnel with the same subdomain already exists, it updates the LocalURL, PublicURL, and status
+// If a tunnel with the same subdomain already exists, it updates the LocalURL, PublicURL, and status (UPSERT).
 func (r *TunnelRepository) CreateTunnel(ctx context.Context, tunnel *Tunnel) error {
-	// Use UPSERT (INSERT ... ON CONFLICT UPDATE) to handle case where subdomain already exists
-	// This ensures LocalURL is always updated when creating a tunnel with an existing subdomain
-	// When conflict occurs, we update the existing record and return its ID (not the new one we tried to insert)
 	query := `
 		INSERT INTO tunnels (
 			id, user_id, subdomain, custom_domain, local_url, public_url,
@@ -65,15 +59,12 @@ func (r *TunnelRepository) CreateTunnel(ctx context.Context, tunnel *Tunnel) err
 		if err == nil {
 			tunnelID = parsed
 		} else {
-			// Tunnel ID is not a valid UUID - log warning and generate new one
-			// This can happen if old hex-format IDs are still being used
 			r.logger.Warn().
 				Err(err).
 				Str("invalid_tunnel_id", tunnel.ID).
 				Str("tunnel_id_length", fmt.Sprintf("%d", len(tunnel.ID))).
 				Msg("Tunnel ID is not a valid UUID format - generating new UUID. This may cause tunnel ID mismatch.")
 			tunnelID = uuid.New()
-			// Update the tunnel.ID to the new UUID so it matches what's saved
 			tunnel.ID = tunnelID.String()
 		}
 	} else {
@@ -81,7 +72,6 @@ func (r *TunnelRepository) CreateTunnel(ctx context.Context, tunnel *Tunnel) err
 		tunnel.ID = tunnelID.String()
 	}
 
-	// Infer protocol from LocalURL if not set
 	protocol := tunnel.Protocol
 	if protocol == "" {
 		if strings.HasPrefix(tunnel.LocalURL, "http://") || strings.HasPrefix(tunnel.LocalURL, "https://") {
@@ -120,8 +110,6 @@ func (r *TunnelRepository) CreateTunnel(ctx context.Context, tunnel *Tunnel) err
 		return err
 	}
 
-	// Use the returned ID (which might be the existing tunnel's ID if there was a conflict)
-	// If returnedID != tunnelID, it means we updated an existing tunnel
 	if returnedID != tunnelID {
 		r.logger.Debug().
 			Str("subdomain", tunnel.Subdomain).
@@ -133,7 +121,6 @@ func (r *TunnelRepository) CreateTunnel(ctx context.Context, tunnel *Tunnel) err
 	return nil
 }
 
-// GetTunnelByCustomDomain retrieves a tunnel by custom domain
 func (r *TunnelRepository) GetTunnelByCustomDomain(ctx context.Context, domain string) (*Tunnel, error) {
 	query := `
 		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
@@ -186,8 +173,6 @@ func (r *TunnelRepository) GetTunnelByCustomDomain(ctx context.Context, domain s
 	return &tunnel, nil
 }
 
-// GetTunnelBySubdomain retrieves a tunnel by subdomain (regardless of status)
-// This allows resuming inactive tunnels
 func (r *TunnelRepository) GetTunnelBySubdomain(ctx context.Context, subdomain string) (*Tunnel, error) {
 	query := `
 		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
@@ -243,7 +228,6 @@ func (r *TunnelRepository) GetTunnelBySubdomain(ctx context.Context, subdomain s
 	return &tunnel, nil
 }
 
-// GetTunnelByID retrieves a tunnel by ID
 func (r *TunnelRepository) GetTunnelByID(ctx context.Context, tunnelID uuid.UUID) (*Tunnel, error) {
 	query := `
 		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
@@ -297,7 +281,6 @@ func (r *TunnelRepository) GetTunnelByID(ctx context.Context, tunnelID uuid.UUID
 	return &tunnel, nil
 }
 
-// ListAllTunnels retrieves all tunnels (admin view)
 func (r *TunnelRepository) ListAllTunnels(ctx context.Context) ([]*Tunnel, error) {
 	query := `
 		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
@@ -359,9 +342,8 @@ func (r *TunnelRepository) ListAllTunnels(ctx context.Context) ([]*Tunnel, error
 	return tunnels, nil
 }
 
-// ListTunnelsByUser retrieves all tunnels for a user
-// Optimized query: Uses indexes on user_id and status, orders by status (active first) then created_at
-// If protocol is provided, filters by protocol to ensure correct tunnel type is resumed
+// Optimized query: Uses indexes on user_id and status, orders by status (active first) then created_at.
+// If protocol is provided, filters by protocol to ensure correct tunnel type is resumed.
 func (r *TunnelRepository) ListTunnelsByUser(ctx context.Context, userID uuid.UUID, protocolFilter string) ([]*Tunnel, error) {
 	// Optimized query: Prefer active tunnels, then most recent
 	// Uses composite index idx_tunnels_user_id_status_protocol for faster lookups
@@ -446,7 +428,6 @@ func (r *TunnelRepository) ListTunnelsByUser(ctx context.Context, userID uuid.UU
 	return tunnels, rows.Err()
 }
 
-// UpdateTunnelStatus updates tunnel status
 func (r *TunnelRepository) UpdateTunnelStatus(ctx context.Context, tunnelID, status string) error {
 	query := `
 		UPDATE tunnels
@@ -458,13 +439,10 @@ func (r *TunnelRepository) UpdateTunnelStatus(ctx context.Context, tunnelID, sta
 	return err
 }
 
-// UpdateTunnelActivity updates tunnel last active time and request count
-// If requestCount is 0, it only updates last_active_at without changing request_count
-// If requestCount > 0, it increments the request_count by 1
+// If requestCount is 0, only last_active_at is updated; if > 0, request_count is incremented.
 func (r *TunnelRepository) UpdateTunnelActivity(ctx context.Context, tunnelID string, requestCount int64) error {
 	var query string
 	if requestCount == 0 {
-		// Only update last_active_at, don't touch request_count
 		query = `
 			UPDATE tunnels
 			SET last_active_at = NOW(), updated_at = NOW()
@@ -473,7 +451,6 @@ func (r *TunnelRepository) UpdateTunnelActivity(ctx context.Context, tunnelID st
 		_, err := r.pool.Exec(ctx, query, tunnelID)
 		return err
 	} else {
-		// Increment request_count by 1 (to avoid double counting)
 		query = `
 			UPDATE tunnels
 			SET last_active_at = NOW(), request_count = request_count + 1, updated_at = NOW()
@@ -484,7 +461,6 @@ func (r *TunnelRepository) UpdateTunnelActivity(ctx context.Context, tunnelID st
 	}
 }
 
-// UpdateTunnelLocalURL updates tunnel LocalURL
 func (r *TunnelRepository) UpdateTunnelLocalURL(ctx context.Context, tunnelID, localURL string) error {
 	query := `
 		UPDATE tunnels
@@ -496,7 +472,6 @@ func (r *TunnelRepository) UpdateTunnelLocalURL(ctx context.Context, tunnelID, l
 	return err
 }
 
-// UpdateTunnelCustomDomain updates tunnel custom domain
 func (r *TunnelRepository) UpdateTunnelCustomDomain(ctx context.Context, tunnelID uuid.UUID, customDomain string) error {
 	query := `
 		UPDATE tunnels
@@ -534,7 +509,6 @@ func (r *TunnelRepository) AssociateTunnelWithUser(ctx context.Context, tunnelID
 	return nil
 }
 
-// CreateSession creates a new tunnel session
 func (r *TunnelRepository) CreateSession(ctx context.Context, session *TunnelSession) error {
 	query := `
 		INSERT INTO tunnel_sessions (
@@ -573,7 +547,6 @@ func (r *TunnelRepository) CreateSession(ctx context.Context, session *TunnelSes
 	return nil
 }
 
-// UpdateSessionStatus updates session status
 func (r *TunnelRepository) UpdateSessionStatus(ctx context.Context, sessionID, status string) error {
 	query := `
 		UPDATE tunnel_sessions
@@ -585,7 +558,6 @@ func (r *TunnelRepository) UpdateSessionStatus(ctx context.Context, sessionID, s
 	return err
 }
 
-// GetTokenInfo retrieves token information
 func (r *TunnelRepository) GetTokenInfo(ctx context.Context, tokenHash string) (*TokenInfo, error) {
 	query := `
 		SELECT token_hash, name, expires_at, created_at, last_used_at, is_active
@@ -623,7 +595,6 @@ func (r *TunnelRepository) GetTokenInfo(ctx context.Context, tokenHash string) (
 	return &info, nil
 }
 
-// UpdateTokenLastUsed updates token last used timestamp
 func (r *TunnelRepository) UpdateTokenLastUsed(ctx context.Context, tokenHash string) error {
 	query := `
 		UPDATE tunnel_tokens
@@ -635,7 +606,6 @@ func (r *TunnelRepository) UpdateTokenLastUsed(ctx context.Context, tokenHash st
 	return err
 }
 
-// TunnelSession represents a tunnel session
 type TunnelSession struct {
 	ID          string
 	TunnelID    string
@@ -645,7 +615,6 @@ type TunnelSession struct {
 	Status      string
 }
 
-// CreateTunnelRequest creates a tunnel request log entry
 func (r *TunnelRepository) CreateTunnelRequest(ctx context.Context, req *TunnelRequestLog) error {
 	query := `
 		INSERT INTO tunnel_requests (
@@ -667,7 +636,6 @@ func (r *TunnelRepository) CreateTunnelRequest(ctx context.Context, req *TunnelR
 		return err
 	}
 
-	// Convert headers to JSONB
 	var requestHeadersJSON []byte
 	if req.RequestHeaders != nil {
 		requestHeadersJSON, _ = json.Marshal(req.RequestHeaders)
@@ -700,7 +668,6 @@ func (r *TunnelRepository) CreateTunnelRequest(ctx context.Context, req *TunnelR
 	return err
 }
 
-// GetTunnelRequest retrieves a tunnel request by ID
 func (r *TunnelRepository) GetTunnelRequest(ctx context.Context, requestID string) (*TunnelRequestLog, error) {
 	query := `
 		SELECT id, tunnel_id, request_id, method, path, query_string,
@@ -741,7 +708,6 @@ func (r *TunnelRepository) GetTunnelRequest(ctx context.Context, requestID strin
 
 	req.TunnelID = tunnelUUID.String()
 
-	// Parse headers JSON
 	if len(requestHeadersJSON) > 0 {
 		json.Unmarshal(requestHeadersJSON, &req.RequestHeaders)
 	}
@@ -752,7 +718,6 @@ func (r *TunnelRepository) GetTunnelRequest(ctx context.Context, requestID strin
 	return &req, nil
 }
 
-// ListTunnelRequests retrieves tunnel requests with filtering
 func (r *TunnelRepository) ListTunnelRequests(ctx context.Context, tunnelID string, limit, offset int, method, pathFilter string) ([]*TunnelRequestLog, error) {
 	query := `
 		SELECT id, tunnel_id, request_id, method, path, query_string,
@@ -819,7 +784,6 @@ func (r *TunnelRepository) ListTunnelRequests(ctx context.Context, tunnelID stri
 
 		req.TunnelID = tunnelUUID.String()
 
-		// Parse headers JSON
 		if len(requestHeadersJSON) > 0 {
 			json.Unmarshal(requestHeadersJSON, &req.RequestHeaders)
 		}
@@ -833,7 +797,6 @@ func (r *TunnelRepository) ListTunnelRequests(ctx context.Context, tunnelID stri
 	return requests, rows.Err()
 }
 
-// TunnelRequestLog represents a logged tunnel request
 type TunnelRequestLog struct {
 	ID              uuid.UUID
 	TunnelID        string
@@ -854,29 +817,20 @@ type TunnelRequestLog struct {
 	CreatedAt       time.Time
 }
 
-// TunnelStatsPoint represents a single data point in tunnel statistics
 type TunnelStatsPoint struct {
 	Time           time.Time `json:"time"`
 	ActiveTunnels  int       `json:"active_tunnels"`
 	TotalTunnels   int       `json:"total_tunnels"`
 }
 
-// GetTunnelStatsOverTime returns tunnel statistics grouped by time intervals
-// For 6h/24h: Returns ONE aggregated point with total tunnels created in that period
-// For 7d: Returns one point per day with total tunnels created on that day
-// If userID is uuid.Nil, returns stats for ALL tunnels (admin view)
-// intervalHours can be fractional (e.g., 0.25 for 15 minutes)
 func (r *TunnelRepository) GetTunnelStatsOverTime(ctx context.Context, userID uuid.UUID, startTime, endTime time.Time, intervalHours float64) ([]TunnelStatsPoint, error) {
-	// Get tunnels - all tunnels if userID is Nil (admin), otherwise user's tunnels
 	var tunnels []*Tunnel
 	var err error
-	
+
 	if userID == uuid.Nil {
-		// Admin view: get all tunnels
 		r.logger.Debug().Msg("GetTunnelStatsOverTime: fetching all tunnels (admin view)")
 		tunnels, err = r.ListAllTunnels(ctx)
 	} else {
-		// User view: get user's tunnels
 		r.logger.Debug().Str("user_id", userID.String()).Msg("GetTunnelStatsOverTime: fetching user tunnels")
 		tunnels, err = r.ListTunnelsByUser(ctx, userID, "")
 	}
@@ -887,7 +841,6 @@ func (r *TunnelRepository) GetTunnelStatsOverTime(ctx context.Context, userID uu
 
 	r.logger.Debug().Int("tunnel_count", len(tunnels)).Msg("GetTunnelStatsOverTime: tunnels fetched")
 
-	// If no tunnels, return empty array (not nil to avoid frontend issues)
 	if len(tunnels) == 0 {
 		r.logger.Debug().Msg("GetTunnelStatsOverTime: no tunnels found, returning empty array")
 		return []TunnelStatsPoint{}, nil
@@ -912,7 +865,6 @@ func (r *TunnelRepository) GetTunnelStatsOverTime(ctx context.Context, userID uu
 	}
 }
 
-// aggregateByPeriod returns exactly one data point (current tunnel counts for 6h/24h views).
 func (r *TunnelRepository) aggregateByPeriod(ctx context.Context, tunnels []*Tunnel, startTime, endTime time.Time) ([]TunnelStatsPoint, error) {
 	activeCount := 0
 	totalCount := 0
@@ -966,9 +918,6 @@ func (r *TunnelRepository) aggregateByPeriod(ctx context.Context, tunnels []*Tun
 	return result, nil
 }
 
-// generateTimeSeries returns multiple data points over time to show trend/slope
-// For 6h/24h views, this creates time-series data showing cumulative tunnel counts at each interval
-// Each point shows the TOTAL count of tunnels that existed at that time (cumulative)
 func (r *TunnelRepository) generateTimeSeries(ctx context.Context, tunnels []*Tunnel, startTime, endTime time.Time, intervalHours float64) ([]TunnelStatsPoint, error) {
 	var stats []TunnelStatsPoint
 	now := time.Now()
@@ -998,16 +947,9 @@ func (r *TunnelRepository) generateTimeSeries(ctx context.Context, tunnels []*Tu
 		activeCount := 0
 		totalCount := 0
 		
-		// Count tunnels that existed at this point in time (cumulative)
-		// A tunnel exists at time T if it was created before or at T
-		// This creates a cumulative trend showing tunnel growth over time
 		for _, tunnel := range tunnels {
-			// Tunnel was created before or at this time point
-			// Use Before with a small buffer to handle timezone/rounding issues
 			if tunnel.CreatedAt.Before(currentTime.Add(time.Second)) || tunnel.CreatedAt.Equal(currentTime) {
 				totalCount++
-				// For active count, use current status
-				// This shows how many of the existing tunnels are currently active
 				if tunnel.Status == "active" {
 					activeCount++
 				}
@@ -1045,17 +987,14 @@ func (r *TunnelRepository) generateTimeSeries(ctx context.Context, tunnels []*Tu
 		}
 	}
 	
-	// Add or update the "now" point
-	if len(stats) > 0 {
+		if len(stats) > 0 {
 		lastPoint := &stats[len(stats)-1]
 		timeDiff := now.Sub(lastPoint.Time)
-		// If last point is very close to now (within half interval), update it
 		if timeDiff < interval/2 {
 			lastPoint.ActiveTunnels = currentActiveCount
 			lastPoint.TotalTunnels = currentTotalCount
 			lastPoint.Time = now
 		} else {
-			// Add new point for current time
 			stats = append(stats, TunnelStatsPoint{
 				Time:          now,
 				ActiveTunnels: currentActiveCount,
@@ -1080,8 +1019,6 @@ func (r *TunnelRepository) generateTimeSeries(ctx context.Context, tunnels []*Tu
 	return stats, nil
 }
 
-// aggregateByDay returns one data point per day with total tunnels created on that day
-// For 7d view: shows data from the last 7 days from NOW (rolling window)
 func (r *TunnelRepository) aggregateByDay(ctx context.Context, tunnels []*Tunnel, startTime, endTime time.Time) ([]TunnelStatsPoint, error) {
 	var stats []TunnelStatsPoint
 	now := time.Now()
@@ -1090,7 +1027,6 @@ func (r *TunnelRepository) aggregateByDay(ctx context.Context, tunnels []*Tunnel
 	year, month, day := startTime.Date()
 	currentDay := time.Date(year, month, day, 0, 0, 0, 0, startTime.Location())
 	
-	// Track seen dates to avoid duplicates
 	seenDates := make(map[string]bool)
 	
 	// Generate one point per day from startTime to endTime (inclusive of today)
@@ -1155,7 +1091,6 @@ func (r *TunnelRepository) aggregateByDay(ctx context.Context, tunnels []*Tunnel
 	// Always update today's point with current state (includes tunnels created just now)
 	if len(stats) > 0 {
 		lastPoint := &stats[len(stats)-1]
-		// If the last point is today, update it with ALL tunnels created today (including just now)
 		year, month, day := now.Date()
 		todayStart := time.Date(year, month, day, 0, 0, 0, 0, now.Location())
 		todayEnd := todayStart.AddDate(0, 0, 1) // Midnight of next day

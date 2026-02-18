@@ -16,7 +16,6 @@ var (
 	ErrDomainAlreadyExists = errors.New("domain already exists")
 )
 
-// CustomDomain represents a user-managed custom domain
 type CustomDomain struct {
 	ID              uuid.UUID  `db:"id"`
 	UserID          uuid.UUID  `db:"user_id"`
@@ -28,21 +27,17 @@ type CustomDomain struct {
 	UpdatedAt       time.Time  `db:"updated_at"`
 }
 
-// CustomDomainRepository handles custom domain database operations
 type CustomDomainRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewCustomDomainRepository creates a new custom domain repository
 func NewCustomDomainRepository(pool *pgxpool.Pool) *CustomDomainRepository {
 	return &CustomDomainRepository{
 		pool: pool,
 	}
 }
 
-// CreateDomain creates a new custom domain for a user
 func (r *CustomDomainRepository) CreateDomain(ctx context.Context, userID uuid.UUID, domain string) (*CustomDomain, error) {
-	// Check if domain already exists for this user
 	existing, err := r.GetDomainByUserAndDomain(ctx, userID, domain)
 	if err == nil && existing != nil {
 		return nil, ErrDomainAlreadyExists
@@ -72,7 +67,6 @@ func (r *CustomDomainRepository) CreateDomain(ctx context.Context, userID uuid.U
 	return &d, nil
 }
 
-// GetDomainByID retrieves a domain by ID
 func (r *CustomDomainRepository) GetDomainByID(ctx context.Context, domainID uuid.UUID) (*CustomDomain, error) {
 	query := `
 		SELECT id, user_id, domain, verified, verification_token, dns_configured, created_at, updated_at
@@ -101,7 +95,6 @@ func (r *CustomDomainRepository) GetDomainByID(ctx context.Context, domainID uui
 	return &d, nil
 }
 
-// GetDomainByUserAndDomain retrieves a domain by user ID and domain name
 func (r *CustomDomainRepository) GetDomainByUserAndDomain(ctx context.Context, userID uuid.UUID, domain string) (*CustomDomain, error) {
 	query := `
 		SELECT id, user_id, domain, verified, verification_token, dns_configured, created_at, updated_at
@@ -130,7 +123,6 @@ func (r *CustomDomainRepository) GetDomainByUserAndDomain(ctx context.Context, u
 	return &d, nil
 }
 
-// ListDomainsByUser retrieves all domains for a user
 func (r *CustomDomainRepository) ListDomainsByUser(ctx context.Context, userID uuid.UUID) ([]*CustomDomain, error) {
 	query := `
 		SELECT id, user_id, domain, verified, verification_token, dns_configured, created_at, updated_at
@@ -167,7 +159,6 @@ func (r *CustomDomainRepository) ListDomainsByUser(ctx context.Context, userID u
 	return domains, nil
 }
 
-// UpdateDomain updates a domain
 func (r *CustomDomainRepository) UpdateDomain(ctx context.Context, domainID uuid.UUID, verified *bool, dnsConfigured *bool) error {
 	query := `
 		UPDATE custom_domains
@@ -202,7 +193,6 @@ func (r *CustomDomainRepository) UpdateDomain(ctx context.Context, domainID uuid
 	return nil
 }
 
-// DeleteDomain deletes a domain
 func (r *CustomDomainRepository) DeleteDomain(ctx context.Context, domainID uuid.UUID, userID uuid.UUID) error {
 	query := `
 		DELETE FROM custom_domains

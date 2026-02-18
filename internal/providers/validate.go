@@ -8,17 +8,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// KeyValidator validates provider API keys by calling each provider's HealthCheck.
 type KeyValidator struct {
 	logger zerolog.Logger
 }
 
-// NewKeyValidator returns a validator that uses provider HealthCheck to test keys.
 func NewKeyValidator(logger zerolog.Logger) *KeyValidator {
 	return &KeyValidator{logger: logger}
 }
 
-// ValidateKey checks that the given API key is valid for the provider by making a minimal API call.
 func (v *KeyValidator) ValidateKey(ctx context.Context, provider string, apiKey string) error {
 	if apiKey == "" {
 		return fmt.Errorf("API key is empty")

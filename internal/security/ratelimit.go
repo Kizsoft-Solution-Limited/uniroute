@@ -9,19 +9,16 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// RateLimiter handles rate limiting using Redis
 type RateLimiter struct {
 	redis *storage.RedisClient
 }
 
-// NewRateLimiter creates a new rate limiter
 func NewRateLimiter(redis *storage.RedisClient) *RateLimiter {
 	return &RateLimiter{
 		redis: redis,
 	}
 }
 
-// CheckRateLimit checks if a request is within rate limits
 func (r *RateLimiter) CheckRateLimit(ctx context.Context, key string, limitPerMinute, limitPerDay int) (bool, error) {
 	client := r.redis.Client()
 
@@ -60,7 +57,6 @@ func (r *RateLimiter) CheckRateLimit(ctx context.Context, key string, limitPerMi
 	return true, nil
 }
 
-// GetRemainingRequests returns remaining requests for a key
 func (r *RateLimiter) GetRemainingRequests(ctx context.Context, key string, limitPerMinute, limitPerDay int) (minuteRemaining, dayRemaining int64, err error) {
 	client := r.redis.Client()
 

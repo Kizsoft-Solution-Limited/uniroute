@@ -16,7 +16,6 @@ type TunnelRateLimiter struct {
 	logger zerolog.Logger
 }
 
-// RateLimitConfig defines rate limit configuration for a tunnel
 type RateLimitConfig struct {
 	RequestsPerMinute int
 	RequestsPerHour   int
@@ -24,7 +23,6 @@ type RateLimitConfig struct {
 	BurstSize         int
 }
 
-// DefaultRateLimitConfig returns default rate limit configuration.
 // When using API keys for tunnel auth, rate limits are set on the API key; these defaults
 // are used only when API key limits are not available.
 func DefaultRateLimitConfig() *RateLimitConfig {
@@ -36,7 +34,6 @@ func DefaultRateLimitConfig() *RateLimitConfig {
 	}
 }
 
-// NewTunnelRateLimiter creates a new in-memory tunnel rate limiter (permissive; no enforcement).
 func NewTunnelRateLimiter(logger zerolog.Logger) *TunnelRateLimiter {
 	return &TunnelRateLimiter{
 		limits: make(map[string]*RateLimitConfig),
@@ -44,14 +41,12 @@ func NewTunnelRateLimiter(logger zerolog.Logger) *TunnelRateLimiter {
 	}
 }
 
-// SetRateLimit sets rate limit for a tunnel
 func (trl *TunnelRateLimiter) SetRateLimit(tunnelID string, config *RateLimitConfig) {
 	trl.mu.Lock()
 	defer trl.mu.Unlock()
 	trl.limits[tunnelID] = config
 }
 
-// GetRateLimit gets rate limit configuration for a tunnel
 func (trl *TunnelRateLimiter) GetRateLimit(tunnelID string) *RateLimitConfig {
 	trl.mu.RLock()
 	defer trl.mu.RUnlock()

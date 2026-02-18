@@ -12,19 +12,16 @@ import (
 // Ensure APIKeyRepository implements APIKeyRepositoryInterface
 var _ APIKeyRepositoryInterface = (*APIKeyRepository)(nil)
 
-// APIKeyRepository handles API key database operations
 type APIKeyRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewAPIKeyRepository creates a new API key repository
 func NewAPIKeyRepository(pool *pgxpool.Pool) *APIKeyRepository {
 	return &APIKeyRepository{
 		pool: pool,
 	}
 }
 
-// Create creates a new API key
 func (r *APIKeyRepository) Create(ctx context.Context, key *APIKey) error {
 	query := `
 		INSERT INTO api_keys (id, user_id, lookup_hash, verification_hash, name, rate_limit_per_minute, rate_limit_per_day, expires_at, is_active)
@@ -46,7 +43,7 @@ func (r *APIKeyRepository) Create(ctx context.Context, key *APIKey) error {
 	return err
 }
 
-// FindByLookupHash finds an API key by its lookup hash (SHA256)
+// Lookup is by SHA256 hash of the key.
 func (r *APIKeyRepository) FindByLookupHash(ctx context.Context, lookupHash string) (*APIKey, error) {
 	query := `
 		SELECT id, user_id, lookup_hash, verification_hash, name, rate_limit_per_minute, rate_limit_per_day, created_at, expires_at, is_active
@@ -75,7 +72,6 @@ func (r *APIKeyRepository) FindByLookupHash(ctx context.Context, lookupHash stri
 		return nil, err
 	}
 
-	// Check if expired
 	if key.ExpiresAt != nil && key.ExpiresAt.Before(time.Now()) {
 		return nil, nil
 	}
@@ -83,7 +79,6 @@ func (r *APIKeyRepository) FindByLookupHash(ctx context.Context, lookupHash stri
 	return &key, nil
 }
 
-// ListByUserID lists all API keys for a user
 func (r *APIKeyRepository) ListByUserID(ctx context.Context, userID uuid.UUID) ([]*APIKey, error) {
 	query := `
 		SELECT id, user_id, lookup_hash, verification_hash, name, rate_limit_per_minute, rate_limit_per_day, created_at, expires_at, is_active
@@ -122,7 +117,6 @@ func (r *APIKeyRepository) ListByUserID(ctx context.Context, userID uuid.UUID) (
 	return keys, rows.Err()
 }
 
-// Update updates an API key
 func (r *APIKeyRepository) Update(ctx context.Context, key *APIKey) error {
 	query := `
 		UPDATE api_keys
@@ -142,7 +136,6 @@ func (r *APIKeyRepository) Update(ctx context.Context, key *APIKey) error {
 	return err
 }
 
-// Delete deletes an API key (soft delete by setting is_active = false)
 func (r *APIKeyRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `
 		UPDATE api_keys

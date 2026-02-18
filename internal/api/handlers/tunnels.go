@@ -290,24 +290,20 @@ func (h *TunnelHandler) AssociateTunnel(c *gin.Context) {
 		return
 	}
 
-	// If tunnel already has a user_id, verify it's the same user
 	if t.UserID != "" {
 		tunnelUserID, err := uuid.Parse(t.UserID)
 		if err == nil && tunnelUserID == userID {
-			// Already associated with this user
 			c.JSON(http.StatusOK, gin.H{
 				"message": "tunnel already associated with your account",
 			})
 			return
 		}
-		// Belongs to another user
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": "tunnel belongs to another user",
 		})
 		return
 	}
 
-	// Associate tunnel with user
 	if err := h.repository.AssociateTunnelWithUser(c.Request.Context(), tunnelID, userID); err != nil {
 		if err == tunnel.ErrTunnelNotFound {
 			c.JSON(http.StatusNotFound, gin.H{
@@ -425,7 +421,6 @@ func (h *TunnelHandler) SetCustomDomain(c *gin.Context) {
 }
 
 func (h *TunnelHandler) GetTunnelStats(c *gin.Context) {
-	h.logger.Debug().Str("path", c.Request.URL.Path).Msg("GetTunnelStats handler called (admin only)")
 	hours := 24
 	if hoursStr := c.Query("hours"); hoursStr != "" {
 		if parsed, err := strconv.Atoi(hoursStr); err == nil && parsed > 0 && parsed <= 168 {

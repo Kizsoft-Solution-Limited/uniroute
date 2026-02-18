@@ -8,12 +8,10 @@ import (
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/providers"
 )
 
-// RoutingStrategy defines how requests are routed to providers
 type RoutingStrategy interface {
 	SelectProvider(ctx context.Context, req providers.ChatRequest, availableProviders []providers.Provider) (providers.Provider, error)
 }
 
-// StrategyType represents the type of routing strategy
 type StrategyType string
 
 const (
@@ -24,7 +22,6 @@ const (
 	StrategyCustom       StrategyType = "custom"   // Custom rules
 )
 
-// ModelBasedStrategy selects provider based on model name
 type ModelBasedStrategy struct{}
 
 func (s *ModelBasedStrategy) SelectProvider(ctx context.Context, req providers.ChatRequest, availableProviders []providers.Provider) (providers.Provider, error) {
@@ -73,7 +70,6 @@ func (s *ModelBasedStrategy) SelectProvider(ctx context.Context, req providers.C
 	return availableProviders[0], nil
 }
 
-// CostBasedStrategy selects the cheapest provider for the model
 type CostBasedStrategy struct {
 	costCalculator *CostCalculator
 }
@@ -121,7 +117,6 @@ func (s *CostBasedStrategy) SelectProvider(ctx context.Context, req providers.Ch
 	return cheapestProvider, nil
 }
 
-// LatencyBasedStrategy selects the provider with lowest latency
 type LatencyBasedStrategy struct {
 	latencyTracker *LatencyTracker
 }
@@ -169,7 +164,6 @@ func (s *LatencyBasedStrategy) SelectProvider(ctx context.Context, req providers
 	return fastestProvider, nil
 }
 
-// LoadBalancedStrategy uses round-robin load balancing
 type LoadBalancedStrategy struct {
 	counter int
 }
@@ -208,7 +202,6 @@ func (s *LoadBalancedStrategy) SelectProvider(ctx context.Context, req providers
 	return selected, nil
 }
 
-// CustomStrategy uses custom routing rules
 type CustomStrategy struct {
 	rules []RoutingRule
 }

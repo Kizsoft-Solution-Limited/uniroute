@@ -103,7 +103,6 @@ type AuthConfig struct {
 	ExpiresAt string `json:"expires_at,omitempty"`
 }
 
-// getConfigPath returns the path to the config file
 func getConfigPath() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -116,7 +115,6 @@ func getConfigPath() (string, error) {
 	return filepath.Join(configDir, "auth.json"), nil
 }
 
-// loadAuthConfig loads authentication config from file
 func loadAuthConfig() (*AuthConfig, error) {
 	configPath, err := getConfigPath()
 	if err != nil {
@@ -139,7 +137,6 @@ func loadAuthConfig() (*AuthConfig, error) {
 	return &config, nil
 }
 
-// saveAuthConfig saves authentication config to file
 func saveAuthConfig(config *AuthConfig) error {
 	configPath, err := getConfigPath()
 	if err != nil {
@@ -154,7 +151,6 @@ func saveAuthConfig(config *AuthConfig) error {
 	return os.WriteFile(configPath, data, 0600)
 }
 
-// getAuthToken returns the current auth token
 // The token persists across CLI sessions, computer restarts, etc.
 func getAuthToken() string {
 	config, err := loadAuthConfig()
@@ -162,7 +158,6 @@ func getAuthToken() string {
 		return ""
 	}
 	
-	// Check if token has expired (if expiration info is available)
 	if config.ExpiresAt != "" {
 		expiresAt, err := time.Parse(time.RFC3339, config.ExpiresAt)
 		if err == nil && time.Now().After(expiresAt) {
@@ -175,7 +170,6 @@ func getAuthToken() string {
 	return config.Token
 }
 
-// isAuthenticated checks if user is currently authenticated
 func isAuthenticated() bool {
 	return getAuthToken() != ""
 }
@@ -201,18 +195,14 @@ func loginWithAPIKey(apiKey, serverURL string) error {
 		Timeout: 10 * time.Second,
 	}
 
-	// Validate API key by trying to use it with a /v1 endpoint
-	// Use /v1/analytics/usage as it requires API key auth and returns user-specific data
 	validateURL := fmt.Sprintf("%s/v1/analytics/usage", serverURL)
 	req, err := http.NewRequest("GET", validateURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set API key in Authorization header
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
 
-	// Send request to validate API key
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to connect to server: %w", err)
@@ -225,7 +215,6 @@ func loginWithAPIKey(apiKey, serverURL string) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		// Try alternative: use /v1/tunnels endpoint
 		validateURL = fmt.Sprintf("%s/v1/tunnels", serverURL)
 		req, err = http.NewRequest("GET", validateURL, nil)
 		if err != nil {
@@ -249,10 +238,7 @@ func loginWithAPIKey(apiKey, serverURL string) error {
 		}
 	}
 
-	// API key is valid - try to get user info from /v1/user endpoint
-	email := "api-key-user" // Default email
-	
-	// Try to get user email from /v1/user endpoint
+	email := "api-key-user"
 	userURL := fmt.Sprintf("%s/v1/user", serverURL)
 	userReq, err := http.NewRequest("GET", userURL, nil)
 	if err == nil {
@@ -274,9 +260,8 @@ func loginWithAPIKey(apiKey, serverURL string) error {
 		}
 	}
 	
-	// Save config with API key as token (API keys don't expire)
 	config := &AuthConfig{
-		Token:     apiKey, // Store API key as token
+		Token:     apiKey,
 		Email:     email,
 		ServerURL: serverURL,
 		// No ExpiresAt - API keys don't expire
@@ -302,7 +287,6 @@ func loginWithAPIKey(apiKey, serverURL string) error {
 	return nil
 }
 
-// getServerURL returns the configured server URL
 // Priority: 1. Environment variable (UNIROUTE_API_URL), 2. Saved auth config, 3. Auto-detect local mode, 4. Default
 func getServerURL() string {
 	// Priority 1: Environment variable (highest priority)
@@ -325,29 +309,20 @@ func getServerURL() string {
 	return "https://app.uniroute.co"
 }
 
-// isLocalMode detects if we're running in local development mode
-// Checks environment variable or attempts to detect from localhost connectivity
 func isLocalMode() bool {
-	// Check explicit environment variable
 	if env := os.Getenv("UNIROUTE_ENV"); env == "local" || env == "development" || env == "dev" {
 		return true
 	}
 	
-	// Check if API URL is set to localhost
 	if apiURL := os.Getenv("UNIROUTE_API_URL"); apiURL != "" {
 		return strings.Contains(apiURL, "localhost") || strings.Contains(apiURL, "127.0.0.1")
 	}
 	
-	// Check if tunnel URL is explicitly set to localhost
 	if tunnelURL := os.Getenv("UNIROUTE_TUNNEL_URL"); tunnelURL != "" {
 		return strings.Contains(tunnelURL, "localhost") || strings.Contains(tunnelURL, "127.0.0.1")
 	}
 	
-	// Try to detect: check if localhost:8055 (tunnel server), localhost:8080 (tunnel server), or localhost:8084 (gateway) is reachable
-	// This helps detect local mode even without auth config
 	client := &http.Client{Timeout: 1 * time.Second}
-	
-	// Check tunnel server on port 8055 (preferred)
 	resp, err := client.Get("http://localhost:8055/health")
 	if err == nil {
 		resp.Body.Close()
@@ -356,7 +331,6 @@ func isLocalMode() bool {
 		}
 	}
 	
-	// Check tunnel server on port 8080 (fallback)
 	resp, err = client.Get("http://localhost:8080/health")
 	if err == nil {
 		resp.Body.Close()
@@ -365,7 +339,6 @@ func isLocalMode() bool {
 		}
 	}
 	
-	// Check gateway server (localhost:8084) as fallback
 	resp, err = client.Get("http://localhost:8084/health")
 	if err == nil {
 		resp.Body.Close()
@@ -375,7 +348,6 @@ func isLocalMode() bool {
 	return false
 }
 
-// getTunnelServerURL returns the tunnel server URL
 // Priority: 1. Environment variable (UNIROUTE_TUNNEL_URL), 2. Auto-detect local mode, 3. Default
 func getTunnelServerURL() string {
 	// Priority 1: Environment variable (highest priority)
@@ -383,9 +355,7 @@ func getTunnelServerURL() string {
 		return envURL
 	}
 	
-	// Priority 2: Auto-detect local mode
 	if isLocalMode() {
-		// Check which port is available (prefer 8055, fallback to 8080)
 		client := &http.Client{Timeout: 1 * time.Second}
 		if resp, err := client.Get("http://localhost:8055/health"); err == nil {
 			resp.Body.Close()
@@ -393,11 +363,9 @@ func getTunnelServerURL() string {
 				return "localhost:8055"
 			}
 		}
-		// Fallback to 8080 if 8055 is not available
 		return "localhost:8080"
 	}
 	
-	// Priority 3: Default (only used if nothing else is configured)
 	return "tunnel.uniroute.co"
 }
 
@@ -409,7 +377,6 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		return loginWithAPIKey(authAPIKey, authServer)
 	}
 
-	// Check if user is already logged in (only for email/password login)
 	if isAuthenticated() {
 		config, err := loadAuthConfig()
 		if err == nil && config != nil {
@@ -451,7 +418,6 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Get email if not provided
 	if authEmail == "" {
 		fmt.Print("Email: ")
 		reader := bufio.NewReader(os.Stdin)
@@ -465,7 +431,6 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Get password if not provided
 	if authPassword == "" {
 		fmt.Print("Password: ")
 		// Read password without echoing to terminal (cross-platform)
@@ -484,7 +449,6 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		Timeout: 10 * time.Second,
 	}
 
-	// Build login request
 	body := map[string]interface{}{
 		"email":    authEmail,
 		"password": authPassword,
@@ -502,7 +466,6 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		serverURL = getServerURL()
 	}
 	
-	// Create request
 	loginURL := fmt.Sprintf("%s/auth/login", serverURL)
 	req, err := http.NewRequest("POST", loginURL, strings.NewReader(string(jsonBody)))
 	if err != nil {
@@ -511,7 +474,6 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	// Send request
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to connect to server: %w", err)
@@ -537,7 +499,6 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid response: token not found")
 	}
 
-	// Save config
 	config := &AuthConfig{
 		Token:     token,
 		Email:     authEmail,
@@ -600,7 +561,6 @@ func runAuthStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Check if token is still valid
 	token := getAuthToken()
 	if token == "" {
 		fmt.Println("❌ Session expired")

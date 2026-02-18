@@ -6,7 +6,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// New creates a new logger instance
 func New() zerolog.Logger {
 	return zerolog.New(os.Stdout).
 		With().
@@ -15,7 +14,6 @@ func New() zerolog.Logger {
 		Level(zerolog.InfoLevel)
 }
 
-// NewDebug creates a logger with debug level
 func NewDebug() zerolog.Logger {
 	return zerolog.New(os.Stdout).
 		With().

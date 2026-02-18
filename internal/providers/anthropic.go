@@ -14,7 +14,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// AnthropicProvider implements the Provider interface for Anthropic (Claude)
 type AnthropicProvider struct {
 	apiKey  string
 	baseURL string
@@ -22,7 +21,6 @@ type AnthropicProvider struct {
 	logger  zerolog.Logger
 }
 
-// NewAnthropicProvider creates a new Anthropic provider
 func NewAnthropicProvider(apiKey, baseURL string, logger zerolog.Logger) *AnthropicProvider {
 	if baseURL == "" {
 		baseURL = "https://api.anthropic.com/v1"
@@ -37,12 +35,10 @@ func NewAnthropicProvider(apiKey, baseURL string, logger zerolog.Logger) *Anthro
 	}
 }
 
-// Name returns the provider name
 func (p *AnthropicProvider) Name() string {
 	return "anthropic"
 }
 
-// Chat sends a chat request to Anthropic
 func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("Anthropic API key not configured")
@@ -106,7 +102,6 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRes
 		return nil, fmt.Errorf("Anthropic API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse Anthropic response
 	var anthropicResp struct {
 		ID      string `json:"id"`
 		Model   string `json:"model"`
@@ -124,7 +119,6 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRes
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	// Combine content blocks
 	content := ""
 	for _, block := range anthropicResp.Content {
 		if block.Type == "text" {
@@ -292,7 +286,6 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 
 			data := strings.TrimPrefix(line, "data: ")
 
-			// Parse SSE event
 			var event struct {
 				Type    string `json:"type"`
 				Message struct {
@@ -325,7 +318,6 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 				}
 
 			case "content_block_delta":
-				// Only process text deltas for the current content block
 				if event.Delta.Type == "text_delta" && event.Delta.Text != "" {
 					fullContent.WriteString(event.Delta.Text)
 					chunkChan <- StreamChunk{
@@ -336,7 +328,6 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 				}
 
 			case "message_delta":
-				// Update usage information
 				if event.Usage.TotalTokens > 0 {
 					finalUsage = &Usage{
 						PromptTokens:     event.Usage.InputTokens,
@@ -346,7 +337,6 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 				}
 
 			case "message_stop":
-				// Send final chunk with usage
 				chunkChan <- StreamChunk{
 					ID:      responseID,
 					Content: "",
@@ -370,7 +360,6 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 	return chunkChan, errChan
 }
 
-// GetModels returns list of available Anthropic models
 func (p *AnthropicProvider) GetModels() []string {
 	return []string{
 		// Claude 3.5 series (latest, 2024)
@@ -382,12 +371,10 @@ func (p *AnthropicProvider) GetModels() []string {
 		"claude-3-sonnet-20240229", // Claude 3 Sonnet
 		"claude-3-haiku-20240307",  // Claude 3 Haiku
 		// Note: When Anthropic releases Claude Sonnet 4.5, Opus 4.5, Haiku 4.5 via API,
-		// their exact model IDs will be added here. Check Anthropic API documentation.
 	}
 }
 
-// convertMessagesToAnthropic converts UniRoute messages to Anthropic format
-// Anthropic supports multimodal content with images
+// Anthropic supports multimodal content with images.
 func convertMessagesToAnthropic(messages []Message) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, len(messages))
 	for _, msg := range messages {
@@ -395,13 +382,10 @@ func convertMessagesToAnthropic(messages []Message) []map[string]interface{} {
 			"role": msg.Role,
 		}
 
-		// Handle content: can be string (text-only) or []ContentPart (multimodal)
 		switch content := msg.Content.(type) {
 		case string:
-			// Text-only message (backward compatible)
 			messageMap["content"] = content
 		case []ContentPart:
-			// Multimodal message - Anthropic uses array of content blocks
 			contentArray := make([]map[string]interface{}, 0, len(content))
 			for _, part := range content {
 				if part.Type == "text" {

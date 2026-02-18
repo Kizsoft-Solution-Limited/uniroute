@@ -8,19 +8,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SwaggerHandler handles Swagger UI and JSON endpoints
 type SwaggerHandler struct {
 	jwtService *security.JWTService
 }
 
-// NewSwaggerHandler creates a new Swagger handler
 func NewSwaggerHandler(jwtService *security.JWTService) *SwaggerHandler {
 	return &SwaggerHandler{
 		jwtService: jwtService,
 	}
 }
 
-// HandleSwaggerUI serves the Swagger UI HTML page
 func (h *SwaggerHandler) HandleSwaggerUI(c *gin.Context) {
 	html := `<!DOCTYPE html>
 <html lang="en">
@@ -124,19 +121,15 @@ func (h *SwaggerHandler) HandleSwaggerUI(c *gin.Context) {
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
 }
 
-// HandleSwaggerJSON serves the OpenAPI JSON specification
 func (h *SwaggerHandler) HandleSwaggerJSON(c *gin.Context) {
-	// Get access_token from query parameter
 	accessToken := c.Query("access_token")
-	
-	// Validate token and extract roles if provided
+
 	var userRoles []string
 	var isAdmin bool
 	if accessToken != "" && h.jwtService != nil {
 		claims, err := h.jwtService.ValidateToken(accessToken)
 		if err == nil {
 			userRoles = claims.Roles
-			// Check if user has admin role
 			for _, role := range userRoles {
 				if role == "admin" {
 					isAdmin = true
@@ -1597,21 +1590,18 @@ func (h *SwaggerHandler) HandleSwaggerJSON(c *gin.Context) {
 		},
 	}
 
-	// Filter admin endpoints if user is not admin
 	if !isAdmin {
 		paths := spec["paths"].(map[string]interface{})
 		filteredPaths := make(map[string]interface{})
-		
+
 		for path, pathSpec := range paths {
-			// Skip admin paths
 			if strings.HasPrefix(path, "/admin/") {
 				continue
 			}
 			filteredPaths[path] = pathSpec
 		}
 		spec["paths"] = filteredPaths
-		
-		// Remove Admin tag if no admin endpoints
+
 		tags := spec["tags"].([]map[string]interface{})
 		filteredTags := []map[string]interface{}{}
 		for _, tag := range tags {

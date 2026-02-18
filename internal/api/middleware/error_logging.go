@@ -10,17 +10,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// ErrorLoggingMiddleware creates middleware that logs errors to database
 func ErrorLoggingMiddleware(errorLogRepo *storage.ErrorLogRepository, logger zerolog.Logger) gin.HandlerFunc {
 	errorLogger := utils.NewErrorLogger(errorLogRepo, logger)
 
 	return func(c *gin.Context) {
-		// Continue with request
 		c.Next()
 
-		// Check if there are any errors
 		if len(c.Errors) > 0 {
-			// Get user ID from context if available
 			var userID *uuid.UUID
 			if userIDValue, exists := c.Get("user_id"); exists {
 				if uid, ok := userIDValue.(uuid.UUID); ok {
@@ -32,7 +28,6 @@ func ErrorLoggingMiddleware(errorLogRepo *storage.ErrorLogRepository, logger zer
 				}
 			}
 
-			// Log each error
 			for _, err := range c.Errors {
 				contextData := map[string]interface{}{
 					"path":       c.Request.URL.Path,
@@ -42,24 +37,15 @@ func ErrorLoggingMiddleware(errorLogRepo *storage.ErrorLogRepository, logger zer
 					"user_agent": c.GetHeader("User-Agent"),
 				}
 
-				// Add request body if available (for debugging, but be careful with sensitive data)
-				if c.Request.Body != nil && c.Request.ContentLength < 1024 { // Only for small requests
-					// Note: Body is already read, so we can't read it again
-					// This is just for reference
-				}
-
 				errorLogger.LogError(c.Request.Context(), err.Err, contextData, userID)
 			}
 		}
 
-		// Also catch panics
 		defer func() {
 			if r := recover(); r != nil {
-				// Get stack trace
 				buf := make([]byte, 4096)
 				runtime.Stack(buf, false)
 
-				// Get user ID
 				var userID *uuid.UUID
 				if userIDValue, exists := c.Get("user_id"); exists {
 					if uid, ok := userIDValue.(uuid.UUID); ok {
@@ -76,7 +62,6 @@ func ErrorLoggingMiddleware(errorLogRepo *storage.ErrorLogRepository, logger zer
 					"user_agent": c.GetHeader("User-Agent"),
 				}
 
-				// Create panic error
 				var panicErr error
 				if err, ok := r.(error); ok {
 					panicErr = err
@@ -86,14 +71,12 @@ func ErrorLoggingMiddleware(errorLogRepo *storage.ErrorLogRepository, logger zer
 
 				errorLogger.LogError(c.Request.Context(), panicErr, contextData, userID)
 
-				// Re-panic to let Gin's recovery handle it
 				panic(r)
 			}
 		}()
 	}
 }
 
-// PanicError wraps non-error panic values
 type PanicError struct {
 	Value interface{}
 }

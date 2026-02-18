@@ -10,13 +10,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// EmailTestHandler handles email testing requests
 type EmailTestHandler struct {
 	emailService *email.EmailService
 	logger       zerolog.Logger
 }
 
-// NewEmailTestHandler creates a new email test handler
 func NewEmailTestHandler(emailService *email.EmailService, logger zerolog.Logger) *EmailTestHandler {
 	return &EmailTestHandler{
 		emailService: emailService,
@@ -24,15 +22,12 @@ func NewEmailTestHandler(emailService *email.EmailService, logger zerolog.Logger
 	}
 }
 
-// TestEmailRequest represents a test email request
 type TestEmailRequest struct {
 	To      string `json:"to" binding:"required,email"`
 	Subject string `json:"subject,omitempty"`
 	Message string `json:"message,omitempty"`
 }
 
-// HandleTestEmail handles POST /admin/email/test
-// Sends a test email to verify SMTP configuration
 func (h *EmailTestHandler) HandleTestEmail(c *gin.Context) {
 	var req TestEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -43,7 +38,6 @@ func (h *EmailTestHandler) HandleTestEmail(c *gin.Context) {
 		return
 	}
 
-	// Get user from context (for logging)
 	userEmail := "admin"
 	if emailValue, exists := c.Get("user_email"); exists {
 		if email, ok := emailValue.(string); ok {
@@ -51,7 +45,6 @@ func (h *EmailTestHandler) HandleTestEmail(c *gin.Context) {
 		}
 	}
 
-	// Set default subject and message if not provided
 	subject := req.Subject
 	if subject == "" {
 		subject = "UniRoute SMTP Test Email"
@@ -111,7 +104,6 @@ func (h *EmailTestHandler) HandleTestEmail(c *gin.Context) {
 		`
 	}
 
-	// Send test email
 	h.logger.Info().
 		Str("to", req.To).
 		Str("from", userEmail).
@@ -142,17 +134,13 @@ func (h *EmailTestHandler) HandleTestEmail(c *gin.Context) {
 	})
 }
 
-// HandleGetEmailConfig handles GET /admin/email/config
-// Returns SMTP configuration status (without sensitive data)
 func (h *EmailTestHandler) HandleGetEmailConfig(c *gin.Context) {
-	// Check if email service is configured
 	config := gin.H{
 		"configured": h.emailService != nil,
 		"status":      "not configured",
 	}
 
 	if h.emailService != nil {
-		// Get configuration info from email service
 		smtpConfig := h.emailService.GetConfig()
 		config["status"] = "configured"
 		config["smtp"] = smtpConfig

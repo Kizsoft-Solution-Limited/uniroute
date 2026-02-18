@@ -6,7 +6,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// APIKeyRepositoryInterface defines the interface for API key repository operations
 type APIKeyRepositoryInterface interface {
 	Create(ctx context.Context, key *APIKey) error
 	FindByLookupHash(ctx context.Context, lookupHash string) (*APIKey, error)

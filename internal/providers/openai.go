@@ -14,7 +14,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// OpenAIProvider implements the Provider interface for OpenAI
 type OpenAIProvider struct {
 	apiKey  string
 	baseURL string
@@ -22,7 +21,6 @@ type OpenAIProvider struct {
 	logger  zerolog.Logger
 }
 
-// NewOpenAIProvider creates a new OpenAI provider
 func NewOpenAIProvider(apiKey, baseURL string, logger zerolog.Logger) *OpenAIProvider {
 	if baseURL == "" {
 		baseURL = "https://api.openai.com/v1"
@@ -37,12 +35,10 @@ func NewOpenAIProvider(apiKey, baseURL string, logger zerolog.Logger) *OpenAIPro
 	}
 }
 
-// Name returns the provider name
 func (p *OpenAIProvider) Name() string {
 	return "openai"
 }
 
-// Chat sends a chat request to OpenAI
 func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("OpenAI API key not configured")
@@ -104,7 +100,6 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		return nil, fmt.Errorf("OpenAI API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse OpenAI response
 	var openAIResp struct {
 		ID      string `json:"id"`
 		Model   string `json:"model"`
@@ -125,10 +120,8 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	// Convert to UniRoute format
 	choices := make([]Choice, 0, len(openAIResp.Choices))
 	for _, choice := range openAIResp.Choices {
-		// Convert content back to string (OpenAI always returns text in responses)
 		var contentStr string
 		switch c := choice.Message.Content.(type) {
 		case string:
@@ -283,7 +276,6 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 
 			data := strings.TrimPrefix(line, "data: ")
 			if data == "[DONE]" {
-				// Send final chunk with usage
 				chunkChan <- StreamChunk{
 					ID:      responseID,
 					Content: "",
@@ -293,7 +285,6 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 				return
 			}
 
-			// Parse SSE data
 			var streamResp struct {
 				ID      string `json:"id"`
 				Model   string `json:"model"`
@@ -320,7 +311,6 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 				responseID = streamResp.ID
 			}
 
-			// Extract content delta
 			if len(streamResp.Choices) > 0 {
 				delta := streamResp.Choices[0].Delta.Content
 				if delta != "" {
@@ -332,7 +322,6 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 					}
 				}
 
-				// Check if finished
 				if streamResp.Choices[0].FinishReason != "" {
 					finalUsage = &Usage{
 						PromptTokens:     streamResp.Usage.PromptTokens,
@@ -352,7 +341,6 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 	return chunkChan, errChan
 }
 
-// GetModels returns list of available OpenAI models
 func (p *OpenAIProvider) GetModels() []string {
 	// Latest OpenAI models (as of 2025)
 	return []string{
@@ -373,12 +361,10 @@ func (p *OpenAIProvider) GetModels() []string {
 		"gpt-3.5-turbo-0125",
 		"gpt-3.5-turbo-1106",
 		// Note: When OpenAI releases GPT-5.2, GPT-5.2 Pro, o4-mini via API,
-		// their exact model IDs will be added here. Check OpenAI API documentation.
 	}
 }
 
-// convertMessagesToOpenAI converts UniRoute messages to OpenAI format
-// Supports both text-only (string) and multimodal ([]ContentPart) content
+// Supports both text-only (string) and multimodal ([]ContentPart) content.
 func convertMessagesToOpenAI(messages []Message) []interface{} {
 	result := make([]interface{}, 0, len(messages))
 	for _, msg := range messages {
@@ -386,13 +372,10 @@ func convertMessagesToOpenAI(messages []Message) []interface{} {
 			"role": msg.Role,
 		}
 
-		// Handle content: can be string (text-only) or []ContentPart (multimodal)
 		switch content := msg.Content.(type) {
 		case string:
-			// Text-only message (backward compatible)
 			messageMap["content"] = content
 		case []ContentPart:
-			// Multimodal message
 			contentArray := make([]interface{}, 0, len(content))
 			for _, part := range content {
 				if part.Type == "text" {

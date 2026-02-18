@@ -5,14 +5,12 @@ import (
 	"time"
 )
 
-// LatencyTracker tracks latency metrics for providers
 type LatencyTracker struct {
 	mu       sync.RWMutex
 	latencies map[string][]time.Duration // provider -> list of latencies
 	maxSamples int // Maximum samples to keep per provider
 }
 
-// NewLatencyTracker creates a new latency tracker
 func NewLatencyTracker(maxSamples int) *LatencyTracker {
 	if maxSamples <= 0 {
 		maxSamples = 100 // Default: keep last 100 samples
@@ -23,7 +21,6 @@ func NewLatencyTracker(maxSamples int) *LatencyTracker {
 	}
 }
 
-// RecordLatency records a latency measurement for a provider
 func (lt *LatencyTracker) RecordLatency(providerName string, latency time.Duration) {
 	lt.mu.Lock()
 	defer lt.mu.Unlock()
@@ -32,16 +29,13 @@ func (lt *LatencyTracker) RecordLatency(providerName string, latency time.Durati
 		lt.latencies[providerName] = make([]time.Duration, 0, lt.maxSamples)
 	}
 
-	// Add new latency
 	lt.latencies[providerName] = append(lt.latencies[providerName], latency)
 
-	// Keep only last maxSamples
 	if len(lt.latencies[providerName]) > lt.maxSamples {
 		lt.latencies[providerName] = lt.latencies[providerName][len(lt.latencies[providerName])-lt.maxSamples:]
 	}
 }
 
-// GetAverageLatency returns the average latency for a provider
 func (lt *LatencyTracker) GetAverageLatency(providerName string) time.Duration {
 	lt.mu.RLock()
 	defer lt.mu.RUnlock()
@@ -59,7 +53,6 @@ func (lt *LatencyTracker) GetAverageLatency(providerName string) time.Duration {
 	return total / time.Duration(len(latencies))
 }
 
-// GetRecentLatency returns the most recent latency for a provider
 func (lt *LatencyTracker) GetRecentLatency(providerName string) (time.Duration, bool) {
 	lt.mu.RLock()
 	defer lt.mu.RUnlock()
@@ -72,7 +65,6 @@ func (lt *LatencyTracker) GetRecentLatency(providerName string) (time.Duration, 
 	return latencies[len(latencies)-1], true
 }
 
-// GetLatencyStats returns latency statistics for a provider
 func (lt *LatencyTracker) GetLatencyStats(providerName string) (avg, min, max time.Duration, count int) {
 	lt.mu.RLock()
 	defer lt.mu.RUnlock()
@@ -102,7 +94,6 @@ func (lt *LatencyTracker) GetLatencyStats(providerName string) (avg, min, max ti
 	return avg, min, max, count
 }
 
-// Reset clears all latency data
 func (lt *LatencyTracker) Reset() {
 	lt.mu.Lock()
 	defer lt.mu.Unlock()

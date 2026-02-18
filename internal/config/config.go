@@ -8,7 +8,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Config holds application configuration
 type Config struct {
 	Port          string
 	OllamaBaseURL string
@@ -53,8 +52,6 @@ type Config struct {
 	VLLMAPIKey  string
 }
 
-// Load loads configuration from environment variables
-// It automatically loads .env file if it exists
 func Load() *Config {
 	// Try to load .env file (ignore error if file doesn't exist)
 	_ = godotenv.Load()
@@ -64,7 +61,6 @@ func Load() *Config {
 
 	ipWhitelist := []string{}
 	if whitelist := getEnv("IP_WHITELIST", ""); whitelist != "" {
-		// Parse comma-separated IPs
 		ips := strings.Split(whitelist, ",")
 		for _, ip := range ips {
 			if trimmed := strings.TrimSpace(ip); trimmed != "" {
@@ -109,7 +105,6 @@ func Load() *Config {
 	}
 }
 
-// getEnv gets an environment variable or returns a default value
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -117,7 +112,6 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
-// getEnvAsInt gets an environment variable as int or returns a default value
 func getEnvAsInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intValue, err := strconv.Atoi(value); err == nil {
@@ -127,7 +121,6 @@ func getEnvAsInt(key string, defaultValue int) int {
 	return defaultValue
 }
 
-// parseCORSOrigins parses comma-separated CORS origins from environment variable
 func parseCORSOrigins(origins string) []string {
 	if origins == "" {
 		return []string{} // Empty = use defaults in CORS middleware

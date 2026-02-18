@@ -7,14 +7,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// RequestLogger handles logging tunnel requests to database
 type RequestLogger struct {
 	repository *TunnelRepository
 	logger     zerolog.Logger
 	enabled    bool
 }
 
-// NewRequestLogger creates a new request logger
 func NewRequestLogger(repo *TunnelRepository, logger zerolog.Logger) *RequestLogger {
 	return &RequestLogger{
 		repository: repo,
@@ -23,7 +21,6 @@ func NewRequestLogger(repo *TunnelRepository, logger zerolog.Logger) *RequestLog
 	}
 }
 
-// LogRequest logs a tunnel request to the database
 func (rl *RequestLogger) LogRequest(ctx context.Context, req *TunnelRequestLog) error {
 	if !rl.enabled {
 		return nil

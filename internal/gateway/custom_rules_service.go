@@ -8,14 +8,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// CustomRulesServiceAdapter adapts storage.CustomRoutingRulesRepository to CustomRulesServiceInterface
 type CustomRulesServiceAdapter struct {
 	repo           *storage.CustomRoutingRulesRepository
 	costCalculator *CostCalculator
 	latencyTracker *LatencyTracker
 }
 
-// NewCustomRulesServiceAdapter creates a new adapter
 func NewCustomRulesServiceAdapter(repo *storage.CustomRoutingRulesRepository, costCalculator *CostCalculator, latencyTracker *LatencyTracker) *CustomRulesServiceAdapter {
 	return &CustomRulesServiceAdapter{
 		repo:           repo,
@@ -24,7 +22,6 @@ func NewCustomRulesServiceAdapter(repo *storage.CustomRoutingRulesRepository, co
 	}
 }
 
-// GetActiveRulesForUser implements CustomRulesServiceInterface
 func (a *CustomRulesServiceAdapter) GetActiveRulesForUser(ctx context.Context, userID *uuid.UUID) ([]CustomRule, error) {
 	rules, err := a.repo.GetActiveRulesForUser(ctx, userID)
 	if err != nil {
@@ -45,7 +42,6 @@ func (a *CustomRulesServiceAdapter) GetActiveRulesForUser(ctx context.Context, u
 	return gatewayRules, nil
 }
 
-// BuildRoutingRules converts CustomRule slice to RoutingRule slice with condition functions
 func (a *CustomRulesServiceAdapter) BuildRoutingRules(rules []CustomRule) []RoutingRule {
 	routingRules := make([]RoutingRule, 0, len(rules))
 	for _, rule := range rules {
@@ -59,7 +55,6 @@ func (a *CustomRulesServiceAdapter) BuildRoutingRules(rules []CustomRule) []Rout
 	return routingRules
 }
 
-// buildCondition creates a condition function from a rule
 func (a *CustomRulesServiceAdapter) buildCondition(rule CustomRule) func(req providers.ChatRequest) bool {
 	return func(req providers.ChatRequest) bool {
 		switch rule.ConditionType {

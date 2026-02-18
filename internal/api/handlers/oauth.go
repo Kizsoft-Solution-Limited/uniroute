@@ -10,14 +10,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// OAuthHandler handles OAuth authentication
 type OAuthHandler struct {
 	oauthService *oauth.OAuthService
 	jwtService   *security.JWTService
 	frontendURL  string
 }
 
-// NewOAuthHandler creates a new OAuth handler
 func NewOAuthHandler(oauthService *oauth.OAuthService, jwtService *security.JWTService, frontendURL string) *OAuthHandler {
 	return &OAuthHandler{
 		oauthService: oauthService,
@@ -26,7 +24,6 @@ func NewOAuthHandler(oauthService *oauth.OAuthService, jwtService *security.JWTS
 	}
 }
 
-// HandleGoogleAuth initiates Google OAuth flow
 func (h *OAuthHandler) HandleGoogleAuth(c *gin.Context) {
 	if !h.oauthService.IsGoogleConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
@@ -53,7 +50,6 @@ func (h *OAuthHandler) HandleGoogleAuth(c *gin.Context) {
 	})
 }
 
-// HandleGoogleCallback handles Google OAuth callback
 func (h *OAuthHandler) HandleGoogleCallback(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")
@@ -91,7 +87,6 @@ func (h *OAuthHandler) HandleGoogleCallback(c *gin.Context) {
 	c.Redirect(http.StatusFound, h.frontendURL+"/auth/callback?token="+token+"&provider=google")
 }
 
-// HandleXAuth initiates X (Twitter) OAuth flow
 func (h *OAuthHandler) HandleXAuth(c *gin.Context) {
 	if !h.oauthService.IsXConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
@@ -118,7 +113,6 @@ func (h *OAuthHandler) HandleXAuth(c *gin.Context) {
 	})
 }
 
-// HandleXCallback handles X (Twitter) OAuth callback
 func (h *OAuthHandler) HandleXCallback(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")
@@ -156,7 +150,6 @@ func (h *OAuthHandler) HandleXCallback(c *gin.Context) {
 	c.Redirect(http.StatusFound, h.frontendURL+"/auth/callback?token="+token+"&provider=x")
 }
 
-// HandleGithubAuth initiates GitHub OAuth flow
 func (h *OAuthHandler) HandleGithubAuth(c *gin.Context) {
 	if !h.oauthService.IsGithubConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{
@@ -183,7 +176,6 @@ func (h *OAuthHandler) HandleGithubAuth(c *gin.Context) {
 	})
 }
 
-// HandleGithubCallback handles GitHub OAuth callback
 func (h *OAuthHandler) HandleGithubCallback(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")

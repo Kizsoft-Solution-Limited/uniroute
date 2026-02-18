@@ -37,8 +37,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	fmt.Println(color.Cyan("Checking for updates..."))
 	fmt.Println()
 	
-	// Check for updates
-	// Default to GitHub releases API, but can be configured via env var
+	// Default to GitHub releases API; override with UNIROUTE_VERSION_URL
 	versionURL := os.Getenv("UNIROUTE_VERSION_URL")
 	if versionURL == "" {
 		versionURL = "https://api.github.com/repos/Kizsoft-Solution-Limited/uniroute/releases/latest"
@@ -59,56 +58,60 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	fmt.Println(color.Yellow(fmt.Sprintf("📦 New version available: %s (current: %s)", info.LatestVersion, currentVersion)))
 	fmt.Println()
 	
-	// Determine upgrade command based on OS and installation method
 	var upgradeCmd []string
 	var upgradeInstructions string
 	
+	goInstallCmd := []string{"go", "install", "github.com/Kizsoft-Solution-Limited/uniroute/cmd/cli@latest"}
+	goInstallInstructions := "Run: go install github.com/Kizsoft-Solution-Limited/uniroute/cmd/cli@latest"
+
 	switch runtime.GOOS {
-	case "darwin": // macOS
-		// Check if installed via Homebrew
+	case "darwin":
 		if _, err := exec.LookPath("brew"); err == nil {
-			// Check if uniroute is a brew formula
 			brewList, _ := exec.Command("brew", "list", "--formula").Output()
 			if strings.Contains(string(brewList), "uniroute") {
 				upgradeCmd = []string{"brew", "upgrade", "uniroute"}
 				upgradeInstructions = "Run: brew upgrade uniroute"
 			}
 		}
-		
-		// If not Homebrew, check if installed via go install
 		if upgradeCmd == nil {
-			upgradeInstructions = "Run: go install github.com/Kizsoft-Solution-Limited/uniroute/cmd/cli@latest"
+			if _, err := exec.LookPath("go"); err == nil {
+				upgradeCmd = goInstallCmd
+				upgradeInstructions = goInstallInstructions
+			} else {
+				upgradeInstructions = goInstallInstructions
+			}
 		}
-		
+
 	case "linux":
-		// Check installation method
 		if _, err := exec.LookPath("snap"); err == nil {
-			// Check if installed via snap
 			snapList, _ := exec.Command("snap", "list", "uniroute").Output()
 			if strings.Contains(string(snapList), "uniroute") {
 				upgradeCmd = []string{"sudo", "snap", "refresh", "uniroute"}
 				upgradeInstructions = "Run: sudo snap refresh uniroute"
 			}
 		}
-		
-		// Check if installed via package manager
 		if upgradeCmd == nil {
-			// Try common package managers
-			if _, err := exec.LookPath("apt"); err == nil {
+			if _, err := exec.LookPath("go"); err == nil {
+				upgradeCmd = goInstallCmd
+				upgradeInstructions = goInstallInstructions
+			} else if _, err := exec.LookPath("apt"); err == nil {
 				upgradeInstructions = "Run: sudo apt update && sudo apt upgrade uniroute"
 			} else if _, err := exec.LookPath("yum"); err == nil {
 				upgradeInstructions = "Run: sudo yum update uniroute"
 			} else {
-				// Default to go install
-				upgradeInstructions = "Run: go install github.com/Kizsoft-Solution-Limited/uniroute/cmd/cli@latest"
+				upgradeInstructions = goInstallInstructions
 			}
 		}
-		
+
 	case "windows":
-		// Windows - download latest release
-		upgradeInstructions = fmt.Sprintf("Download the latest release from: %s", info.ReleaseURL)
-		if info.ReleaseURL == "" {
-			upgradeInstructions = "Visit: https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest"
+		if _, err := exec.LookPath("go"); err == nil {
+			upgradeCmd = goInstallCmd
+			upgradeInstructions = goInstallInstructions
+		} else {
+			upgradeInstructions = fmt.Sprintf("Download the latest release from: %s", info.ReleaseURL)
+			if info.ReleaseURL == "" {
+				upgradeInstructions = "Visit: https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest"
+			}
 		}
 	}
 	
@@ -117,7 +120,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		fmt.Printf("   %s\n", color.Bold(strings.Join(upgradeCmd, " ")))
 		fmt.Println()
 		
-		// Auto-confirm if --yes flag is set (used when called from tunnel UI)
+		// --yes skips prompt (used when called from tunnel UI)
 		shouldRun := upgradeAutoYes
 		if !shouldRun {
 			fmt.Print("Run the command above? (y/n): ")
@@ -135,6 +138,9 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 			}
 			fmt.Println()
 			fmt.Println(color.Green("✓ Upgrade completed successfully!"))
+			if len(upgradeCmd) > 0 && upgradeCmd[0] == "go" {
+				fmt.Println(color.Gray("  If you still see the old version, run the new binary from your Go bin (e.g. $HOME/go/bin) or open a new terminal."))
+			}
 			return nil
 		}
 	} else {

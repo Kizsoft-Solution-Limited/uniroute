@@ -10,13 +10,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// UserHandler handles user management operations
 type UserHandler struct {
 	userRepo *storage.UserRepository
 	logger   zerolog.Logger
 }
 
-// NewUserHandler creates a new user handler
 func NewUserHandler(userRepo *storage.UserRepository, logger zerolog.Logger) *UserHandler {
 	return &UserHandler{
 		userRepo: userRepo,
@@ -24,15 +22,12 @@ func NewUserHandler(userRepo *storage.UserRepository, logger zerolog.Logger) *Us
 	}
 }
 
-// UpdateProfileRequest represents a profile update request
 type UpdateProfileRequest struct {
 	Name string `json:"name" binding:"omitempty,max=255"`
 	// Note: Email and roles are explicitly NOT included to prevent unauthorized changes
 }
 
-// HandleUpdateProfile handles updating user profile (name only, no role changes)
 func (h *UserHandler) HandleUpdateProfile(c *gin.Context) {
-	// Get user ID from JWT claims (set by JWT middleware)
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -51,7 +46,6 @@ func (h *UserHandler) HandleUpdateProfile(c *gin.Context) {
 		return
 	}
 
-	// Update only the name - roles are explicitly excluded for security
 	err = h.userRepo.UpdateUserProfile(c.Request.Context(), userID, req.Name)
 	if err != nil {
 		if err == storage.ErrUserNotFound {
@@ -63,7 +57,6 @@ func (h *UserHandler) HandleUpdateProfile(c *gin.Context) {
 		return
 	}
 
-	// Get updated user
 	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to get updated user")
@@ -71,7 +64,6 @@ func (h *UserHandler) HandleUpdateProfile(c *gin.Context) {
 		return
 	}
 
-	// Get user roles (default to ["user"] if not set)
 	roles := user.Roles
 	if len(roles) == 0 {
 		roles = []string{"user"}
@@ -87,15 +79,12 @@ func (h *UserHandler) HandleUpdateProfile(c *gin.Context) {
 	})
 }
 
-// ChangePasswordRequest represents a password change request
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password" binding:"required"`
 	NewPassword     string `json:"new_password" binding:"required,min=8"`
 }
 
-// HandleChangePassword handles password change for authenticated users
 func (h *UserHandler) HandleChangePassword(c *gin.Context) {
-	// Get user ID from JWT claims (set by JWT middleware)
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -114,7 +103,6 @@ func (h *UserHandler) HandleChangePassword(c *gin.Context) {
 		return
 	}
 
-	// Get user to verify current password
 	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
 		if err == storage.ErrUserNotFound {
@@ -126,13 +114,11 @@ func (h *UserHandler) HandleChangePassword(c *gin.Context) {
 		return
 	}
 
-	// Verify current password
 	if err := h.userRepo.VerifyPassword(user.PasswordHash, req.CurrentPassword); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Current password is incorrect"})
 		return
 	}
 
-	// Update password
 	if err := h.userRepo.UpdatePassword(c.Request.Context(), userID, req.NewPassword); err != nil {
 		h.logger.Error().Err(err).Str("user_id", userID.String()).Msg("Failed to update password")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
@@ -142,10 +128,7 @@ func (h *UserHandler) HandleChangePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
 }
 
-// HandleGetUser handles GET /v1/user (works with API key authentication)
-// Returns user information for the authenticated API key
 func (h *UserHandler) HandleGetUser(c *gin.Context) {
-	// Get user ID from context (set by API key middleware)
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -158,7 +141,6 @@ func (h *UserHandler) HandleGetUser(c *gin.Context) {
 		return
 	}
 
-	// Get user from database
 	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
 		if err == storage.ErrUserNotFound {
@@ -170,7 +152,6 @@ func (h *UserHandler) HandleGetUser(c *gin.Context) {
 		return
 	}
 
-	// Get user roles (default to ["user"] if not set)
 	roles := user.Roles
 	if len(roles) == 0 {
 		roles = []string{"user"}
@@ -186,14 +167,11 @@ func (h *UserHandler) HandleGetUser(c *gin.Context) {
 	})
 }
 
-// UpdateUserRolesRequest represents a request to update user roles (admin only)
 type UpdateUserRolesRequest struct {
 	Roles []string `json:"roles" binding:"required,min=1,dive,oneof=user admin"`
 }
 
-// HandleUpdateUserRoles handles updating user roles (admin only)
 func (h *UserHandler) HandleUpdateUserRoles(c *gin.Context) {
-	// Get target user ID from URL parameter
 	userIDParam := c.Param("id")
 	userID, err := uuid.Parse(userIDParam)
 	if err != nil {
@@ -207,13 +185,11 @@ func (h *UserHandler) HandleUpdateUserRoles(c *gin.Context) {
 		return
 	}
 
-	// Validate that at least one role is provided
 	if len(req.Roles) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "At least one role is required"})
 		return
 	}
 
-	// Ensure 'user' role is always included (users should always have base user role)
 	hasUserRole := false
 	for _, role := range req.Roles {
 		if role == "user" {
@@ -225,7 +201,6 @@ func (h *UserHandler) HandleUpdateUserRoles(c *gin.Context) {
 		req.Roles = append(req.Roles, "user")
 	}
 
-	// Update user roles
 	err = h.userRepo.UpdateUserRoles(c.Request.Context(), userID, req.Roles)
 	if err != nil {
 		if err == storage.ErrUserNotFound {
@@ -237,7 +212,6 @@ func (h *UserHandler) HandleUpdateUserRoles(c *gin.Context) {
 		return
 	}
 
-	// Get updated user
 	user, err := h.userRepo.GetUserByID(c.Request.Context(), userID)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to get updated user")
@@ -245,7 +219,6 @@ func (h *UserHandler) HandleUpdateUserRoles(c *gin.Context) {
 		return
 	}
 
-	// Get user roles (default to ["user"] if not set)
 	roles := user.Roles
 	if len(roles) == 0 {
 		roles = []string{"user"}
@@ -264,10 +237,8 @@ func (h *UserHandler) HandleUpdateUserRoles(c *gin.Context) {
 	})
 }
 
-// HandleListUsers handles listing all users (admin only)
 func (h *UserHandler) HandleListUsers(c *gin.Context) {
-	// Parse pagination
-	limit := 50 // default
+	limit := 50
 	if limitStr := c.Query("limit"); limitStr != "" {
 		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 && parsed <= 100 {
 			limit = parsed
@@ -288,7 +259,6 @@ func (h *UserHandler) HandleListUsers(c *gin.Context) {
 		return
 	}
 
-	// Get total count
 	total, err := h.userRepo.CountUsers(c.Request.Context())
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to count users")

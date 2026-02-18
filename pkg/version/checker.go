@@ -9,7 +9,6 @@ import (
 	"time"
 )
 
-// VersionInfo represents version information
 type VersionInfo struct {
 	LatestVersion string `json:"latest_version"`
 	CurrentVersion string
@@ -17,13 +16,11 @@ type VersionInfo struct {
 	ReleaseURL      string
 }
 
-// Checker checks for new versions
 type Checker struct {
 	versionURL string
 	client     *http.Client
 }
 
-// NewChecker creates a new version checker
 func NewChecker(versionURL string) *Checker {
 	return &Checker{
 		versionURL: versionURL,
@@ -33,7 +30,6 @@ func NewChecker(versionURL string) *Checker {
 	}
 }
 
-// CheckForUpdate checks if a new version is available
 func (c *Checker) CheckForUpdate(currentVersion string) (*VersionInfo, error) {
 	info := &VersionInfo{
 		CurrentVersion: currentVersion,

@@ -8,19 +8,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ProviderKeyRepository handles user provider key database operations
 type ProviderKeyRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewProviderKeyRepository creates a new provider key repository
 func NewProviderKeyRepository(pool *pgxpool.Pool) *ProviderKeyRepository {
 	return &ProviderKeyRepository{
 		pool: pool,
 	}
 }
 
-// Create creates a new user provider key
 func (r *ProviderKeyRepository) Create(ctx context.Context, key *UserProviderKey) error {
 	query := `
 		INSERT INTO user_provider_keys (id, user_id, provider, api_key_encrypted, is_active, created_at, updated_at)
@@ -45,7 +42,6 @@ func (r *ProviderKeyRepository) Create(ctx context.Context, key *UserProviderKey
 	return err
 }
 
-// FindByUserAndProvider finds a provider key for a specific user and provider
 func (r *ProviderKeyRepository) FindByUserAndProvider(ctx context.Context, userID uuid.UUID, provider string) (*UserProviderKey, error) {
 	query := `
 		SELECT id, user_id, provider, api_key_encrypted, is_active, created_at, updated_at
@@ -74,7 +70,6 @@ func (r *ProviderKeyRepository) FindByUserAndProvider(ctx context.Context, userI
 	return &key, nil
 }
 
-// ListByUserID lists all provider keys for a user
 func (r *ProviderKeyRepository) ListByUserID(ctx context.Context, userID uuid.UUID) ([]*UserProviderKey, error) {
 	query := `
 		SELECT id, user_id, provider, api_key_encrypted, is_active, created_at, updated_at
@@ -109,7 +104,6 @@ func (r *ProviderKeyRepository) ListByUserID(ctx context.Context, userID uuid.UU
 	return keys, rows.Err()
 }
 
-// Update updates a provider key
 func (r *ProviderKeyRepository) Update(ctx context.Context, key *UserProviderKey) error {
 	query := `
 		UPDATE user_provider_keys
@@ -128,7 +122,6 @@ func (r *ProviderKeyRepository) Update(ctx context.Context, key *UserProviderKey
 	return err
 }
 
-// Delete deletes (soft delete) a provider key
 func (r *ProviderKeyRepository) Delete(ctx context.Context, userID uuid.UUID, provider string) error {
 	query := `
 		UPDATE user_provider_keys
@@ -140,7 +133,6 @@ func (r *ProviderKeyRepository) Delete(ctx context.Context, userID uuid.UUID, pr
 	return err
 }
 
-// DeleteByID deletes a provider key by ID
 func (r *ProviderKeyRepository) DeleteByID(ctx context.Context, userID uuid.UUID, keyID uuid.UUID) error {
 	query := `
 		UPDATE user_provider_keys

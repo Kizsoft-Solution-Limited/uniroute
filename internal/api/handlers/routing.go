@@ -13,7 +13,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// RoutingHandler handles routing configuration requests
 type RoutingHandler struct {
 	Router              *gateway.Router
 	SettingsRepository  *storage.SystemSettingsRepository
@@ -21,7 +20,6 @@ type RoutingHandler struct {
 	Logger              zerolog.Logger
 }
 
-// NewRoutingHandler creates a new routing handler
 func NewRoutingHandler(router *gateway.Router, settingsRepo *storage.SystemSettingsRepository, userRepo *storage.UserRepository, logger zerolog.Logger) *RoutingHandler {
 	return &RoutingHandler{
 		Router:             router,
@@ -31,12 +29,10 @@ func NewRoutingHandler(router *gateway.Router, settingsRepo *storage.SystemSetti
 	}
 }
 
-// SetRoutingStrategyRequest represents a request to set routing strategy
 type SetRoutingStrategyRequest struct {
 	Strategy string `json:"strategy" binding:"required"` // "model", "cost", "latency", "balanced", "custom"
 }
 
-// SetRoutingStrategy handles POST /admin/routing/strategy
 func (h *RoutingHandler) SetRoutingStrategy(c *gin.Context) {
 	var req SetRoutingStrategyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -47,7 +43,6 @@ func (h *RoutingHandler) SetRoutingStrategy(c *gin.Context) {
 		return
 	}
 
-	// Validate strategy
 	validStrategies := map[string]bool{
 		"model":    true,
 		"cost":     true,
@@ -62,7 +57,6 @@ func (h *RoutingHandler) SetRoutingStrategy(c *gin.Context) {
 		return
 	}
 
-	// Get user ID from context (set by JWT middleware)
 	userID, exists := c.Get("user_id")
 	var updatedBy *uuid.UUID
 	if exists {
@@ -71,7 +65,6 @@ func (h *RoutingHandler) SetRoutingStrategy(c *gin.Context) {
 		}
 	}
 
-	// Save to database if repository is available (set as DEFAULT strategy)
 	if h.SettingsRepository != nil {
 		ctx := c.Request.Context()
 		if err := h.SettingsRepository.SetDefaultRoutingStrategy(ctx, req.Strategy, updatedBy); err != nil {
@@ -79,7 +72,6 @@ func (h *RoutingHandler) SetRoutingStrategy(c *gin.Context) {
 				Err(err).
 				Str("strategy", req.Strategy).
 				Msg("Failed to save default routing strategy to database")
-			// Continue anyway - update in-memory router
 		} else {
 			h.Logger.Info().
 				Str("strategy", req.Strategy).
@@ -87,11 +79,9 @@ func (h *RoutingHandler) SetRoutingStrategy(c *gin.Context) {
 		}
 	}
 
-	// Set strategy in router (in-memory default)
 	strategyType := gateway.StrategyType(req.Strategy)
 	h.Router.SetStrategyType(strategyType)
 
-	// Verify strategy was set correctly
 	actualStrategy := h.Router.GetStrategyType()
 	h.Logger.Info().
 		Str("requested_strategy", req.Strategy).
@@ -104,33 +94,27 @@ func (h *RoutingHandler) SetRoutingStrategy(c *gin.Context) {
 	})
 }
 
-// GetRoutingStrategy handles GET /admin/routing/strategy
 func (h *RoutingHandler) GetRoutingStrategy(c *gin.Context) {
 	ctx := c.Request.Context()
 	var currentStrategy string
 
-	// Try to get from database first (if repository is available)
 	if h.SettingsRepository != nil {
 		dbStrategy, err := h.SettingsRepository.GetDefaultRoutingStrategy(ctx)
 		if err == nil && dbStrategy != "" {
 			currentStrategy = dbStrategy
-			// Sync router with database value
 			strategyType := gateway.StrategyType(currentStrategy)
 			h.Router.SetStrategyType(strategyType)
 		}
 	}
 
-	// Fallback to router's in-memory value
 	if currentStrategy == "" {
 		currentStrategy = string(h.Router.GetStrategyType())
 	}
 
-	// Get lock status - always include in response
-	var isLocked bool = false // Default to unlocked
+	var isLocked bool = false
 	if h.SettingsRepository != nil {
 		locked, err := h.SettingsRepository.IsRoutingStrategyLocked(ctx)
 		if err != nil {
-			// Keep default false if error
 		} else {
 			isLocked = locked
 		}
@@ -149,7 +133,6 @@ func (h *RoutingHandler) GetRoutingStrategy(c *gin.Context) {
 	})
 }
 
-// GetCostEstimate handles POST /v1/routing/estimate-cost
 func (h *RoutingHandler) GetCostEstimate(c *gin.Context) {
 	var req struct {
 		Model    string                  `json:"model" binding:"required"`
@@ -162,11 +145,9 @@ func (h *RoutingHandler) GetCostEstimate(c *gin.Context) {
 		return
 	}
 
-	// Get cost estimates for all providers
 	estimates := make(map[string]float64)
 	calculator := gateway.NewCostCalculator()
 
-	// Estimate for each provider that supports the model
 	providers := h.Router.ListProviders()
 	for _, providerName := range providers {
 		provider, err := h.Router.GetProvider(providerName)
@@ -174,7 +155,6 @@ func (h *RoutingHandler) GetCostEstimate(c *gin.Context) {
 			continue
 		}
 
-		// Check if provider supports model
 		supports := false
 		for _, model := range provider.GetModels() {
 			if model == req.Model {
@@ -196,9 +176,7 @@ func (h *RoutingHandler) GetCostEstimate(c *gin.Context) {
 	})
 }
 
-// GetLatencyStats handles GET /v1/routing/latency
 func (h *RoutingHandler) GetLatencyStats(c *gin.Context) {
-	// Get latency stats for all providers
 	stats := make(map[string]interface{})
 	
 	tracker := h.Router.GetLatencyTracker()
@@ -218,11 +196,9 @@ func (h *RoutingHandler) GetLatencyStats(c *gin.Context) {
 	})
 }
 
-// GetUserRoutingStrategy handles GET /auth/routing/strategy (user-facing)
 func (h *RoutingHandler) GetUserRoutingStrategy(c *gin.Context) {
 	ctx := c.Request.Context()
-	
-	// Get user ID from context
+
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -233,7 +209,6 @@ func (h *RoutingHandler) GetUserRoutingStrategy(c *gin.Context) {
 
 	userID, ok := userIDStr.(uuid.UUID)
 	if !ok {
-		// Try to parse as string
 		if idStr, ok := userIDStr.(string); ok {
 			var err error
 			userID, err = uuid.Parse(idStr)
@@ -251,7 +226,6 @@ func (h *RoutingHandler) GetUserRoutingStrategy(c *gin.Context) {
 		}
 	}
 
-	// Check if strategy is locked
 	var isLocked bool
 	if h.SettingsRepository != nil {
 		locked, err := h.SettingsRepository.IsRoutingStrategyLocked(ctx)
@@ -260,7 +234,6 @@ func (h *RoutingHandler) GetUserRoutingStrategy(c *gin.Context) {
 		}
 	}
 
-	// Get user's strategy preference
 	var userStrategy string
 	if h.UserRepository != nil {
 		pref, err := h.UserRepository.GetUserRoutingStrategy(ctx, userID)
@@ -269,7 +242,6 @@ func (h *RoutingHandler) GetUserRoutingStrategy(c *gin.Context) {
 		}
 	}
 
-	// Get default strategy
 	var defaultStrategy string
 	if h.SettingsRepository != nil {
 		def, err := h.SettingsRepository.GetDefaultRoutingStrategy(ctx)
@@ -278,10 +250,9 @@ func (h *RoutingHandler) GetUserRoutingStrategy(c *gin.Context) {
 		}
 	}
 	if defaultStrategy == "" {
-		defaultStrategy = "model" // Fallback
+		defaultStrategy = "model"
 	}
 
-	// Determine effective strategy
 	effectiveStrategy := userStrategy
 	if effectiveStrategy == "" || isLocked {
 		effectiveStrategy = defaultStrategy
@@ -302,7 +273,6 @@ func (h *RoutingHandler) GetUserRoutingStrategy(c *gin.Context) {
 	})
 }
 
-// SetUserRoutingStrategy handles PUT /auth/routing/strategy (user-facing)
 func (h *RoutingHandler) SetUserRoutingStrategy(c *gin.Context) {
 	var req SetRoutingStrategyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -313,7 +283,6 @@ func (h *RoutingHandler) SetUserRoutingStrategy(c *gin.Context) {
 		return
 	}
 
-	// Validate strategy
 	validStrategies := map[string]bool{
 		"model":    true,
 		"cost":     true,
@@ -328,7 +297,6 @@ func (h *RoutingHandler) SetUserRoutingStrategy(c *gin.Context) {
 		return
 	}
 
-	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -358,7 +326,6 @@ func (h *RoutingHandler) SetUserRoutingStrategy(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Check if strategy is locked
 	if h.SettingsRepository != nil {
 		locked, err := h.SettingsRepository.IsRoutingStrategyLocked(ctx)
 		if err == nil && locked {
@@ -371,7 +338,6 @@ func (h *RoutingHandler) SetUserRoutingStrategy(c *gin.Context) {
 		}
 	}
 
-	// Save user preference
 	if h.UserRepository == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "user repository not available",
@@ -403,10 +369,7 @@ func (h *RoutingHandler) SetUserRoutingStrategy(c *gin.Context) {
 	})
 }
 
-// ClearUserRoutingStrategy handles DELETE /auth/routing/strategy (user-facing)
-// Clears user's routing strategy preference to use default
 func (h *RoutingHandler) ClearUserRoutingStrategy(c *gin.Context) {
-	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -436,7 +399,6 @@ func (h *RoutingHandler) ClearUserRoutingStrategy(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// Check if strategy is locked
 	if h.SettingsRepository != nil {
 		locked, err := h.SettingsRepository.IsRoutingStrategyLocked(ctx)
 		if err == nil && locked {
@@ -449,7 +411,6 @@ func (h *RoutingHandler) ClearUserRoutingStrategy(c *gin.Context) {
 		}
 	}
 
-	// Clear user preference (set to nil)
 	if h.UserRepository == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "user repository not available",
@@ -477,7 +438,6 @@ func (h *RoutingHandler) ClearUserRoutingStrategy(c *gin.Context) {
 	})
 }
 
-// SetRoutingStrategyLock handles POST /admin/routing/strategy/lock
 func (h *RoutingHandler) SetRoutingStrategyLock(c *gin.Context) {
 	var req struct {
 		Locked *bool `json:"locked"`
@@ -490,7 +450,6 @@ func (h *RoutingHandler) SetRoutingStrategyLock(c *gin.Context) {
 		return
 	}
 
-	// Extract boolean value from pointer - required field
 	if req.Locked == nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": errors.ErrInvalidRequest.Error(),
@@ -500,7 +459,6 @@ func (h *RoutingHandler) SetRoutingStrategyLock(c *gin.Context) {
 	}
 	locked := *req.Locked
 
-	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	var updatedBy *uuid.UUID
 	if exists {

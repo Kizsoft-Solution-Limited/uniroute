@@ -11,13 +11,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// AnalyticsHandler handles analytics and usage tracking requests
 type AnalyticsHandler struct {
 	requestRepo *storage.RequestRepository
 	logger      zerolog.Logger
 }
 
-// NewAnalyticsHandler creates a new analytics handler
 func NewAnalyticsHandler(requestRepo *storage.RequestRepository, logger zerolog.Logger) *AnalyticsHandler {
 	return &AnalyticsHandler{
 		requestRepo: requestRepo,
@@ -25,9 +23,7 @@ func NewAnalyticsHandler(requestRepo *storage.RequestRepository, logger zerolog.
 	}
 }
 
-// GetUsageStats handles GET /v1/analytics/usage
 func (h *AnalyticsHandler) GetUsageStats(c *gin.Context) {
-	// Get user ID from context (set by auth middleware)
 	userIDStr, exists := c.Get("user_id")
 	var userID *uuid.UUID
 	if exists {
@@ -38,7 +34,6 @@ func (h *AnalyticsHandler) GetUsageStats(c *gin.Context) {
 		}
 	}
 
-	// Parse time range (default: last 30 days)
 	startTime := time.Now().AddDate(0, 0, -30)
 	endTime := time.Now()
 
@@ -78,9 +73,7 @@ func (h *AnalyticsHandler) GetUsageStats(c *gin.Context) {
 	})
 }
 
-// GetRequests handles GET /v1/analytics/requests
 func (h *AnalyticsHandler) GetRequests(c *gin.Context) {
-	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
 	var userID *uuid.UUID
 	if exists {
@@ -91,8 +84,7 @@ func (h *AnalyticsHandler) GetRequests(c *gin.Context) {
 		}
 	}
 
-	// Parse pagination
-	limit := 50 // default
+	limit := 50
 	if limitStr := c.Query("limit"); limitStr != "" {
 		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 && parsed <= 100 {
 			limit = parsed
@@ -115,7 +107,6 @@ func (h *AnalyticsHandler) GetRequests(c *gin.Context) {
 		return
 	}
 
-	// Convert to response format
 	response := make([]map[string]interface{}, 0, len(requests))
 	for _, req := range requests {
 		response = append(response, map[string]interface{}{

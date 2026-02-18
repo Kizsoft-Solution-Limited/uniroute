@@ -11,31 +11,26 @@ import (
 	"github.com/google/uuid"
 )
 
-// ConversationHandler handles conversation-related requests
 type ConversationHandler struct {
 	convRepo *storage.ConversationRepository
 }
 
-// NewConversationHandler creates a new conversation handler
 func NewConversationHandler(convRepo *storage.ConversationRepository) *ConversationHandler {
 	return &ConversationHandler{
 		convRepo: convRepo,
 	}
 }
 
-// CreateConversationRequest represents a request to create a conversation
 type CreateConversationRequest struct {
 	Title *string `json:"title"`
 	Model *string `json:"model"`
 }
 
-// UpdateConversationRequest represents a request to update a conversation
 type UpdateConversationRequest struct {
 	Title *string `json:"title"`
 	Model *string `json:"model"`
 }
 
-// CreateConversation handles POST /auth/conversations
 func (h *ConversationHandler) CreateConversation(c *gin.Context) {
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
@@ -73,7 +68,6 @@ func (h *ConversationHandler) CreateConversation(c *gin.Context) {
 	c.JSON(http.StatusOK, conv)
 }
 
-// ListConversations handles GET /auth/conversations
 func (h *ConversationHandler) ListConversations(c *gin.Context) {
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
@@ -91,7 +85,6 @@ func (h *ConversationHandler) ListConversations(c *gin.Context) {
 		return
 	}
 
-	// Get pagination parameters
 	limit := 50 // Default limit
 	offset := 0
 
@@ -119,7 +112,6 @@ func (h *ConversationHandler) ListConversations(c *gin.Context) {
 	c.JSON(http.StatusOK, conversations)
 }
 
-// GetConversation handles GET /auth/conversations/:id
 func (h *ConversationHandler) GetConversation(c *gin.Context) {
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
@@ -153,7 +145,6 @@ func (h *ConversationHandler) GetConversation(c *gin.Context) {
 		return
 	}
 
-	// Get messages for this conversation
 	messages, err := h.convRepo.GetMessages(c.Request.Context(), conversationID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -168,7 +159,6 @@ func (h *ConversationHandler) GetConversation(c *gin.Context) {
 	})
 }
 
-// UpdateConversation handles PUT /auth/conversations/:id
 func (h *ConversationHandler) UpdateConversation(c *gin.Context) {
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
@@ -222,7 +212,6 @@ func (h *ConversationHandler) UpdateConversation(c *gin.Context) {
 	})
 }
 
-// DeleteConversation handles DELETE /auth/conversations/:id
 func (h *ConversationHandler) DeleteConversation(c *gin.Context) {
 	userIDStr, exists := c.Get("user_id")
 	if !exists {

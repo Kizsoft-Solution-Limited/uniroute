@@ -14,7 +14,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// GoogleProvider implements the Provider interface for Google (Gemini)
 type GoogleProvider struct {
 	apiKey  string
 	baseURL string
@@ -22,7 +21,6 @@ type GoogleProvider struct {
 	logger  zerolog.Logger
 }
 
-// NewGoogleProvider creates a new Google provider
 func NewGoogleProvider(apiKey, baseURL string, logger zerolog.Logger) *GoogleProvider {
 	if baseURL == "" {
 		baseURL = "https://generativelanguage.googleapis.com/v1"
@@ -37,12 +35,10 @@ func NewGoogleProvider(apiKey, baseURL string, logger zerolog.Logger) *GooglePro
 	}
 }
 
-// Name returns the provider name
 func (p *GoogleProvider) Name() string {
 	return "google"
 }
 
-// Chat sends a chat request to Google Gemini
 func (p *GoogleProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("Google API key not configured")
@@ -102,7 +98,6 @@ func (p *GoogleProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		return nil, fmt.Errorf("Google API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse Google response
 	var googleResp struct {
 		Candidates []struct {
 			Content struct {
@@ -177,7 +172,6 @@ func (p *GoogleProvider) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-// GetModels returns list of available Google models
 func (p *GoogleProvider) GetModels() []string {
 	return []string{
 		// Gemini 2.0 series (latest, 2025)
@@ -191,26 +185,21 @@ func (p *GoogleProvider) GetModels() []string {
 		"gemini-pro",        // Gemini Pro (original)
 		"gemini-pro-vision", // Gemini Pro Vision
 		// Note: When Google releases Gemini 3 Pro, Gemini 3 Deep Think via API,
-		// their model IDs will be added here. Check Google AI Studio for latest models.
 	}
 }
 
-// convertMessagesToGoogle converts UniRoute messages to Google Gemini format
-// Google Gemini supports multimodal content with images
+// Google Gemini supports multimodal content with images.
 func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, len(messages))
 	for _, msg := range messages {
 		parts := make([]map[string]interface{}, 0)
 
-		// Handle content: can be string (text-only) or []ContentPart (multimodal)
 		switch content := msg.Content.(type) {
 		case string:
-			// Text-only message (backward compatible)
 			parts = append(parts, map[string]interface{}{
 				"text": content,
 			})
 		case []ContentPart:
-			// Multimodal message - Google Gemini uses parts array
 			for _, part := range content {
 				if part.Type == "text" {
 					parts = append(parts, map[string]interface{}{
@@ -341,7 +330,6 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 
 			data := strings.TrimPrefix(line, "data: ")
 
-			// Parse Gemini response
 			var geminiResp struct {
 				Candidates []struct {
 					Content struct {
@@ -362,7 +350,6 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 				continue
 			}
 
-			// Extract text from candidates
 			if len(geminiResp.Candidates) > 0 {
 				candidate := geminiResp.Candidates[0]
 				if len(candidate.Content.Parts) > 0 {
@@ -393,14 +380,12 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 						previousText = fullText
 					}
 
-					// Check if finished
 					if candidate.FinishReason != "" {
 						isDone = true
 					}
 				}
 			}
 
-			// Update usage if available
 			if geminiResp.UsageMetadata.TotalTokenCount > 0 {
 				finalUsage = &Usage{
 					PromptTokens:     geminiResp.UsageMetadata.PromptTokenCount,
@@ -409,7 +394,6 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 				}
 			}
 
-			// Send final chunk if done
 			if isDone {
 				chunkChan <- StreamChunk{
 					ID:      responseID,
@@ -430,7 +414,6 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 	return chunkChan, errChan
 }
 
-// extractMediaType extracts media type from data URL
 func extractMediaType(dataURL string) string {
 	if strings.HasPrefix(dataURL, "data:") {
 		parts := strings.SplitN(dataURL, ";", 2)

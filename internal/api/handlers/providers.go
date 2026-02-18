@@ -9,13 +9,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// ProviderHandler handles provider-related requests
 type ProviderHandler struct {
 	Router *gateway.Router
 	Logger zerolog.Logger
 }
 
-// NewProviderHandler creates a new provider handler
 func NewProviderHandler(router *gateway.Router, logger zerolog.Logger) *ProviderHandler {
 	return &ProviderHandler{
 		Router: router,
@@ -23,7 +21,6 @@ func NewProviderHandler(router *gateway.Router, logger zerolog.Logger) *Provider
 	}
 }
 
-// ListProviders handles GET /v1/providers
 func (h *ProviderHandler) ListProviders(c *gin.Context) {
 	providers := h.Router.ListProviders()
 	
@@ -50,7 +47,6 @@ func (h *ProviderHandler) ListProviders(c *gin.Context) {
 	})
 }
 
-// GetProviderHealth handles GET /v1/providers/:name/health
 func (h *ProviderHandler) GetProviderHealth(c *gin.Context) {
 	providerName := c.Param("name")
 	

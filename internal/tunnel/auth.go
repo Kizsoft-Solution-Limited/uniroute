@@ -21,9 +21,7 @@ func NewTokenService(logger zerolog.Logger) *TokenService {
 	}
 }
 
-// GenerateToken generates a new tunnel token
 func (ts *TokenService) GenerateToken() (string, string, error) {
-	// Generate random token (32 bytes = 64 hex chars)
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		return "", "", fmt.Errorf("failed to generate token: %w", err)
@@ -31,7 +29,6 @@ func (ts *TokenService) GenerateToken() (string, string, error) {
 
 	token := hex.EncodeToString(tokenBytes)
 
-	// Generate hash for storage
 	hash := sha256.Sum256([]byte(token))
 	hashStr := hex.EncodeToString(hash[:])
 
@@ -50,7 +47,6 @@ func (ts *TokenService) VerifyToken(token, hash string) bool {
 	return computedHash == hash
 }
 
-// GenerateBcryptHash generates a bcrypt hash for secure token storage
 func (ts *TokenService) GenerateBcryptHash(token string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.DefaultCost)
 	if err != nil {
@@ -73,7 +69,6 @@ type TokenInfo struct {
 	IsActive   bool
 }
 
-// ValidateToken validates a token and returns token info
 func (ts *TokenService) ValidateToken(token string, tokenInfo *TokenInfo) error {
 	if tokenInfo == nil {
 		return ErrInvalidToken
@@ -87,7 +82,6 @@ func (ts *TokenService) ValidateToken(token string, tokenInfo *TokenInfo) error 
 		return ErrTokenExpired
 	}
 
-	// Verify token hash
 	if !ts.VerifyToken(token, tokenInfo.TokenHash) {
 		return ErrInvalidToken
 	}

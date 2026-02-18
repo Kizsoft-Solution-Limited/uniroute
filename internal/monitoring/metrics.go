@@ -61,23 +61,19 @@ var (
 	)
 )
 
-// RecordRequest records a request metric
 func RecordRequest(provider, model, status string, duration float64) {
 	RequestsTotal.WithLabelValues(provider, model, status).Inc()
 	RequestDuration.WithLabelValues(provider, model).Observe(duration)
 }
 
-// RecordTokens records token usage
 func RecordTokens(provider, model, tokenType string, count int) {
 	TokensTotal.WithLabelValues(provider, model, tokenType).Add(float64(count))
 }
 
-// RecordCost records cost
 func RecordCost(provider, model string, cost float64) {
 	CostTotal.WithLabelValues(provider, model).Add(cost)
 }
 
-// SetProviderHealth sets provider health status
 func SetProviderHealth(provider string, healthy bool) {
 	value := 0.0
 	if healthy {
@@ -86,7 +82,6 @@ func SetProviderHealth(provider string, healthy bool) {
 	ProviderHealth.WithLabelValues(provider).Set(value)
 }
 
-// RecordRateLimitHit records a rate limit hit
 func RecordRateLimitHit(apiKeyID, limitType string) {
 	RateLimitHits.WithLabelValues(apiKeyID, limitType).Inc()
 }

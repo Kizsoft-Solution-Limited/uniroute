@@ -29,7 +29,6 @@ const (
 	MsgTypeTunnelStatus  = "tunnel_status"
 )
 
-// InitMessage is sent by client to initialize tunnel
 type InitMessage struct {
 	Type      string                 `json:"type,omitempty"`
 	Version   string                 `json:"version,omitempty"`
@@ -43,7 +42,6 @@ type InitMessage struct {
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// InitResponse is sent by server after tunnel creation
 type InitResponse struct {
 	Type      string `json:"type"`
 	TunnelID  string `json:"tunnel_id"`
@@ -52,7 +50,6 @@ type InitResponse struct {
 	Status    string `json:"status"`
 }
 
-// TunnelMessage is the base message type
 type TunnelMessage struct {
 	Type      string        `json:"type"`
 	RequestID string        `json:"request_id,omitempty"`
@@ -62,7 +59,6 @@ type TunnelMessage struct {
 	Data     []byte       `json:"data,omitempty"` // For TCP/TLS raw data
 }
 
-// HTTPRequest represents an HTTP request to forward
 type HTTPRequest struct {
 	RequestID string            `json:"request_id"`
 	Method    string            `json:"method"`
@@ -72,7 +68,6 @@ type HTTPRequest struct {
 	Body      []byte            `json:"body,omitempty"`
 }
 
-// HTTPResponse represents an HTTP response
 type HTTPResponse struct {
 	RequestID string            `json:"request_id"`
 	Status    int               `json:"status"`
@@ -80,14 +75,12 @@ type HTTPResponse struct {
 	Body      []byte            `json:"body,omitempty"`
 }
 
-// HTTPError represents an HTTP error
 type HTTPError struct {
 	RequestID string `json:"request_id"`
 	Error     string `json:"error"`
 	Message   string `json:"message"`
 }
 
-// Tunnel represents tunnel metadata (database model)
 type Tunnel struct {
 	ID           string
 	UserID       string
@@ -104,7 +97,6 @@ type Tunnel struct {
 	RequestCount int64
 }
 
-// TunnelInfo contains tunnel connection information
 type TunnelInfo struct {
 	ID        string
 	Subdomain string
@@ -112,7 +104,6 @@ type TunnelInfo struct {
 	Status    string
 }
 
-// TunnelStatus contains tunnel statistics
 type TunnelStatus struct {
 	TunnelID   string    `json:"tunnel_id"`
 	Status     string    `json:"status"`
@@ -122,7 +113,6 @@ type TunnelStatus struct {
 	LastActive time.Time `json:"last_active"`
 }
 
-// ConnectionStats represents connection statistics
 type ConnectionStats struct {
 	Total int64   `json:"total"` // Total connections/requests
 	Open  int64   `json:"open"`  // Open/active connections
@@ -132,7 +122,6 @@ type ConnectionStats struct {
 	P90   float64 `json:"p90"`   // 90th percentile latency (seconds)
 }
 
-// TunnelConfig represents a tunnel configuration (for config file)
 type TunnelConfig struct {
 	Name      string `json:"name"`                // Tunnel name/identifier
 	Protocol  string `json:"protocol"`            // http, tcp, tls, udp
@@ -142,14 +131,12 @@ type TunnelConfig struct {
 	Enabled   bool   `json:"enabled"`             // Whether this tunnel should be started with --all
 }
 
-// TunnelConfigFile represents the tunnel configuration file format
 type TunnelConfigFile struct {
 	Version  string          `json:"version"`  // Config file version
 	Tunnels  []TunnelConfig  `json:"tunnels"`  // List of tunnel configurations
 	Defaults *TunnelDefaults `json:"defaults,omitempty"` // Default values
 }
 
-// TunnelDefaults contains default values for tunnels
 type TunnelDefaults struct {
 	ServerURL string `json:"server_url,omitempty"` // Default tunnel server URL
 }

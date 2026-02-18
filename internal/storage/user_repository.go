@@ -18,13 +18,11 @@ var (
 	ErrInvalidPassword   = errors.New("invalid password")
 )
 
-// UserRepository handles user database operations
 type UserRepository struct {
 	client *PostgresClient
 	logger zerolog.Logger
 }
 
-// NewUserRepository creates a new user repository
 func NewUserRepository(client *PostgresClient, logger zerolog.Logger) *UserRepository {
 	return &UserRepository{
 		client: client,
@@ -32,17 +30,13 @@ func NewUserRepository(client *PostgresClient, logger zerolog.Logger) *UserRepos
 	}
 }
 
-// CreateUser creates a new user
-// SECURITY: This function ALWAYS sets roles to ['user'] - it cannot be overridden
-// This prevents privilege escalation attacks during registration
+// SECURITY: This function ALWAYS sets roles to ['user'] - it cannot be overridden.
 func (r *UserRepository) CreateUser(ctx context.Context, email, password, name string) (*User, error) {
-	// Check if user already exists
 	existing, err := r.GetUserByEmail(ctx, email)
 	if err == nil && existing != nil {
 		return nil, ErrUserAlreadyExists
 	}
 
-	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
@@ -111,10 +105,7 @@ func (r *UserRepository) EnsureSeedAdmin(ctx context.Context, email, name, passw
 	return nil
 }
 
-// GetUserByEmail retrieves a user by email
 func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	// Use COALESCE to handle NULL values (for existing users before migration)
-	// Treat NULL as false (not verified), and default roles to ['user'] if NULL
 	query := `
 		SELECT id, email, name, password_hash, COALESCE(email_verified, false) as email_verified, 
 		       COALESCE(roles, ARRAY['user']::TEXT[]) as roles, routing_strategy, created_at, updated_at
@@ -144,10 +135,7 @@ func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*Use
 	return &user, nil
 }
 
-// GetUserByID retrieves a user by ID
 func (r *UserRepository) GetUserByID(ctx context.Context, userID uuid.UUID) (*User, error) {
-	// Use COALESCE to handle NULL values (for existing users before migration)
-	// Treat NULL as false (not verified), and default roles to ['user'] if NULL
 	query := `
 		SELECT id, email, name, password_hash, COALESCE(email_verified, false) as email_verified, 
 		       COALESCE(roles, ARRAY['user']::TEXT[]) as roles, routing_strategy, created_at, updated_at
@@ -182,9 +170,7 @@ func (r *UserRepository) VerifyPassword(hashedPassword, password string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
 }
 
-// UpdatePassword updates a user's password
 func (r *UserRepository) UpdatePassword(ctx context.Context, userID uuid.UUID, newPassword string) error {
-	// Hash new password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
@@ -204,7 +190,6 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID uuid.UUID, n
 	return nil
 }
 
-// CreatePasswordResetToken creates a password reset token
 func (r *UserRepository) CreatePasswordResetToken(ctx context.Context, userID uuid.UUID, token string, expiresAt time.Time) error {
 	query := `
 		INSERT INTO password_reset_tokens (id, user_id, token, expires_at, created_at)
@@ -219,7 +204,6 @@ func (r *UserRepository) CreatePasswordResetToken(ctx context.Context, userID uu
 	return nil
 }
 
-// GetPasswordResetToken retrieves a password reset token
 func (r *UserRepository) GetPasswordResetToken(ctx context.Context, token string) (*PasswordResetToken, error) {
 	query := `
 		SELECT id, user_id, token, expires_at, used, created_at
@@ -246,7 +230,6 @@ func (r *UserRepository) GetPasswordResetToken(ctx context.Context, token string
 	return &resetToken, nil
 }
 
-// MarkPasswordResetTokenAsUsed marks a password reset token as used
 func (r *UserRepository) MarkPasswordResetTokenAsUsed(ctx context.Context, token string) error {
 	query := `
 		UPDATE password_reset_tokens
@@ -262,7 +245,6 @@ func (r *UserRepository) MarkPasswordResetTokenAsUsed(ctx context.Context, token
 	return nil
 }
 
-// CreateEmailVerificationToken creates an email verification token
 func (r *UserRepository) CreateEmailVerificationToken(ctx context.Context, userID uuid.UUID, token string, expiresAt time.Time) error {
 	query := `
 		INSERT INTO email_verification_tokens (id, user_id, token, expires_at, created_at)
@@ -277,7 +259,6 @@ func (r *UserRepository) CreateEmailVerificationToken(ctx context.Context, userI
 	return nil
 }
 
-// GetEmailVerificationToken retrieves an email verification token
 func (r *UserRepository) GetEmailVerificationToken(ctx context.Context, token string) (*EmailVerificationToken, error) {
 	query := `
 		SELECT id, user_id, token, expires_at, used, created_at
@@ -304,7 +285,6 @@ func (r *UserRepository) GetEmailVerificationToken(ctx context.Context, token st
 	return &verificationToken, nil
 }
 
-// MarkEmailVerificationTokenAsUsed marks an email verification token as used
 func (r *UserRepository) MarkEmailVerificationTokenAsUsed(ctx context.Context, token string) error {
 	query := `
 		UPDATE email_verification_tokens
@@ -320,7 +300,6 @@ func (r *UserRepository) MarkEmailVerificationTokenAsUsed(ctx context.Context, t
 	return nil
 }
 
-// VerifyEmail marks a user's email as verified
 func (r *UserRepository) VerifyEmail(ctx context.Context, userID uuid.UUID) error {
 	query := `
 		UPDATE users
@@ -336,7 +315,6 @@ func (r *UserRepository) VerifyEmail(ctx context.Context, userID uuid.UUID) erro
 	return nil
 }
 
-// UpdateUserProfile updates a user's profile (name only - roles are NOT updated)
 func (r *UserRepository) UpdateUserProfile(ctx context.Context, userID uuid.UUID, name string) error {
 	query := `
 		UPDATE users
@@ -349,7 +327,6 @@ func (r *UserRepository) UpdateUserProfile(ctx context.Context, userID uuid.UUID
 		return fmt.Errorf("failed to update user profile: %w", err)
 	}
 
-	// Check if user exists
 	if result.RowsAffected() == 0 {
 		return ErrUserNotFound
 	}
@@ -357,9 +334,7 @@ func (r *UserRepository) UpdateUserProfile(ctx context.Context, userID uuid.UUID
 	return nil
 }
 
-// UpdateUserRoles updates a user's roles (admin only operation)
 func (r *UserRepository) UpdateUserRoles(ctx context.Context, userID uuid.UUID, roles []string) error {
-	// Validate roles
 	for _, role := range roles {
 		if role != "user" && role != "admin" {
 			return fmt.Errorf("invalid role: %s (must be 'user' or 'admin')", role)
@@ -377,7 +352,6 @@ func (r *UserRepository) UpdateUserRoles(ctx context.Context, userID uuid.UUID, 
 		return fmt.Errorf("failed to update user roles: %w", err)
 	}
 
-	// Check if user exists
 	if result.RowsAffected() == 0 {
 		return ErrUserNotFound
 	}
@@ -385,8 +359,6 @@ func (r *UserRepository) UpdateUserRoles(ctx context.Context, userID uuid.UUID, 
 	return nil
 }
 
-// GetUserRoutingStrategy retrieves a user's routing strategy preference
-// Returns empty string if user has no preference (should use default)
 func (r *UserRepository) GetUserRoutingStrategy(ctx context.Context, userID uuid.UUID) (string, error) {
 	query := `
 		SELECT routing_strategy
@@ -409,10 +381,7 @@ func (r *UserRepository) GetUserRoutingStrategy(ctx context.Context, userID uuid
 	return *strategy, nil
 }
 
-// SetUserRoutingStrategy sets a user's routing strategy preference
-// Pass nil to clear the preference (use default)
 func (r *UserRepository) SetUserRoutingStrategy(ctx context.Context, userID uuid.UUID, strategy *string) error {
-	// Validate strategy if provided
 	if strategy != nil {
 		validStrategies := map[string]bool{
 			"model":    true,
@@ -437,7 +406,6 @@ func (r *UserRepository) SetUserRoutingStrategy(ctx context.Context, userID uuid
 		return fmt.Errorf("failed to set user routing strategy: %w", err)
 	}
 
-	// Check if user exists
 	if result.RowsAffected() == 0 {
 		return ErrUserNotFound
 	}
@@ -445,7 +413,6 @@ func (r *UserRepository) SetUserRoutingStrategy(ctx context.Context, userID uuid
 	return nil
 }
 
-// ListUsers retrieves all users (admin only)
 func (r *UserRepository) ListUsers(ctx context.Context, limit, offset int) ([]*User, error) {
 	query := `
 		SELECT id, email, name, password_hash, COALESCE(email_verified, false) as email_verified, 
@@ -487,7 +454,6 @@ func (r *UserRepository) ListUsers(ctx context.Context, limit, offset int) ([]*U
 	return users, nil
 }
 
-// CountUsers returns the total number of users
 func (r *UserRepository) CountUsers(ctx context.Context) (int, error) {
 	query := `SELECT COUNT(*) FROM users`
 
@@ -500,7 +466,6 @@ func (r *UserRepository) CountUsers(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-// UpdateUserEmailVerified updates the email verified status for a user
 func (r *UserRepository) UpdateUserEmailVerified(ctx context.Context, userID uuid.UUID, verified bool) error {
 	query := `
 		UPDATE users

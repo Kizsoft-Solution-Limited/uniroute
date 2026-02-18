@@ -9,13 +9,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// RedisClient wraps the Redis client
 type RedisClient struct {
 	client *redis.Client
 	logger zerolog.Logger
 }
 
-// NewRedisClient creates a new Redis client
 func NewRedisClient(url string, logger zerolog.Logger) (*RedisClient, error) {
 	opts, err := redis.ParseURL(url)
 	if err != nil {
@@ -43,12 +41,10 @@ func NewRedisClient(url string, logger zerolog.Logger) (*RedisClient, error) {
 	}, nil
 }
 
-// Client returns the underlying Redis client
 func (r *RedisClient) Client() *redis.Client {
 	return r.client
 }
 
-// Close closes the Redis connection
 func (r *RedisClient) Close() error {
 	return r.client.Close()
 }

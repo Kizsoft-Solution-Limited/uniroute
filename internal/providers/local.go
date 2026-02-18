@@ -14,14 +14,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// LocalProvider implements the Provider interface for local LLM servers (Ollama)
 type LocalProvider struct {
 	baseURL string
 	client  *http.Client
 	logger  zerolog.Logger
 }
 
-// NewLocalProvider creates a new local LLM provider
 func NewLocalProvider(baseURL string, logger zerolog.Logger) *LocalProvider {
 	return &LocalProvider{
 		baseURL: baseURL,
@@ -32,12 +30,10 @@ func NewLocalProvider(baseURL string, logger zerolog.Logger) *LocalProvider {
 	}
 }
 
-// Name returns the provider name
 func (p *LocalProvider) Name() string {
 	return "local"
 }
 
-// Chat sends a chat request to the local LLM server
 func (p *LocalProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	// Convert messages - Ollama supports multimodal but we'll convert to text for now
 	ollamaMessages := make([]Message, 0, len(req.Messages))
@@ -108,7 +104,6 @@ func (p *LocalProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespons
 		return nil, fmt.Errorf("provider returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse Ollama response
 	var ollamaResp struct {
 		Message struct {
 			Role    string `json:"role"`
@@ -121,8 +116,6 @@ func (p *LocalProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespons
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	// Convert to UniRoute format
-	// Ollama returns content as string, convert to our format
 	var content interface{} = ollamaResp.Message.Content
 	if contentStr, ok := content.(string); ok {
 		content = contentStr
@@ -258,7 +251,6 @@ func (p *LocalProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan
 				continue
 			}
 
-			// Parse Ollama streaming response (JSON lines format)
 			var ollamaResp struct {
 				Message struct {
 					Role    string `json:"role"`
@@ -298,9 +290,7 @@ func (p *LocalProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan
 				previousContent = currentContent
 			}
 
-			// Check if done
 			if ollamaResp.Done {
-				// Calculate usage from token counts if available
 				if ollamaResp.PromptEvalCount > 0 || ollamaResp.EvalCount > 0 {
 					finalUsage = &Usage{
 						PromptTokens:     ollamaResp.PromptEvalCount,
@@ -329,7 +319,6 @@ func (p *LocalProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan
 	return chunkChan, errChan
 }
 
-// GetModels returns list of available models from Ollama
 func (p *LocalProvider) GetModels() []string {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

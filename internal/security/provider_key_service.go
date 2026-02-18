@@ -15,13 +15,11 @@ import (
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
 )
 
-// ProviderKeyService handles encryption and management of user provider keys
 type ProviderKeyService struct {
 	repo          ProviderKeyRepositoryInterface
 	encryptionKey []byte // Master encryption key (should be from config)
 }
 
-// ProviderKeyRepositoryInterface defines the interface for provider key repository
 type ProviderKeyRepositoryInterface interface {
 	Create(ctx context.Context, key *storage.UserProviderKey) error
 	FindByUserAndProvider(ctx context.Context, userID uuid.UUID, provider string) (*storage.UserProviderKey, error)
@@ -31,10 +29,7 @@ type ProviderKeyRepositoryInterface interface {
 	DeleteByID(ctx context.Context, userID uuid.UUID, keyID uuid.UUID) error
 }
 
-// NewProviderKeyService creates a new provider key service
-// encryptionKey should be a string that will be derived to 32-byte key for AES-256
 func NewProviderKeyService(repo ProviderKeyRepositoryInterface, encryptionKey string) (*ProviderKeyService, error) {
-	// Derive 32-byte key from string (using SHA256)
 	keyBytes := deriveEncryptionKey(encryptionKey)
 	
 	return &ProviderKeyService{
@@ -49,20 +44,16 @@ func deriveEncryptionKey(key string) []byte {
 	return hash[:]
 }
 
-// AddProviderKey adds or updates a provider API key for a user
 func (s *ProviderKeyService) AddProviderKey(ctx context.Context, userID uuid.UUID, provider string, apiKey string) error {
-	// Validate provider
 	if !isValidProvider(provider) {
 		return fmt.Errorf("invalid provider: %s", provider)
 	}
 
-	// Encrypt the API key
 	encrypted, err := s.encrypt(apiKey)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt API key: %w", err)
 	}
 
-	// Create or update the key
 	key := &storage.UserProviderKey{
 		ID:              uuid.New(),
 		UserID:          userID,
@@ -76,17 +67,15 @@ func (s *ProviderKeyService) AddProviderKey(ctx context.Context, userID uuid.UUI
 	return s.repo.Create(ctx, key)
 }
 
-// GetProviderKey retrieves and decrypts a provider API key for a user
 func (s *ProviderKeyService) GetProviderKey(ctx context.Context, userID uuid.UUID, provider string) (string, error) {
 	key, err := s.repo.FindByUserAndProvider(ctx, userID, provider)
 	if err != nil {
 		return "", fmt.Errorf("failed to find provider key: %w", err)
 	}
 	if key == nil {
-		return "", nil // No key found
+		return "", nil
 	}
 
-	// Decrypt the API key
 	decrypted, err := s.decrypt(key.APIKeyEncrypted)
 	if err != nil {
 		return "", fmt.Errorf("failed to decrypt API key: %w", err)
@@ -95,30 +84,24 @@ func (s *ProviderKeyService) GetProviderKey(ctx context.Context, userID uuid.UUI
 	return decrypted, nil
 }
 
-// ListProviderKeys lists all provider keys for a user (without decrypting)
 func (s *ProviderKeyService) ListProviderKeys(ctx context.Context, userID uuid.UUID) ([]*storage.UserProviderKey, error) {
 	return s.repo.ListByUserID(ctx, userID)
 }
 
-// UpdateProviderKey updates a provider API key
 func (s *ProviderKeyService) UpdateProviderKey(ctx context.Context, userID uuid.UUID, provider string, apiKey string) error {
-	// Get existing key
 	existing, err := s.repo.FindByUserAndProvider(ctx, userID, provider)
 	if err != nil {
 		return fmt.Errorf("failed to find provider key: %w", err)
 	}
 	if existing == nil {
-		// Create new if doesn't exist
 		return s.AddProviderKey(ctx, userID, provider, apiKey)
 	}
 
-	// Encrypt the new API key
 	encrypted, err := s.encrypt(apiKey)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt API key: %w", err)
 	}
 
-	// Update
 	existing.APIKeyEncrypted = encrypted
 	existing.UpdatedAt = time.Now()
 	existing.IsActive = true
@@ -188,7 +171,6 @@ func (s *ProviderKeyService) decrypt(encrypted string) (string, error) {
 	return string(plaintext), nil
 }
 
-// isValidProvider validates that the provider name is supported
 func isValidProvider(provider string) bool {
 	validProviders := map[string]bool{
 		"openai":    true,

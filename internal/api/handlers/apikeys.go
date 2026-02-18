@@ -10,19 +10,16 @@ import (
 	"github.com/google/uuid"
 )
 
-// APIKeyHandler handles API key management
 type APIKeyHandler struct {
 	apiKeyService *security.APIKeyServiceV2
 }
 
-// NewAPIKeyHandler creates a new API key handler
 func NewAPIKeyHandler(apiKeyService *security.APIKeyServiceV2) *APIKeyHandler {
 	return &APIKeyHandler{
 		apiKeyService: apiKeyService,
 	}
 }
 
-// CreateAPIKeyRequest represents a request to create an API key
 type CreateAPIKeyRequest struct {
 	Name               string     `json:"name" binding:"required"`
 	RateLimitPerMinute int        `json:"rate_limit_per_minute"`
@@ -30,7 +27,6 @@ type CreateAPIKeyRequest struct {
 	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
 }
 
-// CreateAPIKey handles POST /auth/api-keys (user route - users manage their own keys)
 func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	var req CreateAPIKeyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -92,7 +88,6 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 	})
 }
 
-// ListAPIKeys handles GET /auth/api-keys (user route - users manage their own keys)
 func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
 	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
@@ -142,7 +137,6 @@ func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
 	})
 }
 
-// RevokeAPIKey handles DELETE /auth/api-keys/:id (user route - users manage their own keys)
 func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")

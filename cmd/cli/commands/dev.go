@@ -15,7 +15,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// devProject holds detected dev server command and port
 type devProject struct {
 	Name    string   // "Node (Vite)", "Laravel", etc.
 	Command string   // executable
@@ -107,7 +106,6 @@ func runDev(cmd *cobra.Command, args []string) error {
 		port = project.Port
 	}
 
-	// Attach mode: only start tunnel (user runs their own dev server)
 	if devAttach {
 		fmt.Println(color.Cyan("Tunnel only (attach mode). Make sure your dev server is running (e.g. php artisan serve or npm run dev)."))
 		fmt.Println(color.Gray("Port: " + port + " (public URL will appear in tunnel UI)"))
@@ -164,7 +162,6 @@ func runDev(cmd *cobra.Command, args []string) error {
 }
 
 func detectProject(dir string) (*devProject, error) {
-	// Node: package.json with dev script
 	if b, err := os.ReadFile(filepath.Join(dir, "package.json")); err == nil {
 		var pkg struct {
 			Scripts         map[string]string `json:"scripts"`
@@ -186,7 +183,6 @@ func detectProject(dir string) (*devProject, error) {
 		}
 	}
 
-	// PHP Laravel: composer.json + artisan
 	if _, err := os.Stat(filepath.Join(dir, "composer.json")); err == nil {
 		if _, err := os.Stat(filepath.Join(dir, "artisan")); err == nil {
 			return &devProject{
@@ -198,7 +194,6 @@ func detectProject(dir string) (*devProject, error) {
 		}
 	}
 
-	// Python Django: manage.py
 	if _, err := os.Stat(filepath.Join(dir, "manage.py")); err == nil {
 		return &devProject{
 			Name:    "Python Django",
@@ -208,7 +203,6 @@ func detectProject(dir string) (*devProject, error) {
 		}, nil
 	}
 
-	// Python Flask: requirements.txt or pyproject.toml with flask (no manage.py)
 	if _, err := os.Stat(filepath.Join(dir, "manage.py")); err != nil {
 		if containsDependency(dir, "flask") {
 			return &devProject{
@@ -220,7 +214,6 @@ func detectProject(dir string) (*devProject, error) {
 		}
 	}
 
-	// Python FastAPI: requirements.txt or pyproject.toml with fastapi
 	if containsDependency(dir, "fastapi") {
 		appSpec := "main:app"
 		if _, err := os.Stat(filepath.Join(dir, "app.py")); err == nil {
@@ -234,7 +227,6 @@ func detectProject(dir string) (*devProject, error) {
 		}, nil
 	}
 
-	// Go: go.mod
 	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 		return &devProject{
 			Name:    "Go",
@@ -244,7 +236,6 @@ func detectProject(dir string) (*devProject, error) {
 		}, nil
 	}
 
-	// Ruby on Rails: Gemfile + config.ru
 	if _, err := os.Stat(filepath.Join(dir, "Gemfile")); err == nil {
 		if _, err := os.Stat(filepath.Join(dir, "config.ru")); err == nil {
 			return &devProject{
@@ -259,7 +250,6 @@ func detectProject(dir string) (*devProject, error) {
 	return nil, fmt.Errorf("no supported project found in %s\nSupported: Node, Laravel, Django, Flask, FastAPI, Go, Rails (see uniroute dev --help)", dir)
 }
 
-// containsDependency checks requirements.txt, pyproject.toml, or Pipfile for a package name.
 func containsDependency(dir, pkg string) bool {
 	for _, name := range []string{"requirements.txt", "requirements-dev.txt", "pyproject.toml", "Pipfile"} {
 		b, err := os.ReadFile(filepath.Join(dir, name))

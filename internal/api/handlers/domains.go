@@ -13,14 +13,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// DomainHandler handles custom domain management requests
 type DomainHandler struct {
 	repository   *storage.CustomDomainRepository
 	domainManager *tunnel.DomainManager
 	logger       zerolog.Logger
 }
 
-// NewDomainHandler creates a new domain handler
 func NewDomainHandler(repository *storage.CustomDomainRepository, logger zerolog.Logger) *DomainHandler {
 	return &DomainHandler{
 		repository: repository,
@@ -28,12 +26,10 @@ func NewDomainHandler(repository *storage.CustomDomainRepository, logger zerolog
 	}
 }
 
-// SetDomainManager sets the domain manager for DNS validation
 func (h *DomainHandler) SetDomainManager(manager *tunnel.DomainManager) {
 	h.domainManager = manager
 }
 
-// ListDomains handles GET /auth/domains
 func (h *DomainHandler) ListDomains(c *gin.Context) {
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
@@ -77,7 +73,6 @@ func (h *DomainHandler) ListDomains(c *gin.Context) {
 	})
 }
 
-// CreateDomain handles POST /auth/domains
 func (h *DomainHandler) CreateDomain(c *gin.Context) {
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
@@ -122,7 +117,6 @@ func (h *DomainHandler) CreateDomain(c *gin.Context) {
 		return
 	}
 
-	// Create domain in database (initially unverified and DNS not configured)
 	domainObj, err := h.repository.CreateDomain(c.Request.Context(), userID, domain)
 	if err != nil {
 		if err == storage.ErrDomainAlreadyExists {
@@ -138,7 +132,6 @@ func (h *DomainHandler) CreateDomain(c *gin.Context) {
 		return
 	}
 
-	// Return response immediately - DNS validation happens asynchronously
 	// This prevents timeouts when DNS lookups are slow
 	c.JSON(http.StatusOK, gin.H{
 		"message": "domain created successfully",
@@ -158,7 +151,6 @@ func (h *DomainHandler) CreateDomain(c *gin.Context) {
 		},
 	})
 
-	// Check DNS configuration asynchronously (don't block response)
 	// Users can add domain first, then configure DNS later
 	if h.domainManager != nil {
 		go func() {
@@ -168,7 +160,6 @@ func (h *DomainHandler) CreateDomain(c *gin.Context) {
 
 			configured, err := h.domainManager.ValidateCNAME(ctx, domain, "tunnel.uniroute.co")
 			if err == nil && configured {
-				// Update domain to mark DNS as configured
 				dnsConfigured := true
 				if updateErr := h.repository.UpdateDomain(ctx, domainObj.ID, nil, &dnsConfigured); updateErr != nil {
 					h.logger.Warn().
@@ -191,7 +182,6 @@ func (h *DomainHandler) CreateDomain(c *gin.Context) {
 	}
 }
 
-// DeleteDomain handles DELETE /auth/domains/:id
 func (h *DomainHandler) DeleteDomain(c *gin.Context) {
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
@@ -238,8 +228,6 @@ func (h *DomainHandler) DeleteDomain(c *gin.Context) {
 	})
 }
 
-// VerifyDomain handles POST /auth/domains/:id/verify
-// Checks if DNS (CNAME) is properly configured for the domain
 func (h *DomainHandler) VerifyDomain(c *gin.Context) {
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
@@ -266,7 +254,6 @@ func (h *DomainHandler) VerifyDomain(c *gin.Context) {
 		return
 	}
 
-	// Get domain to verify ownership
 	domainObj, err := h.repository.GetDomainByID(c.Request.Context(), domainID)
 	if err != nil {
 		if err == storage.ErrDomainNotFound {
@@ -282,7 +269,6 @@ func (h *DomainHandler) VerifyDomain(c *gin.Context) {
 		return
 	}
 
-	// Verify domain belongs to user
 	if domainObj.UserID != userID {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": "access denied",
@@ -290,7 +276,6 @@ func (h *DomainHandler) VerifyDomain(c *gin.Context) {
 		return
 	}
 
-	// Check CNAME configuration
 	dnsConfigured := false
 	var dnsError string
 	if h.domainManager != nil {
@@ -300,7 +285,6 @@ func (h *DomainHandler) VerifyDomain(c *gin.Context) {
 			dnsError = err.Error()
 		} else if configured {
 			dnsConfigured = true
-			// Update domain to mark DNS as configured
 			_ = h.repository.UpdateDomain(ctx, domainID, nil, &dnsConfigured)
 		}
 	}

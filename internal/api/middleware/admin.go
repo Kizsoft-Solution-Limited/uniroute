@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// contains checks if a string slice contains a specific value
 func contains(slice []string, value string) bool {
 	for _, item := range slice {
 		if item == value {
@@ -20,7 +19,6 @@ func contains(slice []string, value string) bool {
 // AdminMiddleware ensures only users with admin role can access the route
 func AdminMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Get user roles from context (set by JWT middleware)
 		roles, exists := c.Get("user_roles")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{
@@ -30,7 +28,6 @@ func AdminMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Check if user has admin role
 		rolesSlice, ok := roles.([]string)
 		if !ok || !contains(rolesSlice, "admin") {
 			c.JSON(http.StatusForbidden, gin.H{

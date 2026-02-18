@@ -5,8 +5,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CORSMiddleware creates middleware for CORS configuration
-// If customOrigins is provided, uses those; otherwise uses defaults
 func CORSMiddleware(customOrigins []string) gin.HandlerFunc {
 	allowOrigins := []string{
 		"http://localhost:3000",
@@ -19,8 +17,7 @@ func CORSMiddleware(customOrigins []string) gin.HandlerFunc {
 		"https://www.uniroute.co",
 		"https://app.uniroute.co",
 	}
-	
-	// Use custom origins if provided via environment variable
+
 	if len(customOrigins) > 0 {
 		allowOrigins = customOrigins
 	}

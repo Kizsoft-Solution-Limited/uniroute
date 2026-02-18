@@ -6,7 +6,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// APIKey represents an API key in the database
 type APIKey struct {
 	ID                 uuid.UUID  `db:"id"`
 	UserID             uuid.UUID  `db:"user_id"`
@@ -20,7 +19,6 @@ type APIKey struct {
 	IsActive           bool       `db:"is_active"`
 }
 
-// User represents a user in the database
 type User struct {
 	ID              uuid.UUID  `db:"id"`
 	Email           string     `db:"email"`
@@ -33,7 +31,6 @@ type User struct {
 	UpdatedAt       time.Time  `db:"updated_at"`
 }
 
-// PasswordResetToken represents a password reset token
 type PasswordResetToken struct {
 	ID        uuid.UUID  `db:"id"`
 	UserID    uuid.UUID  `db:"user_id"`
@@ -43,7 +40,6 @@ type PasswordResetToken struct {
 	CreatedAt time.Time  `db:"created_at"`
 }
 
-// EmailVerificationToken represents an email verification token
 type EmailVerificationToken struct {
 	ID        uuid.UUID  `db:"id"`
 	UserID    uuid.UUID  `db:"user_id"`
@@ -53,7 +49,6 @@ type EmailVerificationToken struct {
 	CreatedAt time.Time  `db:"created_at"`
 }
 
-// UserProviderKey represents a user's provider API key (BYOK)
 type UserProviderKey struct {
 	ID              uuid.UUID  `db:"id"`
 	UserID          uuid.UUID  `db:"user_id"`
@@ -64,7 +59,6 @@ type UserProviderKey struct {
 	UpdatedAt       time.Time  `db:"updated_at"`
 }
 
-// ErrorLog represents a frontend error log
 type ErrorLog struct {
 	ID         uuid.UUID              `db:"id"`
 	UserID     *uuid.UUID             `db:"user_id"` // Nullable
@@ -80,7 +74,6 @@ type ErrorLog struct {
 	CreatedAt  time.Time              `db:"created_at"`
 }
 
-// Conversation represents a chat conversation
 type Conversation struct {
 	ID        uuid.UUID  `db:"id"`
 	UserID    uuid.UUID  `db:"user_id"`
@@ -90,7 +83,6 @@ type Conversation struct {
 	UpdatedAt time.Time  `db:"updated_at"`
 }
 
-// Message represents a message in a conversation
 type Message struct {
 	ID             uuid.UUID              `db:"id"`
 	ConversationID uuid.UUID              `db:"conversation_id"`

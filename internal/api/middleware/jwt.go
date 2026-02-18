@@ -8,7 +8,6 @@ import (
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
 )
 
-// JWTAuthMiddleware creates middleware for JWT authentication
 func JWTAuthMiddleware(jwtService *security.JWTService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -20,7 +19,6 @@ func JWTAuthMiddleware(jwtService *security.JWTService) gin.HandlerFunc {
 			return
 		}
 
-		// Extract token
 		parts := strings.Fields(authHeader)
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
 			c.JSON(http.StatusUnauthorized, gin.H{
@@ -39,7 +37,6 @@ func JWTAuthMiddleware(jwtService *security.JWTService) gin.HandlerFunc {
 			return
 		}
 
-		// Validate token
 		claims, err := jwtService.ValidateToken(token)
 		if err != nil {
 			if err == security.ErrExpiredToken {
@@ -51,12 +48,11 @@ func JWTAuthMiddleware(jwtService *security.JWTService) gin.HandlerFunc {
 					"error": "invalid token",
 				})
 			}
-			c.Abort()
-			return
-		}
+		c.Abort()
+		return
+	}
 
-		// Store user info in context
-		c.Set("user_id", claims.UserID)
+	c.Set("user_id", claims.UserID)
 		c.Set("user_email", claims.Email)
 		c.Set("user_roles", claims.Roles)
 

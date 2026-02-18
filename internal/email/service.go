@@ -12,12 +12,10 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// EmailService handles sending emails via SMTP
 type EmailService struct {
 	logger zerolog.Logger
 }
 
-// GetConfig returns SMTP configuration (without sensitive data) for debugging
 func (s *EmailService) GetConfig() map[string]interface{} {
 	host := os.Getenv("SMTP_HOST")
 	port := getEnvAsInt("SMTP_PORT", 0)
@@ -34,14 +32,12 @@ func (s *EmailService) GetConfig() map[string]interface{} {
 	}
 }
 
-// NewEmailService creates a new email service
 func NewEmailService(logger zerolog.Logger) *EmailService {
 	return &EmailService{
 		logger: logger,
 	}
 }
 
-// getSMTPConfig reads SMTP configuration from environment variables
 func (s *EmailService) getSMTPConfig() (host string, port int, username, password, from string, configured bool) {
 	host = strings.TrimSpace(os.Getenv("SMTP_HOST"))
 	portStr := strings.TrimSpace(os.Getenv("SMTP_PORT"))
@@ -67,7 +63,6 @@ func (s *EmailService) getSMTPConfig() (host string, port int, username, passwor
 	return
 }
 
-// SendEmail sends an email via SMTP
 func (s *EmailService) SendEmail(to, subject, body string) error {
 	host, port, username, password, from, configured := s.getSMTPConfig()
 
@@ -88,7 +83,6 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 	return nil
 }
 
-// buildMessage builds the email message with headers
 func (s *EmailService) buildMessage(from, to, subject, body string) string {
 	headers := map[string]string{
 		"From":         from,
@@ -106,7 +100,6 @@ func (s *EmailService) buildMessage(from, to, subject, body string) string {
 	return message
 }
 
-// getEnvAsInt gets an environment variable as int or returns a default value
 func getEnvAsInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intValue, err := strconv.Atoi(value); err == nil {
@@ -116,7 +109,6 @@ func getEnvAsInt(key string, defaultValue int) int {
 	return defaultValue
 }
 
-// buildEmailTemplate creates a professional email template with inline styles for maximum compatibility
 func (s *EmailService) buildEmailTemplate(title, greeting, mainContent, buttonText, buttonURL, footerText string) string {
 	year := fmt.Sprintf("%d", time.Now().Year())
 	return fmt.Sprintf(`
@@ -169,7 +161,6 @@ func (s *EmailService) buildEmailTemplate(title, greeting, mainContent, buttonTe
 `, title, title, greeting, mainContent, year, footerText)
 }
 
-// buildButton creates a professional email button with inline styles
 func (s *EmailService) buildButton(text, url string) string {
 	return fmt.Sprintf(`
 <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 24px 0;">
@@ -188,7 +179,6 @@ func (s *EmailService) buildButton(text, url string) string {
 `, url, text)
 }
 
-// buildLinkFallback creates a fallback link text for email clients that don't support buttons
 func (s *EmailService) buildLinkFallback(text, url string) string {
 	return fmt.Sprintf(`
 <p style="margin: 16px 0 0 0; font-size: 14px; line-height: 1.6; color: #6b7280; word-break: break-all;">
@@ -198,7 +188,6 @@ func (s *EmailService) buildLinkFallback(text, url string) string {
 `, url, url)
 }
 
-// SendVerificationEmail sends an email verification email
 func (s *EmailService) SendVerificationEmail(to, name, token, frontendURL string) error {
 	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", strings.TrimSuffix(frontendURL, "/"), token)
 
@@ -224,7 +213,6 @@ func (s *EmailService) SendVerificationEmail(to, name, token, frontendURL string
 	return s.SendEmail(to, subject, body)
 }
 
-// SendPasswordResetEmail sends a password reset email
 func (s *EmailService) SendPasswordResetEmail(to, name, token, frontendURL string) error {
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s", strings.TrimSuffix(frontendURL, "/"), token)
 
@@ -250,7 +238,6 @@ func (s *EmailService) SendPasswordResetEmail(to, name, token, frontendURL strin
 	return s.SendEmail(to, subject, body)
 }
 
-// SendSeedAdminPasswordEmail sends the seed admin password to the given email using the shared email template.
 func (s *EmailService) SendSeedAdminPasswordEmail(to, name, password string) error {
 	subject := "UniRoute: Your admin account password"
 
@@ -269,7 +256,6 @@ func (s *EmailService) SendSeedAdminPasswordEmail(to, name, password string) err
 	return s.SendEmail(to, subject, body)
 }
 
-// buildFeatureBox creates a feature box for welcome email
 func (s *EmailService) buildFeatureBox(icon, title, description string) string {
 	return fmt.Sprintf(`
 <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%%" style="margin: 12px 0; background-color: #f9fafb; border-left: 4px solid #3b82f6; border-radius: 4px;">
@@ -283,7 +269,6 @@ func (s *EmailService) buildFeatureBox(icon, title, description string) string {
 `, icon, title, description)
 }
 
-// SendWelcomeEmail sends a welcome email after email verification
 func (s *EmailService) SendWelcomeEmail(to, name, dashboardURL string) error {
 	subject := "Welcome to UniRoute!"
 

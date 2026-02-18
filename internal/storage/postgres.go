@@ -9,13 +9,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// PostgresClient wraps the PostgreSQL connection pool
 type PostgresClient struct {
 	pool   *pgxpool.Pool
 	logger zerolog.Logger
 }
 
-// NewPostgresClient creates a new PostgreSQL client
 func NewPostgresClient(url string, logger zerolog.Logger) (*PostgresClient, error) {
 	config, err := pgxpool.ParseConfig(url)
 	if err != nil {
@@ -49,12 +47,10 @@ func NewPostgresClient(url string, logger zerolog.Logger) (*PostgresClient, erro
 	}, nil
 }
 
-// Pool returns the connection pool
 func (p *PostgresClient) Pool() *pgxpool.Pool {
 	return p.pool
 }
 
-// Close closes the connection pool
 func (p *PostgresClient) Close() {
 	p.pool.Close()
 }

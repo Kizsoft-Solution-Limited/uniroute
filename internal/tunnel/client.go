@@ -460,33 +460,27 @@ func (tc *TunnelClient) handleMessages() {
 				}
 			}
 		case MsgTypeTCPData, MsgTypeTLSData:
-			// Handle TCP/TLS data
 			if len(msg.Data) > 0 || msg.RequestID != "" {
 				go tc.handleTCPData(msg.RequestID, msg.Data, msg.Type == MsgTypeTLSData)
 			}
 		case MsgTypeTCPError, MsgTypeTLSError:
-			// Handle TCP/TLS errors
 			if msg.Error != nil {
 				tc.handleTCPError(msg.RequestID, msg.Error)
 			}
 		case MsgTypeUDPData:
-			// Handle UDP data
 			if len(msg.Data) > 0 && msg.RequestID != "" {
 				go tc.handleUDPData(msg.RequestID, msg.Data)
 			}
 		case MsgTypeUDPError:
-			// Handle UDP errors
 			if msg.Error != nil {
 				tc.handleUDPError(msg.RequestID, msg.Error)
 			}
 		case MsgTypePong:
-			// Heartbeat response - update last pong time
 			tc.pongMu.Lock()
 			tc.lastPongTime = time.Now()
 			tc.pongMu.Unlock()
 			tc.logger.Debug().Msg("Received pong")
 		case MsgTypeTunnelStatus:
-			// Status update
 			tc.logger.Debug().Msg("Received tunnel status update")
 		default:
 			tc.logger.Warn().Str("type", msg.Type).Msg("Unknown message type")
@@ -500,7 +494,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		return
 	}
 
-	// Track request start time for latency calculation
 	startTime := time.Now()
 
 	path := req.Path
@@ -508,8 +501,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		path = "/"
 	}
 
-	// Build local URL - ensure it's properly formatted
-	// Parse base localURL to extract host:port
 	baseURL, err := url.Parse(tc.localURL)
 	if err != nil {
 		tc.logger.Error().Err(err).Str("local_url", tc.localURL).Msg("Failed to parse base localURL")
@@ -517,8 +508,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		return
 	}
 
-	// Construct full URL with path and query
-	// Use baseURL.ResolveReference to properly handle relative paths
 	fullURL := baseURL.ResolveReference(&url.URL{Path: path, RawQuery: req.Query})
 	localURL := fullURL.String()
 
@@ -531,7 +520,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		Str("url_host", baseURL.Host).
 		Msg("Forwarding request to local server")
 
-	// Reconstruct HTTP request
 	httpReq, err := http.NewRequest(req.Method, localURL, bytes.NewReader(req.Body))
 	if err != nil {
 		tc.logger.Error().Err(err).Str("request_id", req.RequestID).Msg("Failed to create request")
@@ -691,10 +679,7 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		}
 	}
 
-	// Rewrite Location header for redirects (3xx status codes)
-	// If local server redirects to localhost:PORT, rewrite to tunnel URL
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		// Check for Location header (case-insensitive)
 		location := ""
 		for k, v := range response.Headers {
 			if strings.EqualFold(k, "Location") && v != "" {
@@ -709,7 +694,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 				Int("status_code", resp.StatusCode).
 				Msg("Processing redirect Location header")
 
-			// Get tunnel's public URL
 			tc.mu.RLock()
 			tunnelURL := ""
 			if tc.tunnel != nil && tc.tunnel.PublicURL != "" {
@@ -718,21 +702,15 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 			tc.mu.RUnlock()
 
 			if tunnelURL != "" {
-				// Parse the location URL
 				locationURL, err := url.Parse(location)
 				if err == nil {
-					// Check if it's a localhost or 127.0.0.1 URL
 					host := locationURL.Hostname()
 					if host == "localhost" || host == "127.0.0.1" {
-						// Rewrite to use tunnel URL
 						tunnelURLParsed, err := url.Parse(tunnelURL)
 						if err == nil {
-							// Preserve the path and query from the original location
 							tunnelURLParsed.Path = locationURL.Path
 							tunnelURLParsed.RawQuery = locationURL.RawQuery
 							tunnelURLParsed.Fragment = locationURL.Fragment
-							// Update the Location header with the rewritten URL
-							// Use canonical header name
 							response.Headers["Location"] = tunnelURLParsed.String()
 
 							tc.logger.Debug().
@@ -741,7 +719,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 								Msg("Rewrote redirect Location header to use tunnel URL")
 						}
 					} else if host != "" {
-						// External redirect - pass through unchanged
 						tc.logger.Debug().
 							Str("external_redirect", location).
 							Msg("Passing through external redirect unchanged")
@@ -768,7 +745,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 	// Send response back through tunnel
 	tc.sendResponse(response)
 
-	// Calculate latency
 	latency := time.Since(startTime)
 
 	// Notify request handler if set (show all requests including static assets)
@@ -926,8 +902,6 @@ func (tc *TunnelClient) heartbeat() {
 
 			conn.SetWriteDeadline(time.Time{})
 
-			// Update latency (rough estimate - actual RTT would require pong response timing)
-			// For now, use a simple measurement of ping send time
 			latency := time.Since(start)
 			tc.latencyMu.Lock()
 			tc.latencyMs = latency.Milliseconds()
@@ -942,7 +916,6 @@ func (tc *TunnelClient) heartbeat() {
 				return
 			}
 
-			// Check if we haven't received a pong in too long (connection might be dead)
 			tc.pongMu.RLock()
 			lastPong := tc.lastPongTime
 			tc.pongMu.RUnlock()
@@ -974,7 +947,6 @@ func (tc *TunnelClient) reconnect() {
 	tc.reconnectMu.Lock()
 	defer tc.reconnectMu.Unlock()
 
-	// Check if already reconnecting
 	tc.mu.RLock()
 	isConnected := tc.isConnected
 	isReconnecting := tc.isReconnecting
@@ -1034,7 +1006,6 @@ func (tc *TunnelClient) reconnect() {
 			return
 		}
 
-		// Check if error indicates tunnel was disconnected from dashboard
 		errStr := err.Error()
 		if strings.Contains(strings.ToLower(errStr), "disconnected from dashboard") ||
 		   strings.Contains(strings.ToLower(errStr), "tunnel disconnected") ||
@@ -1225,7 +1196,6 @@ func (tc *TunnelClient) handleTCPData(connectionID string, data []byte, isTLS bo
 	// If connection doesn't exist and this is the first message (empty data), create new connection
 	if !exists {
 		if len(data) == 0 {
-			// New connection request - establish connection to local service
 			if err := tc.establishTCPConnection(connectionID, isTLS); err != nil {
 				tc.logger.Error().
 					Err(err).
@@ -1234,7 +1204,6 @@ func (tc *TunnelClient) handleTCPData(connectionID string, data []byte, isTLS bo
 				tc.sendTCPError(connectionID, "connection_failed", err.Error())
 				return
 			}
-			// Get the connection we just created
 			tc.tcpConnMu.RLock()
 			conn = tc.tcpConnections[connectionID]
 			tc.tcpConnMu.RUnlock()

@@ -12,23 +12,19 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// RoutingStrategyServiceInterface defines interface for getting routing strategy
 type RoutingStrategyServiceInterface interface {
 	GetDefaultRoutingStrategy(ctx context.Context) (string, error)
 	IsRoutingStrategyLocked(ctx context.Context) (bool, error)
 }
 
-// UserRoutingStrategyServiceInterface defines interface for getting user routing strategy
 type UserRoutingStrategyServiceInterface interface {
 	GetUserRoutingStrategy(ctx context.Context, userID uuid.UUID) (string, error)
 }
 
-// CustomRulesServiceInterface defines interface for loading custom routing rules
 type CustomRulesServiceInterface interface {
 	GetActiveRulesForUser(ctx context.Context, userID *uuid.UUID) ([]CustomRule, error)
 }
 
-// CustomRule represents a custom routing rule (simplified for router)
 type CustomRule struct {
 	ConditionType  string
 	ConditionValue map[string]interface{}
@@ -36,7 +32,6 @@ type CustomRule struct {
 	Priority       int
 }
 
-// Router routes requests to appropriate providers with failover support
 type Router struct {
 	providers                  map[string]providers.Provider
 	defaultProvider            providers.Provider
@@ -51,19 +46,16 @@ type Router struct {
 	customRulesService         CustomRulesServiceInterface // For loading user-specific custom rules
 }
 
-// ProviderKeyServiceInterface defines interface for getting user provider keys
 type ProviderKeyServiceInterface interface {
 	GetProviderKey(ctx context.Context, userID uuid.UUID, provider string) (string, error)
 }
 
-// ServerProviderKeys holds server-level provider keys (fallback)
 type ServerProviderKeys struct {
 	OpenAI    string
 	Anthropic string
 	Google    string
 }
 
-// NewRouter creates a new router
 func NewRouter() *Router {
 	return &Router{
 		providers:           make(map[string]providers.Provider),
@@ -76,43 +68,35 @@ func NewRouter() *Router {
 	}
 }
 
-// SetProviderKeyService sets the provider key service for BYOK
 func (r *Router) SetProviderKeyService(service ProviderKeyServiceInterface) {
 	r.providerKeyService = service
 }
 
-// SetRoutingStrategyService sets the routing strategy service (for getting default strategy)
 func (r *Router) SetRoutingStrategyService(service RoutingStrategyServiceInterface) {
 	r.routingStrategyService = service
 }
 
-// SetUserRoutingStrategyService sets the user routing strategy service (for getting user preferences)
 func (r *Router) SetUserRoutingStrategyService(service UserRoutingStrategyServiceInterface) {
 	r.userRoutingStrategyService = service
 }
 
-// SetCustomRulesService sets the custom rules service (for loading user-specific custom rules)
 func (r *Router) SetCustomRulesService(service CustomRulesServiceInterface) {
 	r.customRulesService = service
 }
 
-// SetServerProviderKeys sets server-level provider keys (fallback)
 func (r *Router) SetServerProviderKeys(keys ServerProviderKeys) {
 	r.serverProviderKeys = keys
 }
 
-// SetStrategy sets the routing strategy
 func (r *Router) SetStrategy(strategy RoutingStrategy) {
 	r.strategy = strategy
 }
 
-// SetCustomStrategy sets a custom routing strategy with rules
 func (r *Router) SetCustomStrategy(customStrategy *CustomStrategy) {
 	r.strategy = customStrategy
 	r.currentStrategyType = StrategyCustom
 }
 
-// SetStrategyType sets the routing strategy by type
 func (r *Router) SetStrategyType(strategyType StrategyType) {
 	var newStrategy RoutingStrategy
 	switch strategyType {
@@ -138,7 +122,6 @@ func (r *Router) SetStrategyType(strategyType StrategyType) {
 	r.currentStrategyType = strategyType
 }
 
-// GetStrategyType returns the current routing strategy type (default)
 func (r *Router) GetStrategyType() StrategyType {
 	// Use explicit field first (more reliable)
 	if r.currentStrategyType != "" {
@@ -166,7 +149,6 @@ func (r *Router) GetStrategyType() StrategyType {
 	}
 }
 
-// GetStrategyForUser returns the routing strategy for a specific user
 // Checks: user preference → default → fallback
 func (r *Router) GetStrategyForUser(ctx context.Context, userID *uuid.UUID) StrategyType {
 	// 1. Check if strategy is locked (admin override)
@@ -196,8 +178,7 @@ func (r *Router) GetStrategyForUser(ctx context.Context, userID *uuid.UUID) Stra
 	return r.GetStrategyType()
 }
 
-// GetStrategyInstanceForUser returns the routing strategy instance for a specific user
-// This is used by Route() to get the actual strategy object
+// Used by Route() to get the actual strategy object.
 func (r *Router) GetStrategyInstanceForUser(ctx context.Context, userID *uuid.UUID) RoutingStrategy {
 	strategyType := r.GetStrategyForUser(ctx, userID)
 
@@ -244,7 +225,6 @@ func (r *Router) GetStrategyInstanceForUser(ctx context.Context, userID *uuid.UU
 	}
 }
 
-// buildCustomRuleCondition creates a condition function from a CustomRule
 func (r *Router) buildCustomRuleCondition(rule CustomRule) func(req providers.ChatRequest) bool {
 	return func(req providers.ChatRequest) bool {
 		switch rule.ConditionType {
@@ -272,7 +252,6 @@ func (r *Router) buildCustomRuleCondition(rule CustomRule) func(req providers.Ch
 	}
 }
 
-// RegisterProvider registers a provider with the router
 func (r *Router) RegisterProvider(provider providers.Provider) {
 	r.providers[provider.Name()] = provider
 	// Set first registered provider as default (usually local)
@@ -281,8 +260,7 @@ func (r *Router) RegisterProvider(provider providers.Provider) {
 	}
 }
 
-// Route routes a request to the appropriate provider with failover
-// userID is optional - if provided, will use user's provider keys (BYOK)
+// userID is optional - if provided, will use user's provider keys (BYOK).
 func (r *Router) Route(ctx context.Context, req providers.ChatRequest, userID *uuid.UUID) (*providers.ChatResponse, error) {
 	if len(r.providers) == 0 {
 		return nil, fmt.Errorf("no providers available")
@@ -344,8 +322,7 @@ func (r *Router) Route(ctx context.Context, req providers.ChatRequest, userID *u
 	return nil, fmt.Errorf("no providers available")
 }
 
-// RouteStream routes a streaming request to the appropriate provider
-// Returns channels for streaming chunks and errors
+// Returns channels for streaming chunks and errors.
 func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, userID *uuid.UUID) (<-chan providers.StreamChunk, <-chan error) {
 	chunkChan := make(chan providers.StreamChunk, 10)
 	errChan := make(chan error, 1)
@@ -472,8 +449,7 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 	return chunkChan, errChan
 }
 
-// getAvailableProviders returns list of healthy providers
-// If userID is provided, uses user's provider keys (BYOK), otherwise uses server-level keys
+// If userID is provided, uses user's provider keys (BYOK), otherwise uses server-level keys.
 func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) []providers.Provider {
 	available := make([]providers.Provider, 0)
 
@@ -500,7 +476,6 @@ func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) [
 	return available
 }
 
-// getUserProviders creates providers using user's API keys (BYOK)
 func (r *Router) getUserProviders(ctx context.Context, userID uuid.UUID) []providers.Provider {
 	userProviders := make([]providers.Provider, 0)
 
@@ -532,7 +507,6 @@ func (r *Router) getUserProviders(ctx context.Context, userID uuid.UUID) []provi
 	return userProviders
 }
 
-// selectProvider selects the best provider for a given model
 func (r *Router) selectProvider(model string) providers.Provider {
 	// Model-to-provider mapping
 	modelLower := strings.ToLower(model)
@@ -569,7 +543,6 @@ func (r *Router) selectProvider(model string) providers.Provider {
 	return r.defaultProvider
 }
 
-// GetProvider returns a provider by name
 func (r *Router) GetProvider(name string) (providers.Provider, error) {
 	provider, exists := r.providers[name]
 	if !exists {
@@ -578,7 +551,6 @@ func (r *Router) GetProvider(name string) (providers.Provider, error) {
 	return provider, nil
 }
 
-// ListProviders returns all registered providers
 func (r *Router) ListProviders() []string {
 	names := make([]string, 0, len(r.providers))
 	for name := range r.providers {
@@ -587,12 +559,10 @@ func (r *Router) ListProviders() []string {
 	return names
 }
 
-// GetCostCalculator returns the cost calculator
 func (r *Router) GetCostCalculator() *CostCalculator {
 	return r.costCalculator
 }
 
-// GetLatencyTracker returns the latency tracker
 func (r *Router) GetLatencyTracker() *LatencyTracker {
 	return r.latencyTracker
 }

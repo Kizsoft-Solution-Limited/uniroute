@@ -47,7 +47,6 @@ to any LLM—cloud or local—with one unified platform.`,
 	}
 )
 
-// Execute runs the root command
 func Execute() error {
 	return rootCmd.Execute()
 }
@@ -74,18 +73,15 @@ func init() {
 	rootCmd.AddCommand(domainCmd) // Shortcut: uniroute domain [domain]
 }
 
-// SetVersion sets the version for the CLI
 func SetVersion(v string) {
 	version = v
 	rootCmd.Version = v
 }
 
-// GetVersion returns the current version
 func GetVersion() string {
 	return version
 }
 
-// PrintError prints an error message and exits
 func PrintError(err error) {
 	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	os.Exit(1)

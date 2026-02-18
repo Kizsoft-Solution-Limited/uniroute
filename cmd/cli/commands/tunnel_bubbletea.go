@@ -193,26 +193,20 @@ var genericQuotes = []weightedQuote{
 	{quote: "💝 Love UniRoute? Support us: https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs", weight: 200, protocol: ""},
 }
 
-// isCustomDomain checks if the PublicURL contains a custom domain (not .localhost)
 func isCustomDomain(publicURL string) bool {
 	if publicURL == "" {
 		return false
 	}
-	// Check if URL contains .localhost (default subdomain) or localhost:port
-	// If it doesn't, it's likely a custom domain
 	return !strings.Contains(publicURL, ".localhost") && !strings.Contains(publicURL, "localhost:")
 }
 
-// getQuotesForProtocol returns quotes appropriate for the given protocol and domain type
 func getQuotesForProtocol(protocol string, hasCustomDomain bool) []weightedQuote {
 	var quotes []weightedQuote
 
-	// If custom domain is used, add domain-specific quotes first (higher priority)
 	if hasCustomDomain {
 		quotes = append(quotes, domainQuotes...)
 	}
 
-	// Add protocol-specific quotes
 	switch protocol {
 	case "http":
 		quotes = append(quotes, httpQuotes...)
@@ -295,32 +289,23 @@ func initialTunnelModel(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, ac
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Initialize viewport with proper dimensions
-	// Will be updated on WindowSizeMsg
 	vp := viewport.New(80, 20)
-	vp.SetContent("") // Start empty, will be populated with request logs
+	vp.SetContent("")
 
-	// Get initial version
 	currentVersion := GetVersion()
-
-	// Get protocol from client to show protocol-specific quotes
 	protocol := ""
 	if client != nil {
 		protocol = client.GetProtocol()
 	}
 
-	// Check if custom domain is being used
 	hasCustomDomain := false
 	if info != nil && info.PublicURL != "" {
 		hasCustomDomain = isCustomDomain(info.PublicURL)
 	}
 
-	// Get protocol and domain-specific quotes
 	quotes := getQuotesForProtocol(protocol, hasCustomDomain)
 
-	// Pick a random quote using weighted selection
 	rand.Seed(time.Now().UnixNano())
-
-	// Calculate total weight
 	totalWeight := 0
 	for _, q := range quotes {
 		totalWeight += q.weight
@@ -361,7 +346,6 @@ func initialTunnelModel(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, ac
 	pathStyle := lipgloss.NewStyle().Width(50).Foreground(lipgloss.Color("255"))
 	statusCodeStyle := lipgloss.NewStyle().Width(3)
 
-	// Get initial stats
 	initialStats := &tunnel.ConnectionStats{
 		Total: 0,
 		Open:  0,
@@ -426,17 +410,13 @@ func (m *tunnelModel) Init() tea.Cmd {
 	)
 }
 
-// Update function for Bubble Tea
 func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
-			// Shutdown - send terminate message to update status first
 			if !m.terminated {
-				// Cancel context to stop tunnel
 				m.cancel()
-				// Send terminate message which will update status and quit
 				return m, func() tea.Msg {
 					return terminateMsg{}
 				}
@@ -494,22 +474,16 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.checkInternet()
 	case connectionStatusMsg:
-		// Don't update if terminated - check first to avoid any processing
 		if m.terminated {
 			return m, nil
 		}
 
-		// Check if tunnel was disconnected from dashboard - don't process status updates
 		if m.client.ShouldExit() {
-			// Should exit - don't process this status update, terminate message will be sent by monitor
 			return m, nil
 		}
 
 		status := string(msg)
-		// Only update if internet is online, otherwise internetStatusMsg handler will handle it
 		if m.internetOnline {
-			// Check if client is actually reconnecting (but only trust it if status also says reconnecting)
-			// This prevents false positives where isReconnecting might be temporarily true
 			isReconnecting := m.client.IsReconnecting()
 			isConnected := m.client.IsConnected()
 
@@ -544,29 +518,19 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// This prevents showing incorrect status
 			}
 		}
-		// Continue polling for latency and stats (only if not terminated)
-		// Don't send status updates here - they're handled by the status change handler
 		if !m.terminated {
 			return m, m.updateStatus() // Continue polling for latency/stats only
 		}
 		return m, nil
 	case sessionStatusMsg:
-		// Don't update status if tunnel is terminated
 		if m.terminated {
 			return m, nil
 		}
-
-		// Check if tunnel was disconnected from dashboard - don't process status updates
 		if m.client.ShouldExit() {
-			// Should exit - don't process this status update, terminate message will be sent by monitor
 			return m, nil
 		}
-
 		status := string(msg)
-		// Only update session status if internet is online
-		// If internet is offline, it's already handled by internetStatusMsg
 		if m.internetOnline {
-			// If we just reconnected (within last 2 seconds), stay in reconnecting state
 			if !m.reconnectTime.IsZero() && time.Since(m.reconnectTime) < 2*time.Second {
 				m.sessionStatus = fmt.Sprintf("%s %s", color.Yellow("●"), color.Yellow("reconnecting"))
 			} else {
@@ -582,22 +546,16 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case terminateMsg:
-		// Update status to terminated
 		if !m.terminated {
 			m.terminated = true
 			m.sessionStatus = fmt.Sprintf("%s %s", color.Red("●"), color.Red("terminated"))
 			m.connectionStatus = color.Red("Tunnel Terminated")
-			// Update lastStatus to trigger screen clear in View()
-			m.lastStatus = "" // Reset to force screen clear
-			// Cancel context to stop tunnel
+			m.lastStatus = ""
 			m.cancel()
-			// Return updated model with a command to quit after showing status
-			// This ensures the terminated status is rendered before exit
 			return m, tea.Tick(500*time.Millisecond, func(time.Time) tea.Msg {
 				return tea.Quit()
 			})
 		}
-		// Already terminated, just quit
 		return m, tea.Quit
 	case latencyUpdateMsg:
 		latency := int64(msg)
@@ -609,15 +567,8 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case requestEventMsg:
 		event := tunnel.RequestEvent(msg)
-
-		// Update model state (logs array) - this is the correct pattern
 		m.addRequestToLogs(event)
-
-		// Rebuild viewport content from updated logs
-		// This ensures the viewport always shows all accumulated requests
 		m.updateViewportContent()
-
-		// Return updated model - Bubble Tea will re-render
 		return m, nil
 	case statsUpdateMsg:
 		stats := msg
@@ -648,87 +599,54 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.version = color.Yellow(string(msg))
 		return m, nil
 	case tea.WindowSizeMsg:
-		// Update viewport size
-		// Calculate actual header height: padding (1) + title (1) + blank (1) + connection status (1) + session (1) + account (1) + blank (1) + version (1) + blank (1) + region (1) + latency (1) + blank (1) + connections header (1) + connections data (1) + blank (1) + public url label (1) + public url (1) + blank (1) + forwarding label (1) + forwarding (1) + blank (1) + quote (1) + blank (1) + ctrl+c (1) + blank (1) + http requests header (2) = ~28 lines
 		headerHeight := 28
-
-		// Calculate available height for viewport (must leave room for header)
-		// Quote and Ctrl+C are now part of the header, so no separate footer
 		availableHeight := msg.Height - headerHeight
 
-		// Ensure viewport height never exceeds available space
-		// This guarantees the header will always be visible
-		// Use most of the available space so users can see more requests
 		var viewportHeight int
 		if availableHeight < 1 {
-			// Terminal is too small - show at least 1 line for viewport
 			viewportHeight = 1
 		} else {
-			// Use all available height (viewport will scroll if content exceeds it)
-			// This ensures maximum visibility of requests
 			viewportHeight = availableHeight
 		}
 
-		// Update viewport dimensions properly
-		// Use SetSize to ensure viewport recalculates its internal state
 		m.viewport.Width = msg.Width
 		m.viewport.Height = viewportHeight
 
-		// Update viewport with the window size message so it can handle resize internally
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
-
-		// Rebuild viewport content after size change to ensure it's correct
 		m.updateViewportContent()
 
 		return m, cmd
 	}
 
-	// Handle viewport scrolling
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
 
-	// Detect if user manually scrolled away from top
-	// If user scrolls down (not at top), mark that they've scrolled so we don't auto-scroll
 	if m.viewport.YOffset > 0 {
 		m.userHasScrolled = true
 	} else {
-		// User is at top, allow auto-scrolling
 		m.userHasScrolled = false
 	}
 
 	return m, cmd
 }
 
-// View function for Bubble Tea
 func (m *tunnelModel) View() string {
-	// Fixed header section
 	header := strings.Builder{}
-
-	// Detect status change and clear screen to prevent duplicate lines
-	// This ensures old content is removed when status changes (e.g., online -> terminated)
-	// Without alt screen, Bubble Tea doesn't automatically clear, so we must do it manually
 	currentStatus := m.connectionStatus
 	statusChanged := m.lastStatus != "" && m.lastStatus != currentStatus
-	
-	// Clear screen if status changed or if terminated (and lastStatus was reset)
+
 	if statusChanged || (m.terminated && m.lastStatus == "") {
-		// Status changed or terminated - clear screen to remove old content
-		header.WriteString("\033[2J\033[H") // Clear screen and move cursor to top-left
+		header.WriteString("\033[2J\033[H")
 	}
-	
-	// Update last status after clearing
+
 	if statusChanged {
 		m.lastStatus = currentStatus
 	} else if m.lastStatus == "" {
-		// First render or after termination reset - initialize lastStatus
 		m.lastStatus = currentStatus
 	}
 
-	// Add some top padding to ensure header is visible (prevents cut-off)
 	header.WriteString("\n")
-
-	// Add title at the top
 	header.WriteString(color.Cyan("Starting UniRoute Tunnel..."))
 	header.WriteString("\n\n")
 
@@ -784,19 +702,14 @@ func (m *tunnelModel) View() string {
 	return header.String() + m.viewport.View()
 }
 
-// Commands
 func (m *tunnelModel) checkInternet() tea.Cmd {
 	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
-		// Check internet connectivity with a quick timeout
 		client := &http.Client{Timeout: 2 * time.Second}
 		_, err := client.Head("http://clients3.google.com/generate_204")
-		// Also check if we can reach the tunnel server
 		if err == nil {
-			// Internet is up, but also check tunnel server connectivity
 			tunnelClient := &http.Client{Timeout: 1 * time.Second}
 			_, tunnelErr := tunnelClient.Get(fmt.Sprintf("http://%s/health", m.serverURL))
 			if tunnelErr != nil {
-				// Tunnel server unreachable even though internet is up
 				return internetStatusMsg(false)
 			}
 		}
@@ -805,20 +718,12 @@ func (m *tunnelModel) checkInternet() tea.Cmd {
 }
 
 func (m *tunnelModel) updateStatus() tea.Cmd {
-	// Poll more frequently (1 second) for latency and stats updates
-	// Connection status is handled by the status change handler to avoid duplicates
 	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
-		// Don't poll if tunnel is terminated
-		// This prevents duplicate status messages after termination
 		if m.terminated {
 			return nil
 		}
 
-		// Only update latency and stats - connection status is handled by status change handler
-		// This prevents duplicate status messages
 		latency := m.client.GetLatency()
-
-		// Fetch stats if connected
 		status := m.client.GetConnectionStatus()
 		var stats *tunnel.ConnectionStats
 		if status == "online" && m.info != nil {
@@ -833,8 +738,6 @@ func (m *tunnelModel) updateStatus() tea.Cmd {
 			}
 		}
 
-		// Only return latency and stats updates - NOT connection status
-		// Connection status is handled by the status change handler
 		return tea.Batch(
 			func() tea.Msg { return latencyUpdateMsg(latency) },
 			func() tea.Msg { return statsUpdateMsg(stats) },
@@ -893,7 +796,6 @@ func (m *tunnelModel) runUpgrade() tea.Cmd {
 	}
 }
 
-// addRequestToLogs adds a request to the logs array (model state update)
 // This follows Bubble Tea best practices: update state in Update, render in View
 func (m *tunnelModel) addRequestToLogs(event tunnel.RequestEvent) {
 	// Format request log entry
@@ -1000,111 +902,66 @@ func (m *tunnelModel) updateViewportContent() {
 	// Newest requests are at the top, oldest at the bottom
 	displayLogs := logsCopy
 
-	// Build content from all requests
-	// Newest requests are first in the array, oldest at the end
 	var contentBuilder strings.Builder
 	for _, log := range displayLogs {
-		// Write the log entry (already includes ANSI codes)
 		contentBuilder.WriteString(log)
-		// Add newline after each entry
 		contentBuilder.WriteByte('\n')
 	}
 	content := contentBuilder.String()
 
-	// Ensure viewport has minimum dimensions (only if not set)
-	// DO NOT grow the viewport height here - it's set in WindowSizeMsg handler
-	// Growing it here would push the header up
 	if m.viewport.Height == 0 {
-		m.viewport.Height = 10 // Small default, will be set properly by WindowSizeMsg
+		m.viewport.Height = 10
 	}
 	if m.viewport.Width == 0 {
 		m.viewport.Width = 80
 	}
 
-	// Check if user is at top before updating content (for smart auto-scroll)
 	wasAtTop := m.viewport.YOffset == 0
-
-	// Update viewport with all requests
-	// Newest requests are at the top of the content, oldest at bottom
-	// The viewport has a FIXED height and scrolls internally
-	// This keeps the header fixed at the top while requests scroll within the viewport
 	m.viewport.SetContent(content)
 
-	// Smart auto-scroll: only scroll to top if user was already at top
-	// This allows users to scroll down to see older requests without being snapped back
 	if wasAtTop {
-		// User was at top, so auto-scroll to show newest requests
 		m.viewport.GotoTop()
-		m.userHasScrolled = false // Reset since we auto-scrolled
+		m.userHasScrolled = false
 	}
 
-	// Mark that viewport has been updated
 	m.viewportNeedsUpdate = false
 }
 
-// Refactored tunnel command using Bubble Tea
 func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, accountDisplay string, serverURL string, localURL string) error {
-	// Create model
 	model := initialTunnelModel(client, info, accountDisplay, serverURL, localURL)
-
-	// Channel to send request events to Bubble Tea
-	// Large buffer to prevent dropping events - we want ALL requests logged
 	requestChan := make(chan tunnel.RequestEvent, 1000)
-
-	// Channel to send connection status changes to Bubble Tea for real-time updates
 	statusChangeChan := make(chan string, 10)
 
-	// Set up request handler that sends to channel
-	// ALWAYS send every request event - no filtering or dropping
 	requestHandler := func(event tunnel.RequestEvent) {
-		// Non-blocking send - if channel is full, wait briefly then try again
-		// This ensures we don't lose any requests
 		select {
 		case requestChan <- event:
-			// Successfully sent
 		default:
-			// Channel full - wait a bit and try again (non-blocking)
-			// This is rare but ensures we don't lose requests
 			go func() {
 				time.Sleep(10 * time.Millisecond)
 				select {
 				case requestChan <- event:
-					// Successfully sent on retry
 				default:
-					// Still full after wait - drop event (should be extremely rare with 1000 buffer)
 				}
 			}()
 		}
 	}
 	client.SetRequestHandler(requestHandler)
 
-	// Set up connection status change handler for real-time updates
-	// This provides immediate status updates when connection state changes
-	// Use a debounce mechanism to prevent rapid status changes from causing duplicates
 	lastStatus := ""
 	lastStatusTime := time.Time{}
 	statusChangeHandler := func(status string) {
 		now := time.Now()
-
-		// Only send if status actually changed AND enough time has passed (debounce)
-		// This prevents rapid toggling between statuses
 		if status != lastStatus {
-			// If status changed, check if enough time has passed since last change
 			if lastStatusTime.IsZero() || time.Since(lastStatusTime) > 500*time.Millisecond {
 				lastStatus = status
 				lastStatusTime = now
-				// Non-blocking send to status change channel
 				select {
 				case statusChangeChan <- status:
-					// Successfully sent
 				default:
-					// Channel full - drop (should be rare with 10 buffer)
 				}
 			} else {
-				// Status changed too quickly - debounce by scheduling a delayed check
 				go func() {
 					time.Sleep(500 * time.Millisecond)
-					// Re-check status after delay
 					currentStatus := client.GetConnectionStatus()
 					if currentStatus == status && currentStatus != lastStatus {
 						lastStatus = currentStatus
@@ -1120,47 +977,29 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 	}
 	client.SetConnectionStatusChangeHandler(statusChangeHandler)
 
-	// Clear screen and move cursor to top before starting
-	// This ensures a clean start without duplicate content
-	fmt.Print("\033[2J\033[H")        // Clear screen and move to top-left
-	time.Sleep(50 * time.Millisecond) // Small delay to ensure screen is cleared
+	fmt.Print("\033[2J\033[H")
+	time.Sleep(50 * time.Millisecond)
 
-	// Create program without alt screen to ensure header is always visible
-	// We'll handle screen clearing manually in the View function
 	p := tea.NewProgram(model)
 
-	// Goroutine to forward request events and status changes to Bubble Tea
 	go func() {
 		for {
 			select {
 			case event := <-requestChan:
-				// Send request event to Bubble Tea
 				p.Send(requestEventMsg(event))
 			case status := <-statusChangeChan:
-				// Send connection status change immediately for real-time updates
-				// Only send if model is not terminated
-				// Double-check the actual connection status before updating to prevent false positives
 				if !model.terminated {
-					// Check if tunnel was disconnected from dashboard - should exit
-					// This check must happen FIRST before processing any status updates
 					if model.client.ShouldExit() {
-						// Don't process status updates if we should exit - let monitor handle termination
-						// This prevents showing "online" status right before "terminated"
 						continue
 					}
 
-					// Verify the status is still accurate before sending
 					actualIsConnected := model.client.IsConnected()
 					actualIsReconnecting := model.client.IsReconnecting()
 
-					// Double-check ShouldExit() again after getting connection state
-					// This prevents race conditions where ShouldExit() becomes true between checks
 					if model.client.ShouldExit() {
 						continue
 					}
 
-					// Only update if the status matches the actual connection state
-					// This prevents showing "reconnecting" when connection is actually stable
 					if status == "online" && actualIsConnected && !actualIsReconnecting {
 						p.Send(connectionStatusMsg(status))
 						p.Send(sessionStatusMsg(status))
@@ -1171,7 +1010,6 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 						p.Send(connectionStatusMsg(status))
 						p.Send(sessionStatusMsg(status))
 					}
-					// If status doesn't match actual state, ignore it (prevents false positives)
 				}
 			case <-model.ctx.Done():
 				return
@@ -1179,21 +1017,15 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 		}
 	}()
 
-	// Monitor for tunnel disconnect from dashboard (should exit)
-	// This is the single source of truth for detecting dashboard disconnects
 	go func() {
-		ticker := time.NewTicker(500 * time.Millisecond) // Check more frequently for faster response
+		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
 				if model.client.ShouldExit() && !model.terminated {
-					// Tunnel was disconnected from dashboard - exit gracefully
-					// Only send terminate message once - let Update handler show status and quit
 					p.Send(terminateMsg{})
 					model.cancel()
-					// Don't call p.Quit() here - let the terminateMsg handler return tea.Quit
-					// This ensures the terminated status is shown before exit
 					return
 				}
 			case <-model.ctx.Done():
@@ -1202,17 +1034,13 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 		}
 	}()
 
-	// Handle signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		<-sigChan
-		// Send terminate message to update status to "terminated"
 		p.Send(terminateMsg{})
-		// Cancel context to stop tunnel and goroutines
 		model.cancel()
-		// Give a brief moment to display terminated status, then quit
 		time.Sleep(200 * time.Millisecond)
 		p.Quit()
 	}()

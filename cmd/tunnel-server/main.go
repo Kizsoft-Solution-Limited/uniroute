@@ -14,7 +14,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// getEnv gets an environment variable or returns a default value
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -30,7 +29,6 @@ func main() {
 	)
 	flag.Parse()
 
-	// Initialize logger
 	var log zerolog.Logger
 	if *env == "development" {
 		log = logger.NewDebug()
@@ -38,7 +36,6 @@ func main() {
 		log = logger.New()
 	}
 
-	// Set log level
 	switch *logLevel {
 	case "debug":
 		log = log.Level(zerolog.DebugLevel)
@@ -55,13 +52,9 @@ func main() {
 		Str("environment", *env).
 		Msg("Starting UniRoute Tunnel Server")
 
-	// Load configuration
 	cfg := config.Load()
-
-	// Create tunnel server with allowed origins from environment
 	server := tunnel.NewTunnelServer(*port, log, cfg.TunnelOrigins)
 
-	// Set up domain manager if base domain is configured
 	baseDomain := getEnv("TUNNEL_BASE_DOMAIN", "")
 	if baseDomain != "" {
 		domainManager := tunnel.NewDomainManager(baseDomain, log)
@@ -69,7 +62,6 @@ func main() {
 		log.Info().Str("base_domain", baseDomain).Msg("Domain manager configured")
 	}
 
-	// Set up database and Redis if available
 	if cfg.DatabaseURL != "" {
 		postgresClient, err := storage.NewPostgresClient(cfg.DatabaseURL, log)
 		if err != nil {
@@ -79,8 +71,7 @@ func main() {
 			repo := tunnel.NewTunnelRepository(postgresClient.Pool(), log)
 			server.SetRepository(repo)
 			log.Info().Msg("Database connected, request logging enabled")
-			
-			// JWT_SECRET must match the gateway's JWT_SECRET for tunnel-user association.
+
 			if cfg.JWTSecret != "" && cfg.JWTSecret != "change-me-in-production-jwt-secret-min-32-chars" {
 				jwtService := security.NewJWTService(cfg.JWTSecret)
 				server.SetJWTValidator(func(tokenString string) (string, error) {
@@ -99,22 +90,18 @@ func main() {
 				log.Warn().Msg("JWT_SECRET not configured or using default - tunnels will NOT be auto-associated with users. Set JWT_SECRET environment variable to enable.")
 			}
 
-			// API_KEY_SECRET must match the gateway's for API-key tunnel association.
 			if cfg.APIKeySecret != "" && cfg.APIKeySecret != "change-me-in-production" {
 				apiKeyRepo := storage.NewAPIKeyRepository(postgresClient.Pool())
 				apiKeyService := security.NewAPIKeyServiceV2(apiKeyRepo, cfg.APIKeySecret)
-				
-				// Set up validator with rate limits (preferred)
+
 				server.SetAPIKeyValidatorWithLimits(func(ctx context.Context, apiKey string) (string, int, int, error) {
 					keyRecord, err := apiKeyService.ValidateAPIKey(ctx, apiKey)
 					if err != nil || keyRecord == nil {
 						return "", 0, 0, fmt.Errorf("invalid API key: %w", err)
 					}
-					// Return user ID and rate limits from API key
 					return keyRecord.UserID.String(), keyRecord.RateLimitPerMinute, keyRecord.RateLimitPerDay, nil
 				})
-				
-				// Also set old validator for backward compatibility
+
 				server.SetAPIKeyValidator(func(ctx context.Context, apiKey string) (string, error) {
 					keyRecord, err := apiKeyService.ValidateAPIKey(ctx, apiKey)
 					if err != nil || keyRecord == nil {
@@ -145,7 +132,6 @@ func main() {
 		}
 	}
 
-	// Start server
 	if err := server.Start(); err != nil {
 		log.Fatal().Err(err).Msg("Failed to start tunnel server")
 		os.Exit(1)

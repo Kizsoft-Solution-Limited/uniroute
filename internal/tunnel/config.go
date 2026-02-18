@@ -9,13 +9,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// ConfigManager handles tunnel configuration file operations
 type ConfigManager struct {
 	configPath string
 	logger     zerolog.Logger
 }
 
-// NewConfigManager creates a new config manager
 func NewConfigManager(logger zerolog.Logger) *ConfigManager {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -33,17 +31,14 @@ func NewConfigManager(logger zerolog.Logger) *ConfigManager {
 	}
 }
 
-// GetConfigPath returns the path to the config file
 func (cm *ConfigManager) GetConfigPath() string {
 	return cm.configPath
 }
 
-// Load loads tunnel configurations from file
 func (cm *ConfigManager) Load() (*TunnelConfigFile, error) {
 	data, err := os.ReadFile(cm.configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Return empty config if file doesn't exist
 			return &TunnelConfigFile{
 				Version: "1.0",
 				Tunnels: []TunnelConfig{},
@@ -65,13 +60,11 @@ func (cm *ConfigManager) Load() (*TunnelConfigFile, error) {
 	return &config, nil
 }
 
-// Save saves tunnel configurations to file
 func (cm *ConfigManager) Save(config *TunnelConfigFile) error {
 	if config == nil {
 		return fmt.Errorf("config is nil")
 	}
 
-	// Set version if not set
 	if config.Version == "" {
 		config.Version = "1.0"
 	}
@@ -93,7 +86,6 @@ func (cm *ConfigManager) Save(config *TunnelConfigFile) error {
 	return nil
 }
 
-// GetEnabledTunnels returns only enabled tunnels from config
 func (cm *ConfigManager) GetEnabledTunnels() ([]TunnelConfig, error) {
 	config, err := cm.Load()
 	if err != nil {
@@ -110,7 +102,6 @@ func (cm *ConfigManager) GetEnabledTunnels() ([]TunnelConfig, error) {
 	return enabled, nil
 }
 
-// GetTunnelByName finds a tunnel configuration by name
 func (cm *ConfigManager) GetTunnelByName(name string) (*TunnelConfig, error) {
 	config, err := cm.Load()
 	if err != nil {
@@ -126,23 +117,19 @@ func (cm *ConfigManager) GetTunnelByName(name string) (*TunnelConfig, error) {
 	return nil, fmt.Errorf("tunnel '%s' not found", name)
 }
 
-// AddTunnel adds a new tunnel to the configuration
 func (cm *ConfigManager) AddTunnel(tunnel TunnelConfig) error {
 	config, err := cm.Load()
 	if err != nil {
 		return err
 	}
 
-	// Check if tunnel with same name already exists
 	for i, t := range config.Tunnels {
 		if t.Name == tunnel.Name {
-			// Update existing tunnel
 			config.Tunnels[i] = tunnel
 			return cm.Save(config)
 		}
 	}
 
-	// Add new tunnel
 	config.Tunnels = append(config.Tunnels, tunnel)
 	return cm.Save(config)
 }
@@ -156,7 +143,6 @@ func (cm *ConfigManager) RemoveTunnel(name string) error {
 
 	for i, tunnel := range config.Tunnels {
 		if tunnel.Name == name {
-			// Remove tunnel
 			config.Tunnels = append(config.Tunnels[:i], config.Tunnels[i+1:]...)
 			return cm.Save(config)
 		}

@@ -9,9 +9,7 @@ import (
 	"time"
 )
 
-// handleListTunnels returns list of active tunnels
 func (ts *TunnelServer) handleListTunnels(w http.ResponseWriter, r *http.Request) {
-	// Add CORS headers
 	ts.security.AddSecurityHeaders(w, r)
 
 	if r.Method != http.MethodGet {
@@ -53,9 +51,7 @@ func (ts *TunnelServer) handleListTunnels(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// handleTunnelStats returns statistics for a specific tunnel
 func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request) {
-	// Add CORS headers
 	ts.security.AddSecurityHeaders(w, r)
 
 	if r.Method != http.MethodGet {
@@ -63,7 +59,6 @@ func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Extract tunnel ID from path: /api/tunnels/{tunnel_id}
 	path := strings.TrimPrefix(r.URL.Path, "/api/tunnels/")
 	tunnelID := strings.TrimSuffix(path, "/stats")
 
@@ -72,7 +67,6 @@ func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Get tunnel connection
 	ts.tunnelsMu.RLock()
 	var tunnel *TunnelConnection
 	for _, t := range ts.tunnels {
@@ -88,10 +82,8 @@ func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Get statistics
 	stats := ts.statsCollector.GetStats(tunnelID)
 
-	// Get tunnel info
 	tunnel.mu.RLock()
 	tunnelInfo := map[string]interface{}{
 		"id":            tunnel.ID,
@@ -104,8 +96,6 @@ func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request
 	}
 	tunnel.mu.RUnlock()
 
-	// Calculate actual number of open connections
-	// Count active TCP/UDP connections for this tunnel
 	ts.tcpConnMu.RLock()
 	openConnections := int64(0)
 	for _, conn := range ts.tcpConnections {
@@ -122,11 +112,9 @@ func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request
 		}
 	}
 	ts.udpConnMu.RUnlock()
-	
-	// Get connection stats with actual open connections count
+
 	connStats := ts.statsCollector.GetConnectionStats(tunnelID, openConnections)
 
-	// Combine tunnel info and statistics
 	response := map[string]interface{}{
 		"tunnel": tunnelInfo,
 		"stats": map[string]interface{}{
@@ -150,9 +138,7 @@ func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request
 	json.NewEncoder(w).Encode(response)
 }
 
-// handleListTunnelRequests returns list of requests for a tunnel
 func (ts *TunnelServer) handleListTunnelRequests(w http.ResponseWriter, r *http.Request) {
-	// Add CORS headers
 	ts.security.AddSecurityHeaders(w, r)
 
 	if r.Method != http.MethodGet {
@@ -160,7 +146,6 @@ func (ts *TunnelServer) handleListTunnelRequests(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Extract tunnel ID from path: /api/tunnels/{tunnel_id}/requests
 	path := strings.TrimPrefix(r.URL.Path, "/api/tunnels/")
 	parts := strings.Split(path, "/")
 	if len(parts) < 2 || parts[1] != "requests" {
@@ -174,7 +159,6 @@ func (ts *TunnelServer) handleListTunnelRequests(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Parse query parameters
 	method := r.URL.Query().Get("method")
 	pathFilter := r.URL.Query().Get("path")
 	limit := 50
@@ -193,7 +177,6 @@ func (ts *TunnelServer) handleListTunnelRequests(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Convert to response format (exclude large bodies for list view)
 	type RequestSummary struct {
 		ID           string `json:"id"`
 		RequestID    string `json:"request_id"`
@@ -236,9 +219,7 @@ func (ts *TunnelServer) handleListTunnelRequests(w http.ResponseWriter, r *http.
 	})
 }
 
-// handleGetTunnelRequest returns a single request with full details
 func (ts *TunnelServer) handleGetTunnelRequest(w http.ResponseWriter, r *http.Request) {
-	// Add CORS headers
 	ts.security.AddSecurityHeaders(w, r)
 
 	if r.Method != http.MethodGet {
@@ -246,7 +227,6 @@ func (ts *TunnelServer) handleGetTunnelRequest(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Extract tunnel ID and request ID from path: /api/tunnels/{tunnel_id}/requests/{request_id}
 	path := strings.TrimPrefix(r.URL.Path, "/api/tunnels/")
 	parts := strings.Split(path, "/")
 	if len(parts) < 3 || parts[1] != "requests" {
@@ -268,13 +248,11 @@ func (ts *TunnelServer) handleGetTunnelRequest(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Verify request belongs to tunnel
 	if req.TunnelID != tunnelID {
 		http.Error(w, "Request not found", http.StatusNotFound)
 		return
 	}
 
-	// Convert to response format
 	type RequestDetail struct {
 		ID              string            `json:"id"`
 		RequestID       string            `json:"request_id"`
@@ -317,9 +295,7 @@ func (ts *TunnelServer) handleGetTunnelRequest(w http.ResponseWriter, r *http.Re
 	json.NewEncoder(w).Encode(detail)
 }
 
-// handleReplayTunnelRequest replays a request through the tunnel
 func (ts *TunnelServer) handleReplayTunnelRequest(w http.ResponseWriter, r *http.Request) {
-	// Add CORS headers
 	ts.security.AddSecurityHeaders(w, r)
 
 	if r.Method != http.MethodPost {
@@ -327,7 +303,6 @@ func (ts *TunnelServer) handleReplayTunnelRequest(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Extract tunnel ID and request ID from path: /api/tunnels/{tunnel_id}/requests/{request_id}/replay
 	path := strings.TrimPrefix(r.URL.Path, "/api/tunnels/")
 	parts := strings.Split(path, "/")
 	if len(parts) < 4 || parts[1] != "requests" || parts[3] != "replay" {
@@ -342,7 +317,6 @@ func (ts *TunnelServer) handleReplayTunnelRequest(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Get original request
 	originalReq, err := ts.repository.GetTunnelRequest(r.Context(), requestID)
 	if err != nil {
 		ts.logger.Error().Err(err).Str("request_id", requestID).Msg("Failed to get tunnel request for replay")
@@ -350,13 +324,11 @@ func (ts *TunnelServer) handleReplayTunnelRequest(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Verify request belongs to tunnel
 	if originalReq.TunnelID != tunnelID {
 		http.Error(w, "Request not found", http.StatusNotFound)
 		return
 	}
 
-	// Get tunnel connection
 	ts.tunnelsMu.RLock()
 	tunnel, exists := ts.tunnels[tunnelID]
 	ts.tunnelsMu.RUnlock()
@@ -366,10 +338,8 @@ func (ts *TunnelServer) handleReplayTunnelRequest(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Create new request ID for replay
 	newRequestID := generateID()
 
-	// Create HTTP request message
 	reqData := &HTTPRequest{
 		RequestID: newRequestID,
 		Method:    originalReq.Method,
@@ -379,28 +349,24 @@ func (ts *TunnelServer) handleReplayTunnelRequest(w http.ResponseWriter, r *http
 		Body:      originalReq.RequestBody,
 	}
 
-	// Send request through tunnel
 	msg := TunnelMessage{
 		Type:      MsgTypeHTTPRequest,
 		RequestID: newRequestID,
 		Request:   reqData,
 	}
 
-	// Register pending request
 	pendingReq, err := ts.requestTracker.RegisterRequest(newRequestID)
 	if err != nil {
 		http.Error(w, "Failed to register replay request", http.StatusInternalServerError)
 		return
 	}
 
-	// Send to tunnel
 	if err := tunnel.WSConn.WriteJSON(msg); err != nil {
 		ts.requestTracker.FailRequest(newRequestID, err)
 		http.Error(w, "Failed to send replay request", http.StatusBadGateway)
 		return
 	}
 
-	// Wait for response
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
@@ -411,7 +377,6 @@ func (ts *TunnelServer) handleReplayTunnelRequest(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Return replay result
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":       true,

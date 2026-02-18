@@ -9,7 +9,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Request represents a tracked API request
 type Request struct {
 	ID           uuid.UUID
 	APIKeyID     *uuid.UUID
@@ -27,19 +26,16 @@ type Request struct {
 	CreatedAt    time.Time
 }
 
-// RequestRepository handles request tracking operations
 type RequestRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewRequestRepository creates a new request repository
 func NewRequestRepository(pool *pgxpool.Pool) *RequestRepository {
 	return &RequestRepository{
 		pool: pool,
 	}
 }
 
-// Create creates a new request record
 func (r *RequestRepository) Create(ctx context.Context, req *Request) error {
 	query := `
 		INSERT INTO requests (
@@ -70,7 +66,6 @@ func (r *RequestRepository) Create(ctx context.Context, req *Request) error {
 	return err
 }
 
-// GetUsageStats returns usage statistics
 type UsageStats struct {
 	TotalRequests      int64
 	TotalTokens        int64
@@ -81,7 +76,6 @@ type UsageStats struct {
 	CostByProvider     map[string]float64
 }
 
-// GetUsageStats returns aggregated usage statistics
 func (r *RequestRepository) GetUsageStats(ctx context.Context, userID *uuid.UUID, startTime, endTime time.Time) (*UsageStats, error) {
 	// PERFORMANCE OPTIMIZATION: Combine provider stats and cost in a single query
 	// This reduces database round trips from 4 to 3 queries (75% reduction)
@@ -179,7 +173,6 @@ func (r *RequestRepository) GetUsageStats(ctx context.Context, userID *uuid.UUID
 	return &stats, nil
 }
 
-// GetRequests returns paginated list of requests
 func (r *RequestRepository) GetRequests(ctx context.Context, userID *uuid.UUID, limit, offset int) ([]*Request, error) {
 	query := `
 		SELECT id, api_key_id, user_id, provider, model, request_type,

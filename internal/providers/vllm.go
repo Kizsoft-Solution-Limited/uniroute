@@ -14,7 +14,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// VLLMProvider implements the Provider interface for vLLM (OpenAI-compatible API)
 type VLLMProvider struct {
 	baseURL string
 	apiKey  string
@@ -22,7 +21,6 @@ type VLLMProvider struct {
 	logger  zerolog.Logger
 }
 
-// NewVLLMProvider creates a new vLLM provider. baseURL should include /v1 (e.g. http://localhost:8000/v1). apiKey is optional.
 func NewVLLMProvider(baseURL, apiKey string, logger zerolog.Logger) *VLLMProvider {
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	return &VLLMProvider{
@@ -35,12 +33,10 @@ func NewVLLMProvider(baseURL, apiKey string, logger zerolog.Logger) *VLLMProvide
 	}
 }
 
-// Name returns the provider name
 func (p *VLLMProvider) Name() string {
 	return "vllm"
 }
 
-// Chat sends a chat request to vLLM (OpenAI-compatible endpoint)
 func (p *VLLMProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	body := map[string]interface{}{
 		"model":    req.Model,
@@ -240,7 +236,6 @@ func (p *VLLMProvider) chatViaCompletions(ctx context.Context, req ChatRequest) 
 	}, nil
 }
 
-// buildPromptFromMessages formats messages for completion-style models (no chat template).
 func buildPromptFromMessages(messages []Message) string {
 	var b strings.Builder
 	for _, m := range messages {
@@ -405,7 +400,6 @@ func (p *VLLMProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan 
 	return chunkChan, errChan
 }
 
-// GetModels returns models from vLLM /v1/models (OpenAI-compatible)
 func (p *VLLMProvider) GetModels() []string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

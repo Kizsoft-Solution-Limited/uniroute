@@ -17,7 +17,7 @@ var sqlFS embed.FS
 
 const schemaMigrationsTable = `CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY);`
 
-// Runner runs SQL migrations from an fs.FS (e.g. embed.FS).
+// For running SQL migrations from an fs.FS (e.g. embed.FS).
 type Runner struct {
 	pool   *pgxpool.Pool
 	log    zerolog.Logger
@@ -25,18 +25,17 @@ type Runner struct {
 	sqlDir string
 }
 
-// NewRunner returns a migration runner. sqlFS is typically an embed.FS; sqlDir is the directory inside it (e.g. "sql").
+// sqlFS is typically an embed.FS; sqlDir is the directory inside it (e.g. "sql").
 func NewRunner(pool *pgxpool.Pool, log zerolog.Logger, sqlFS fs.FS, sqlDir string) *Runner {
 	return &Runner{pool: pool, log: log, sqlFS: sqlFS, sqlDir: sqlDir}
 }
 
-// RunMigrations runs embedded SQL migrations (sql/*.sql) in order. Call after connecting to Postgres.
+// Runs embedded SQL migrations (sql/*.sql) in order. Call after connecting to Postgres.
 func RunMigrations(ctx context.Context, pool *pgxpool.Pool, log zerolog.Logger) error {
 	r := NewRunner(pool, log, sqlFS, "sql")
 	return r.Run(ctx)
 }
 
-// Run ensures the schema_migrations table exists, then runs any pending migrations in order.
 func (r *Runner) Run(ctx context.Context) error {
 	if _, err := r.pool.Exec(ctx, schemaMigrationsTable); err != nil {
 		return fmt.Errorf("create schema_migrations table: %w", err)

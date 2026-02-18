@@ -9,7 +9,6 @@ import (
 	"os"
 )
 
-// ChatRequest represents a chat completion request
 type ChatRequest struct {
 	Model       string    `json:"model"`
 	Messages   []Message `json:"messages"`
@@ -17,24 +16,20 @@ type ChatRequest struct {
 	MaxTokens   int       `json:"max_tokens,omitempty"`
 }
 
-// Message represents a chat message
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-// ChatResponse represents the API response
 type ChatResponse struct {
 	Choices []Choice `json:"choices"`
 	Usage   Usage    `json:"usage"`
 }
 
-// Choice represents a response choice
 type Choice struct {
 	Message Message `json:"message"`
 }
 
-// Usage represents token usage
 type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`

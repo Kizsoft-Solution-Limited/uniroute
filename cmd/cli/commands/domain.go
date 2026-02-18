@@ -33,7 +33,6 @@ Examples:
   uniroute domain remove example.com             # Remove domain from account`,
 	Args: cobra.RangeArgs(0, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// If no args, show help
 		if len(args) == 0 {
 			return cmd.Help()
 		}
@@ -42,24 +41,20 @@ Examples:
 		tunnelID, _ := cmd.Flags().GetString("tunnel-id")
 		subdomain, _ := cmd.Flags().GetString("subdomain")
 		
-		// If subdomain provided as second positional argument (shortcut syntax)
-		// Only use if --subdomain flag is not set (flag takes precedence)
+		// Only use second arg as subdomain if --subdomain flag is not set (flag takes precedence)
 		if len(args) > 1 && subdomain == "" {
 			subdomain = args[1]
 		}
 
-		// Get auth token
 		token := getAuthToken()
 		if token == "" {
 			return fmt.Errorf("authentication required\nRun 'uniroute auth login' first")
 		}
 
-		// Determine if we're assigning to a tunnel
 		assignToTunnel := false
 		if tunnelID != "" || subdomain != "" {
 			assignToTunnel = true
 		} else {
-			// Try to get from last active tunnel (optional - don't fail if not found)
 			homeDir, err := os.UserHomeDir()
 			if err == nil {
 				statePath := filepath.Join(homeDir, ".uniroute", "tunnel-state.json")
@@ -73,7 +68,6 @@ Examples:
 			}
 		}
 
-		// If subdomain is provided, look up tunnel ID
 		if assignToTunnel && tunnelID == "" && subdomain != "" {
 			tunnelID = lookupTunnelIDBySubdomain(subdomain, token)
 			if tunnelID == "" {
@@ -81,10 +75,8 @@ Examples:
 			}
 		}
 
-		// Always create/add domain to the domain management system first
-		// This is the same as adding domain in dashboard - both use /auth/domains endpoint
+		// Same as adding domain in dashboard - both use /auth/domains endpoint
 		if err := createDomainIfNotExists(domain, token); err != nil {
-			// Log warning but continue - domain might already exist
 			fmt.Println(color.Yellow("⚠️  Warning: Could not add domain to management system (it may already exist)"))
 		} else {
 			fmt.Println(color.Green("✓") + " Domain added to your account")
@@ -97,9 +89,7 @@ Examples:
 				return fmt.Errorf("failed to assign domain to tunnel: %w", err)
 			}
 			
-			// Save domain assignment for resume functionality
 			if err := saveDomainAssignment(domain, subdomain, tunnelID); err != nil {
-				// Don't fail if we can't save - just log a warning
 				fmt.Println(color.Gray("   (Note: Could not save for resume)"))
 			}
 			
@@ -148,7 +138,6 @@ func init() {
 	domainCmd.AddCommand(domainResumeCmd)
 }
 
-// domainListCmd lists all domains
 var domainListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all your custom domains",
@@ -192,7 +181,6 @@ var domainListCmd = &cobra.Command{
 	},
 }
 
-// domainShowCmd shows domain details
 var domainShowCmd = &cobra.Command{
 	Use:   "show [domain]",
 	Short: "Show details for a specific domain",
@@ -247,7 +235,6 @@ var domainShowCmd = &cobra.Command{
 	},
 }
 
-// domainVerifyCmd verifies DNS configuration
 var domainVerifyCmd = &cobra.Command{
 	Use:   "verify [domain]",
 	Short: "Verify DNS configuration for a domain",
@@ -260,7 +247,6 @@ var domainVerifyCmd = &cobra.Command{
 			return fmt.Errorf("authentication required\nRun 'uniroute auth login' first")
 		}
 
-		// First find domain ID
 		domains, err := listDomains(token)
 		if err != nil {
 			return err
@@ -278,7 +264,6 @@ var domainVerifyCmd = &cobra.Command{
 			return fmt.Errorf("domain '%s' not found in your account", domain)
 		}
 
-		// Verify DNS
 		result, err := verifyDomain(domainID, token)
 		if err != nil {
 			return err
@@ -306,7 +291,6 @@ var domainVerifyCmd = &cobra.Command{
 	},
 }
 
-// domainRemoveCmd removes a domain
 var domainRemoveCmd = &cobra.Command{
 	Use:   "remove [domain]",
 	Short: "Remove a custom domain from your account",
@@ -319,7 +303,6 @@ var domainRemoveCmd = &cobra.Command{
 			return fmt.Errorf("authentication required\nRun 'uniroute auth login' first")
 		}
 
-		// First find domain ID
 		domains, err := listDomains(token)
 		if err != nil {
 			return err
@@ -337,7 +320,6 @@ var domainRemoveCmd = &cobra.Command{
 			return fmt.Errorf("domain '%s' not found in your account", domain)
 		}
 
-		// Confirm removal
 		fmt.Printf("Are you sure you want to remove %s? (yes/no): ", color.Cyan(domain))
 		var confirm string
 		fmt.Scanln(&confirm)
@@ -346,12 +328,10 @@ var domainRemoveCmd = &cobra.Command{
 			return nil
 		}
 
-		// Remove domain
 		if err := removeDomain(domainID, token); err != nil {
 			return err
 		}
 
-		// Also remove from saved assignments
 		removeDomainAssignment(domain)
 
 		fmt.Println(color.Green("✓ Domain removed successfully"))
@@ -359,7 +339,6 @@ var domainRemoveCmd = &cobra.Command{
 	},
 }
 
-// domainResumeCmd resumes a domain assignment
 var domainResumeCmd = &cobra.Command{
 	Use:   "resume [domain|subdomain]",
 	Short: "Resume a domain assignment to a tunnel",
@@ -383,7 +362,6 @@ Examples:
 			return fmt.Errorf("authentication required\nRun 'uniroute auth login' first")
 		}
 
-		// Load saved domain assignments
 		assignments, err := loadDomainAssignments()
 		if err != nil {
 			return fmt.Errorf("failed to load saved assignments: %w", err)
@@ -393,10 +371,8 @@ Examples:
 			return fmt.Errorf("no saved domain assignments found\nUse 'uniroute domain <domain> <subdomain>' to create one first")
 		}
 
-		// Find assignment by domain or subdomain, or use most recent
 		var assignment *DomainAssignment
 		if identifier == "" {
-			// No identifier provided - use most recently used
 			mostRecent := assignments[0]
 			for _, a := range assignments {
 				if a.LastUsed.After(mostRecent.LastUsed) {
@@ -405,7 +381,6 @@ Examples:
 			}
 			assignment = &mostRecent
 		} else {
-			// Find by identifier
 			for _, a := range assignments {
 				if a.Domain == identifier || a.Subdomain == identifier {
 					assignment = &a
@@ -424,23 +399,19 @@ Examples:
 		fmt.Printf("  Tunnel ID: %s\n", color.Gray(assignment.TunnelID))
 		fmt.Println()
 
-		// Ensure domain exists in account
 		if err := createDomainIfNotExists(assignment.Domain, token); err != nil {
 			fmt.Println(color.Yellow("⚠️  Warning: Could not verify domain in account (it may already exist)"))
 		}
 
-		// Look up tunnel ID by subdomain (in case it changed)
 		currentTunnelID := lookupTunnelIDBySubdomain(assignment.Subdomain, token)
 		if currentTunnelID == "" {
 			return fmt.Errorf("tunnel with subdomain '%s' not found. The tunnel may have been deleted.", assignment.Subdomain)
 		}
 
-		// Assign domain to tunnel
 		if err := setCustomDomain(currentTunnelID, assignment.Domain, token); err != nil {
 			return fmt.Errorf("failed to assign domain to tunnel: %w", err)
 		}
 
-		// Update saved assignment with current tunnel ID
 		assignment.TunnelID = currentTunnelID
 		assignment.LastUsed = time.Now()
 		if err := saveDomainAssignment(assignment.Domain, assignment.Subdomain, assignment.TunnelID); err != nil {
@@ -457,14 +428,12 @@ Examples:
 	},
 }
 
-// DomainInfo represents a domain from the API
 type DomainInfo struct {
 	ID             string
 	Domain         string
 	DNSConfigured bool
 }
 
-// listDomains fetches all domains from the API
 func listDomains(token string) ([]DomainInfo, error) {
 	apiURL := getAPIURL()
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -508,13 +477,11 @@ func listDomains(token string) ([]DomainInfo, error) {
 	return domains, nil
 }
 
-// VerifyResult represents the result of domain verification
 type VerifyResult struct {
 	DNSConfigured bool   `json:"dns_configured"`
 	DNSError      string `json:"dns_error"`
 }
 
-// verifyDomain verifies DNS for a domain
 func verifyDomain(domainID, token string) (VerifyResult, error) {
 	var result VerifyResult
 
@@ -543,7 +510,6 @@ func verifyDomain(domainID, token string) (VerifyResult, error) {
 	return result, nil
 }
 
-// removeDomain removes a domain
 func removeDomain(domainID, token string) error {
 	apiURL := getAPIURL()
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -566,7 +532,6 @@ func removeDomain(domainID, token string) error {
 	return nil
 }
 
-// getAPIURL gets the API URL from config or environment
 func getAPIURL() string {
 	var apiURL string
 	if envURL := os.Getenv("UNIROUTE_API_URL"); envURL != "" {
@@ -589,7 +554,6 @@ func getAPIURL() string {
 		}
 	}
 
-	// Ensure URL has protocol
 	if !strings.HasPrefix(apiURL, "http://") && !strings.HasPrefix(apiURL, "https://") {
 		apiURL = "https://" + apiURL
 	}
@@ -597,7 +561,6 @@ func getAPIURL() string {
 	return apiURL
 }
 
-// DomainAssignment represents a saved domain-to-tunnel assignment
 type DomainAssignment struct {
 	Domain    string    `json:"domain"`
 	Subdomain string    `json:"subdomain"`
@@ -606,7 +569,6 @@ type DomainAssignment struct {
 	LastUsed  time.Time `json:"last_used"`
 }
 
-// getDomainStatePath returns the path to the domain state file
 func getDomainStatePath() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -617,18 +579,15 @@ func getDomainStatePath() string {
 	return filepath.Join(configDir, "domain-assignments.json")
 }
 
-// saveDomainAssignment saves a domain assignment for resume functionality
 func saveDomainAssignment(domain, subdomain, tunnelID string) error {
 	if domain == "" || subdomain == "" || tunnelID == "" {
-		return nil // Don't save incomplete assignments
+		return nil
 	}
 
 	filePath := getDomainStatePath()
 	
-	// Load existing assignments
 	assignments, _ := loadDomainAssignments()
 	
-	// Update or add assignment
 	found := false
 	for i, a := range assignments {
 		if a.Domain == domain || a.Subdomain == subdomain {
@@ -654,7 +613,6 @@ func saveDomainAssignment(domain, subdomain, tunnelID string) error {
 		})
 	}
 	
-	// Save to file
 	data, err := json.MarshalIndent(assignments, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal domain assignments: %w", err)
@@ -667,7 +625,6 @@ func saveDomainAssignment(domain, subdomain, tunnelID string) error {
 	return nil
 }
 
-// loadDomainAssignments loads saved domain assignments
 func loadDomainAssignments() ([]DomainAssignment, error) {
 	filePath := getDomainStatePath()
 	
@@ -687,14 +644,12 @@ func loadDomainAssignments() ([]DomainAssignment, error) {
 	return assignments, nil
 }
 
-// removeDomainAssignment removes a domain assignment from saved state
 func removeDomainAssignment(domain string) {
 	assignments, err := loadDomainAssignments()
 	if err != nil {
-		return // Silently fail
+		return
 	}
 	
-	// Filter out the domain
 	filtered := []DomainAssignment{}
 	for _, a := range assignments {
 		if a.Domain != domain {
@@ -702,9 +657,7 @@ func removeDomainAssignment(domain string) {
 		}
 	}
 	
-	// Save filtered list
 	if len(filtered) == 0 {
-		// Remove file if no assignments left
 		os.Remove(getDomainStatePath())
 		return
 	}
@@ -717,11 +670,8 @@ func removeDomainAssignment(domain string) {
 	os.WriteFile(getDomainStatePath(), data, 0600)
 }
 
-// lookupTunnelIDBySubdomain looks up a tunnel ID by subdomain via API
 func lookupTunnelIDBySubdomain(subdomain, token string) string {
 	apiURL := getAPIURL()
-
-	// List tunnels and find by subdomain
 	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v1/tunnels", apiURL), nil)
 	if err != nil {
@@ -759,11 +709,8 @@ func lookupTunnelIDBySubdomain(subdomain, token string) string {
 	return ""
 }
 
-// createDomainIfNotExists creates a domain in the domain management system
 func createDomainIfNotExists(domain, token string) error {
 	apiURL := getAPIURL()
-
-	// Create request to add domain to management system
 	reqBody := map[string]string{"domain": domain}
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
@@ -793,8 +740,6 @@ func createDomainIfNotExists(domain, token string) error {
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		// Don't fail if domain creation fails - it might already exist
-		// Just return an error that will be logged as a warning
 		return fmt.Errorf("domain creation returned status %d", resp.StatusCode)
 	}
 

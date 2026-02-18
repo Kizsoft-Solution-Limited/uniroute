@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// CustomRoutingRule represents a custom routing rule
 type CustomRoutingRule struct {
 	ID             int                    `db:"id"`
 	Name           string                 `db:"name"`
@@ -27,26 +26,22 @@ type CustomRoutingRule struct {
 	UpdatedBy      *uuid.UUID             `db:"updated_by"`
 }
 
-// CustomRoutingRulesRepository handles custom routing rules database operations
 type CustomRoutingRulesRepository struct {
 	pool *pgxpool.Pool
 }
 
-// NewCustomRoutingRulesRepository creates a new custom routing rules repository
 func NewCustomRoutingRulesRepository(pool *pgxpool.Pool) *CustomRoutingRulesRepository {
 	return &CustomRoutingRulesRepository{
 		pool: pool,
 	}
 }
 
-// GetActiveRules retrieves all active custom routing rules (global/admin rules), sorted by priority
 func (r *CustomRoutingRulesRepository) GetActiveRules(ctx context.Context) ([]*CustomRoutingRule, error) {
 	return r.GetActiveRulesForUser(ctx, nil)
 }
 
-// GetActiveRulesForUser retrieves active custom routing rules for a specific user
-// If userID is nil, returns global/admin rules only
-// If userID is provided, returns user-specific rules (or global rules if user has none)
+// If userID is nil, returns global/admin rules only.
+// If userID is provided, returns user-specific rules (or global rules if user has none).
 func (r *CustomRoutingRulesRepository) GetActiveRulesForUser(ctx context.Context, userID *uuid.UUID) ([]*CustomRoutingRule, error) {
 	var query string
 	var args []interface{}
@@ -131,15 +126,13 @@ func (r *CustomRoutingRulesRepository) GetActiveRulesForUser(ctx context.Context
 	return rules, nil
 }
 
-// SaveRules saves or updates custom routing rules (global/admin rules)
-// rules is a slice of maps with rule data
+// rules is a slice of maps with rule data.
 func (r *CustomRoutingRulesRepository) SaveRules(ctx context.Context, rules []map[string]interface{}, updatedBy *uuid.UUID) error {
 	return r.SaveRulesForUser(ctx, rules, nil, updatedBy)
 }
 
-// SaveRulesForUser saves or updates custom routing rules for a specific user
-// If userID is nil, saves as global/admin rules
-// If userID is provided, saves as user-specific rules (replaces user's existing rules)
+// If userID is nil, saves as global/admin rules.
+// If userID is provided, saves as user-specific rules (replaces user's existing rules).
 func (r *CustomRoutingRulesRepository) SaveRulesForUser(ctx context.Context, rules []map[string]interface{}, userID *uuid.UUID, updatedBy *uuid.UUID) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {

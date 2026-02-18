@@ -9,19 +9,16 @@ import (
 	"github.com/google/uuid"
 )
 
-// ErrorLogHandler handles error logging requests
 type ErrorLogHandler struct {
 	errorLogRepo *storage.ErrorLogRepository
 }
 
-// NewErrorLogHandler creates a new error log handler
 func NewErrorLogHandler(errorLogRepo *storage.ErrorLogRepository) *ErrorLogHandler {
 	return &ErrorLogHandler{
 		errorLogRepo: errorLogRepo,
 	}
 }
 
-// ErrorLogRequest represents the error log request from frontend
 type ErrorLogRequest struct {
 	ErrorType  string                 `json:"error_type" binding:"required"` // 'exception', 'message', 'network', 'server'
 	Message    string                 `json:"message" binding:"required"`
@@ -31,8 +28,6 @@ type ErrorLogRequest struct {
 	Severity   string                 `json:"severity,omitempty"` // 'error', 'warning', 'info'
 }
 
-// HandleLogError handles POST /api/errors/log
-// This endpoint receives error reports from the frontend
 func (h *ErrorLogHandler) HandleLogError(c *gin.Context) {
 	var req ErrorLogRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -43,7 +38,6 @@ func (h *ErrorLogHandler) HandleLogError(c *gin.Context) {
 		return
 	}
 
-	// Get user ID from context (if authenticated)
 	var userID *uuid.UUID
 	if userIDValue, exists := c.Get("user_id"); exists {
 		if uid, ok := userIDValue.(uuid.UUID); ok {
@@ -51,25 +45,18 @@ func (h *ErrorLogHandler) HandleLogError(c *gin.Context) {
 		}
 	}
 
-	// Get client IP
 	ipAddress := c.ClientIP()
-
-	// Get user agent
 	userAgent := c.GetHeader("User-Agent")
-
-	// Get current URL from request
 	currentURL := c.GetHeader("Referer")
 	if currentURL == "" {
 		currentURL = c.Request.URL.String()
 	}
 
-	// Set default severity if not provided
 	severity := req.Severity
 	if severity == "" {
 		severity = "error"
 	}
 
-	// Create error log
 	errorLog := &storage.ErrorLog{
 		UserID:     userID,
 		ErrorType:  req.ErrorType,
@@ -83,7 +70,6 @@ func (h *ErrorLogHandler) HandleLogError(c *gin.Context) {
 		Resolved:   false,
 	}
 
-	// Save to database
 	if err := h.errorLogRepo.CreateErrorLog(c.Request.Context(), errorLog); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to log error",
@@ -91,14 +77,12 @@ func (h *ErrorLogHandler) HandleLogError(c *gin.Context) {
 		return
 	}
 
-	// Return success
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Error logged successfully",
 		"id":      errorLog.ID,
 	})
 }
 
-// GetErrorLogsRequest represents query parameters for getting error logs
 type GetErrorLogsRequest struct {
 	UserID    *string `form:"user_id"`
 	ErrorType string  `form:"error_type"`
@@ -108,7 +92,6 @@ type GetErrorLogsRequest struct {
 	Offset    int     `form:"offset"`
 }
 
-// HandleGetErrorLogs handles GET /admin/errors (admin only)
 func (h *ErrorLogHandler) HandleGetErrorLogs(c *gin.Context) {
 	var req GetErrorLogsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -119,7 +102,6 @@ func (h *ErrorLogHandler) HandleGetErrorLogs(c *gin.Context) {
 		return
 	}
 
-	// Build filters
 	filters := storage.ErrorLogFilters{
 		ErrorType: req.ErrorType,
 		Severity:  req.Severity,
@@ -127,7 +109,6 @@ func (h *ErrorLogHandler) HandleGetErrorLogs(c *gin.Context) {
 		Limit:     req.Limit,
 	}
 
-	// Parse user ID if provided
 	if req.UserID != nil && *req.UserID != "" {
 		userID, err := uuid.Parse(*req.UserID)
 		if err != nil {
@@ -139,15 +120,13 @@ func (h *ErrorLogHandler) HandleGetErrorLogs(c *gin.Context) {
 		filters.UserID = &userID
 	}
 
-	// Set default limit
 	if filters.Limit <= 0 {
 		filters.Limit = 50
 	}
 	if filters.Limit > 200 {
-		filters.Limit = 200 // Max limit
+		filters.Limit = 200
 	}
 
-	// Get error logs
 	logs, err := h.errorLogRepo.GetErrorLogs(c.Request.Context(), filters)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -156,7 +135,6 @@ func (h *ErrorLogHandler) HandleGetErrorLogs(c *gin.Context) {
 		return
 	}
 
-	// Convert to response format with properly formatted dates
 	errorLogsResponse := make([]map[string]interface{}, 0, len(logs))
 	for _, log := range logs {
 		responseLog := map[string]interface{}{
@@ -197,7 +175,6 @@ func (h *ErrorLogHandler) HandleGetErrorLogs(c *gin.Context) {
 	})
 }
 
-// HandleMarkResolved handles PATCH /admin/errors/:id/resolve (admin only)
 func (h *ErrorLogHandler) HandleMarkResolved(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
