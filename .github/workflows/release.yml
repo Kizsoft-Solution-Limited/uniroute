@@ -62,7 +62,9 @@ jobs:
           CGO_ENABLED: 0
         run: |
           set -e
-          echo "Building CLI for ${{ matrix.goos }}/${{ matrix.goarch }}"
+          # Inject version from tag (e.g. v1.0.20 -> 1.0.20) so uniroute --version is correct
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then VERSION="${GITHUB_REF#refs/tags/v}"; else VERSION="0.0.0-dev"; fi
+          echo "Building CLI for ${{ matrix.goos }}/${{ matrix.goarch }} (version $VERSION)"
           echo "Go version: $(go version)"
           echo "GOOS: $GOOS"
           echo "GOARCH: $GOARCH"
@@ -71,7 +73,7 @@ jobs:
           ls -la ./cmd/cli/ || echo "Failed to list cmd/cli"
           echo ""
           echo "Attempting build..."
-          go build -v -x -o ${{ matrix.binary }} ./cmd/cli 2>&1 || {
+          go build -v -x -ldflags "-X github.com/Kizsoft-Solution-Limited/uniroute/cmd/cli/commands.version=$VERSION" -o ${{ matrix.binary }} ./cmd/cli 2>&1 || {
             echo "❌ Build failed with exit code: $?"
             echo "Error details above"
             exit 1
