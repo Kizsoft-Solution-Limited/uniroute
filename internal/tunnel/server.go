@@ -4326,7 +4326,7 @@ func validateLocalURL(url string) error {
 
 // reservedSubdomains are system subdomains that cannot be used for user tunnels (app, api, www, dashboard, etc.)
 var reservedSubdomains = map[string]bool{
-	"www": true, "api": true, "app": true, "admin": true, "dashboard": true, "docs": true,
+	"www": true,"tunnel": true, "api": true, "app": true, "admin": true, "dashboard": true, "docs": true,
 }
 
 func validateSubdomain(subdomain string) error {

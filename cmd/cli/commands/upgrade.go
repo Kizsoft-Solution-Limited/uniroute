@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -136,16 +137,29 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 		}
 		
 		if shouldRun {
-			cmd := exec.Command(upgradeCmd[0], upgradeCmd[1:]...)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
+			c := exec.Command(upgradeCmd[0], upgradeCmd[1:]...)
+			c.Stdout = os.Stdout
+			c.Stderr = os.Stderr
+			if err := c.Run(); err != nil {
 				return fmt.Errorf("upgrade failed: %w", err)
 			}
 			fmt.Println()
 			fmt.Println(color.Green("✓ Upgrade completed successfully!"))
 			if len(upgradeCmd) > 0 && upgradeCmd[0] == "go" {
-				fmt.Println(color.Gray("  If you still see the old version, run the new binary from your Go bin (e.g. $HOME/go/bin) or open a new terminal."))
+				currentExe, _ := os.Executable()
+				currentExe, _ = filepath.EvalSymlinks(currentExe)
+				if out, err := exec.Command("go", "env", "GOPATH").Output(); err == nil {
+					gopath := strings.TrimSpace(string(out))
+					if gopath != "" {
+						newBin := filepath.Join(gopath, "bin", "uniroute")
+						if currentExe != newBin {
+							if _, err := os.Stat(newBin); err == nil {
+								fmt.Println(color.Yellow("  You're running the CLI from a different location. To use the new version, run:"))
+								fmt.Printf("  %s\n", color.Bold(fmt.Sprintf("sudo cp %s %s", newBin, currentExe)))
+							}
+						}
+					}
+				}
 			}
 			return nil
 		}
