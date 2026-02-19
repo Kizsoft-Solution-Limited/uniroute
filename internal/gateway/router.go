@@ -324,9 +324,13 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 		}
 
 		providersToTry := []providers.Provider{selectedProvider}
-		for _, provider := range availableProviders {
-			if provider.Name() != selectedProvider.Name() {
-				providersToTry = append(providersToTry, provider)
+		modelLower := strings.ToLower(req.Model)
+		ollamaStyle := strings.Contains(modelLower, ":")
+		if !ollamaStyle {
+			for _, provider := range availableProviders {
+				if provider.Name() != selectedProvider.Name() {
+					providersToTry = append(providersToTry, provider)
+				}
 			}
 		}
 

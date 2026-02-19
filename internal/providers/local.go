@@ -59,7 +59,11 @@ func convertToOllamaMessages(messages []Message) []map[string]interface{} {
 					textParts = append(textParts, "[Audio attached]")
 				}
 			}
-			om["content"] = strings.Join(textParts, " ")
+			textContent := strings.TrimSpace(strings.Join(textParts, " "))
+			if textContent == "" && len(images) > 0 {
+				textContent = "Describe this image."
+			}
+			om["content"] = textContent
 			if len(images) > 0 {
 				om["images"] = images
 			}

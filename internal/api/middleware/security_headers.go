@@ -13,16 +13,20 @@ func SecurityHeadersMiddleware() gin.HandlerFunc {
 		if gin.Mode() == gin.ReleaseMode {
 			path := c.Request.URL.Path
 			if path == "/swagger" || path == "/swagger/" || path == "/swagger.json" {
-				c.Header("Content-Security-Policy", 
+				c.Header("Content-Security-Policy",
 					"default-src 'self'; "+
-					"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; "+
-					"style-src 'self' 'unsafe-inline' https://unpkg.com; "+
-					"font-src 'self' data: https://unpkg.com; "+
-					"img-src 'self' data: blob: https:; "+
-					"media-src 'self' data: blob:; "+
-					"connect-src 'self' https://unpkg.com")
+						"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; "+
+						"style-src 'self' 'unsafe-inline' https://unpkg.com; "+
+						"font-src 'self' data: https://unpkg.com; "+
+						"img-src 'self' data: blob: https:; "+
+						"media-src 'self' data: blob:; "+
+						"connect-src 'self' https://unpkg.com")
 			} else {
-				c.Header("Content-Security-Policy", "default-src 'self'")
+				c.Header("Content-Security-Policy",
+					"default-src 'self'; "+
+						"media-src 'self' data: blob:; "+
+						"img-src 'self' data: blob: https:; "+
+						"connect-src 'self'")
 			}
 		}
 
