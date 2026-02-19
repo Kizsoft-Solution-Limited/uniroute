@@ -1,13 +1,14 @@
 <template>
   <div class="flex h-[calc(100vh-8rem)] sm:h-[calc(100vh-12rem)] max-h-[800px] gap-4">
-    <!-- Conversations Sidebar -->
-    <div class="w-64 flex-shrink-0 hidden lg:block">
-      <Card class="h-full flex flex-col">
-        <div class="p-4 border-b border-gray-200 dark:border-gray-700">
+    <!-- Conversations Sidebar: flex + overflow so list scrolls and all items are clickable -->
+    <div class="w-64 flex-shrink-0 hidden lg:flex lg:flex-col lg:min-h-0 self-stretch">
+      <div class="rounded-lg border border-slate-700/50 bg-slate-800/60 flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div class="flex-shrink-0 p-4 border-b border-gray-200 dark:border-gray-700">
           <div class="flex items-center justify-between mb-2">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Conversations</h2>
             <button
               @click="createNewConversation"
+              type="button"
               class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
               title="New conversation"
             >
@@ -17,7 +18,7 @@
             </button>
           </div>
         </div>
-        <div class="flex-1 overflow-y-auto p-2">
+        <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 overscroll-contain">
           <div v-if="conversationsLoading" class="text-center py-4 text-gray-500 dark:text-gray-400">
             Loading...
           </div>
@@ -28,10 +29,11 @@
             <button
               v-for="conv in conversations"
               :key="conv.id"
+              type="button"
               @click="loadConversation(conv.id)"
               :class="[
                 'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors group',
-                currentConversationId === conv.id
+                String(currentConversationId) === String(conv.id)
                   ? 'bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100'
                   : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
               ]"
@@ -47,7 +49,8 @@
                 </div>
                 <button
                   @click.stop="deleteConversation(conv.id)"
-                  class="ml-2 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900 opacity-0 group-hover:opacity-100 transition-opacity"
+                  type="button"
+                  class="ml-2 flex-shrink-0 p-1 rounded hover:bg-red-100 dark:hover:bg-red-900 opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Delete conversation"
                 >
                   <X class="w-4 h-4" />
@@ -56,7 +59,7 @@
             </button>
           </div>
         </div>
-      </Card>
+      </div>
     </div>
 
     <!-- Main Chat Area: min-h-0 so messages area can shrink and scroll -->
@@ -531,15 +534,11 @@
         v-if="showMobileConversations"
         class="fixed inset-0 z-[9999] lg:hidden dark"
         @click.self="showMobileConversations = false"
-        @touchmove.prevent
-        style="touch-action: none;"
       >
-        <!-- Backdrop -->
-        <div class="absolute inset-0 bg-black bg-opacity-50" @click="showMobileConversations = false"></div>
-        
-        <!-- Drawer -->
-        <div class="absolute left-0 top-0 bottom-0 w-80 max-w-[85vw] bg-gray-900 shadow-xl flex flex-col">
-          <div class="p-4 border-b border-gray-700 flex items-center justify-between">
+        <div class="absolute inset-0 bg-black bg-opacity-50" @click="showMobileConversations = false" @touchmove.prevent></div>
+
+        <div class="absolute left-0 top-0 bottom-0 w-80 max-w-[85vw] bg-gray-900 shadow-xl flex flex-col overflow-hidden">
+          <div class="p-4 border-b border-gray-700 flex items-center justify-between flex-shrink-0">
             <h2 class="text-lg font-semibold text-white">Conversations</h2>
             <button
               @click="showMobileConversations = false"
@@ -549,7 +548,7 @@
               <X class="w-5 h-5" />
             </button>
           </div>
-          <div class="flex-1 overflow-y-auto p-2">
+          <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 overscroll-contain touch-pan-y">
             <div v-if="conversationsLoading" class="text-center py-4 text-gray-400">
               Loading...
             </div>
@@ -560,10 +559,11 @@
               <button
                 v-for="conv in conversations"
                 :key="conv.id"
+                type="button"
                 @click="loadConversation(conv.id)"
                 :class="[
                   'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors group',
-                  currentConversationId === conv.id
+                  String(currentConversationId) === String(conv.id)
                     ? 'bg-blue-900 text-blue-100'
                     : 'hover:bg-gray-700 text-gray-300'
                 ]"
@@ -652,7 +652,6 @@ const showSettings = ref(false)
 const messagesContainer = ref<HTMLElement | null>(null)
 const lastMessageEl = ref<HTMLElement | null>(null)
 
-// Conversation management
 const conversations = ref<Conversation[]>([])
 const conversationsLoading = ref(false)
 const currentConversationId = ref<string | null>(null)
@@ -775,7 +774,6 @@ const handleSend = async () => {
   
   if ((!textToSend && attachedImages.value.length === 0 && attachedAudios.value.length === 0) || loading.value) return
 
-  // Create conversation if none exists
   if (!currentConversationId.value) {
     try {
       const newConv = await conversationsApi.createConversation({
@@ -789,10 +787,8 @@ const handleSend = async () => {
     }
   }
 
-  // Build message content - support multimodal (images + audio + text)
   let messageContent: string | ContentPart[] = textToSend
-  
-  // If images or audio are attached, create multimodal content
+
   if (attachedImages.value.length > 0 || attachedAudios.value.length > 0) {
     const parts: ContentPart[] = []
     
@@ -834,8 +830,7 @@ const handleSend = async () => {
 
   messages.value.push(userMessage)
   inputMessage.value = ''
-  transcribedText.value = '' // Clear transcribed text
-  // Clear attached files (only revoke blob URLs)
+  transcribedText.value = ''
   attachedImages.value.forEach(img => {
     if (img.preview.startsWith('blob:')) {
       URL.revokeObjectURL(img.preview)
@@ -851,7 +846,6 @@ const handleSend = async () => {
   loading.value = true
 
   try {
-    // Build messages array (include conversation history)
     const chatMessages: Message[] = messages.value
       .filter(m => m.role !== 'system' || messages.value.indexOf(m) === 0)
       .map(m => ({ 
@@ -866,12 +860,10 @@ const handleSend = async () => {
       max_tokens: maxTokens.value
     }
 
-    // Add conversation_id if we have one
     if (currentConversationId.value) {
       chatRequestData.conversation_id = currentConversationId.value
     }
 
-    // Use streaming for better UX (real-time response)
     let assistantMessage: ChatMessage = {
       role: 'assistant',
       content: '',
@@ -884,14 +876,12 @@ const handleSend = async () => {
       await chatApi.chatStream(
         chatRequestData,
         (chunk) => {
-          // Append chunk content to assistant message
           if (chunk.content) {
             assistantMessage.content += chunk.content
             messages.value[assistantMessageIndex] = { ...assistantMessage }
             scrollToBottomAfterUpdate()
           }
 
-          // Update metadata when stream completes
           if (chunk.done && chunk.usage) {
             assistantMessage.metadata = {
               tokens: chunk.usage.total_tokens,
@@ -901,23 +891,17 @@ const handleSend = async () => {
             }
             messages.value[assistantMessageIndex] = { ...assistantMessage }
             scrollToBottomAfterUpdate()
-            if (currentConversationId.value) {
-              showToast('Conversation saved', 'success')
-            }
           }
 
-          // Handle errors
           if (chunk.error) {
             throw new Error(chunk.error)
           }
         },
         (error) => {
-          // Remove incomplete message on error
           messages.value.splice(assistantMessageIndex, 1)
           showToast('Failed to get response: ' + error.message, 'error')
         },
         (usage) => {
-          // Stream completed successfully
           if (usage) {
             assistantMessage.metadata = {
               ...assistantMessage.metadata,
@@ -926,10 +910,9 @@ const handleSend = async () => {
             messages.value[assistantMessageIndex] = { ...assistantMessage }
           }
         },
-        true // Use JWT auth for frontend
+        true
       )
     } catch (error: any) {
-      // Remove incomplete message on error
       if (messages.value[assistantMessageIndex]?.content === '') {
         messages.value.splice(assistantMessageIndex, 1)
       }
@@ -1092,7 +1075,6 @@ const clearChat = () => {
   }
 }
 
-// Conversation management functions
 const loadConversations = async () => {
   try {
     conversationsLoading.value = true
@@ -1118,7 +1100,8 @@ const loadConversation = async (id: string) => {
       return
     }
     currentConversationId.value = conversationId
-    selectedModel.value = data.conversation.model || 'gpt-4'
+    const convModel = data.conversation?.model ?? (data.conversation as { Model?: string })?.Model
+    selectedModel.value = (typeof convModel === 'string' && convModel.trim()) ? convModel.trim() : 'gpt-4'
     const rawMessages = data.messages != null && Array.isArray(data.messages) ? data.messages : []
     messages.value = rawMessages.map((msg: any) => ({
       role: msg.role ?? 'user',
@@ -1140,7 +1123,7 @@ const createNewConversation = async () => {
   messages.value = []
   inputMessage.value = ''
   transcribedText.value = ''
-  showMobileConversations.value = false // Close mobile drawer
+  showMobileConversations.value = false
   await loadConversations()
 }
 
