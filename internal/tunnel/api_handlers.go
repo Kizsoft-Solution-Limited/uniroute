@@ -75,6 +75,15 @@ func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request
 			break
 		}
 	}
+	if tunnel == nil {
+		for _, t := range ts.tunnels {
+			if t.Subdomain == tunnelID {
+				tunnel = t
+				tunnelID = t.ID
+				break
+			}
+		}
+	}
 	ts.tunnelsMu.RUnlock()
 
 	if tunnel == nil {

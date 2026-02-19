@@ -1218,11 +1218,13 @@ func (tc *TunnelClient) GetConnectionStats(serverURL string, tunnelID string) (*
 
 	resp, err := tc.httpClient.Do(req)
 	if err != nil {
+		tc.logger.Debug().Err(err).Str("url", statsURL).Msg("connection stats request failed")
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		tc.logger.Debug().Int("status", resp.StatusCode).Str("url", statsURL).Msg("connection stats returned non-OK")
 		return nil, fmt.Errorf("failed to get stats: %d", resp.StatusCode)
 	}
 
@@ -1231,6 +1233,7 @@ func (tc *TunnelClient) GetConnectionStats(serverURL string, tunnelID string) (*
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		tc.logger.Debug().Err(err).Str("url", statsURL).Msg("connection stats decode failed")
 		return nil, err
 	}
 
