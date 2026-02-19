@@ -386,6 +386,74 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 				provider = chunk.Provider
 			}
 
+			// When stream completes (chunk.Done), persist messages and track request here.
+			// We return false below so we never receive the closed channel; the "if !ok" block would never run.
+			if chunk.Done {
+				latency := time.Since(startTime)
+				if h.requestRepo != nil {
+					go func() {
+						requestRecord := &storage.Request{
+							ID:            uuid.New(),
+							APIKeyID:      apiKeyID,
+							UserID:        userID,
+							Provider:      provider,
+							Model:         req.Model,
+							RequestType:   "chat_stream",
+							InputTokens:   func() int { if finalUsage != nil { return finalUsage.PromptTokens }; return 0 }(),
+							OutputTokens:  func() int { if finalUsage != nil { return finalUsage.CompletionTokens }; return 0 }(),
+							TotalTokens:   func() int { if finalUsage != nil { return finalUsage.TotalTokens }; return 0 }(),
+							Cost:          0,
+							LatencyMs:     int(latency.Milliseconds()),
+							StatusCode:    http.StatusOK,
+							ErrorMessage:  nil,
+							CreatedAt:     time.Now(),
+						}
+						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+						if err := h.requestRepo.Create(ctx, requestRecord); err != nil {
+							h.logger.Error().Err(err).Msg("Failed to track streaming request")
+						}
+					}()
+				}
+				if finalUsage != nil {
+					monitoring.RecordRequest(provider, req.Model, status, latency.Seconds())
+					monitoring.RecordTokens(provider, req.Model, "input", finalUsage.PromptTokens)
+					monitoring.RecordTokens(provider, req.Model, "output", finalUsage.CompletionTokens)
+				}
+				if reqWithConv.ConversationID != nil && h.convRepo != nil && userID != nil {
+					conversationID, err := uuid.Parse(*reqWithConv.ConversationID)
+					if err == nil {
+						ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+						defer cancel()
+						if len(req.Messages) > 0 {
+							lastUserMsg := req.Messages[len(req.Messages)-1]
+							if _, addErr := h.convRepo.AddMessage(ctx, conversationID, lastUserMsg.Role, lastUserMsg.Content, nil); addErr != nil {
+								h.logger.Warn().Err(addErr).Str("conversation_id", conversationID.String()).Msg("Failed to save user message to conversation")
+							}
+						}
+						metadata := map[string]interface{}{
+							"tokens":     func() int { if finalUsage != nil { return finalUsage.TotalTokens }; return 0 }(),
+							"cost":       0,
+							"provider":   provider,
+							"latency_ms": latency.Milliseconds(),
+						}
+						if _, addErr := h.convRepo.AddMessage(ctx, conversationID, "assistant", fullContent.String(), metadata); addErr != nil {
+							h.logger.Warn().Err(addErr).Str("conversation_id", conversationID.String()).Msg("Failed to save assistant message to conversation")
+						}
+					} else {
+						h.logger.Warn().Err(err).Str("conversation_id_raw", *reqWithConv.ConversationID).Msg("Invalid conversation_id, not saving messages")
+					}
+				} else {
+					if reqWithConv.ConversationID == nil {
+						h.logger.Debug().Msg("Chat stream: no conversation_id in request, messages not persisted")
+					} else if h.convRepo == nil {
+						h.logger.Debug().Msg("Chat stream: convRepo nil, messages not persisted")
+					} else if userID == nil {
+						h.logger.Debug().Msg("Chat stream: user_id nil, messages not persisted")
+					}
+				}
+			}
+
 			chunkJSON, err := json.Marshal(chunk)
 			if err != nil {
 				h.logger.Error().Err(err).Msg("Failed to marshal stream chunk")
@@ -393,8 +461,6 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 			}
 
 			fmt.Fprintf(w, "data: %s\n\n", chunkJSON)
-			// Note: io.Writer doesn't have Flush(), but gin's Stream handles flushing
-
 			return !chunk.Done
 
 		case err, ok := <-errChan:

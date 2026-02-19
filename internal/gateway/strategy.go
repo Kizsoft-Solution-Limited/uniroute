@@ -24,12 +24,31 @@ const (
 
 type ModelBasedStrategy struct{}
 
+// isOllamaStyleModel returns true if the model name looks like an Ollama name:tag (e.g. llama3.2:latest, mistral:7b).
+// Such names must go to the local (Ollama) provider; vLLM uses different IDs and returns 404 for these.
+func isOllamaStyleModel(modelLower string) bool {
+	if strings.Contains(modelLower, ":") {
+		return true
+	}
+	return false
+}
+
 func (s *ModelBasedStrategy) SelectProvider(ctx context.Context, req providers.ChatRequest, availableProviders []providers.Provider) (providers.Provider, error) {
 	if len(availableProviders) == 0 {
 		return nil, ErrNoProviders
 	}
 
 	modelLower := strings.ToLower(req.Model)
+
+	// Ollama uses "name:tag" (e.g. llama3.2:latest). Prefer local so we never send these to vLLM.
+	if isOllamaStyleModel(modelLower) {
+		for _, provider := range availableProviders {
+			if provider.Name() == "local" {
+				return provider, nil
+			}
+		}
+	}
+
 	for _, provider := range availableProviders {
 		models := provider.GetModels()
 		for _, model := range models {
@@ -47,9 +66,9 @@ func (s *ModelBasedStrategy) SelectProvider(ctx context.Context, req providers.C
 			}
 		}
 	}
-	if strings.Contains(modelLower, "llama") || strings.Contains(modelLower, "mistral") || 
-	   strings.Contains(modelLower, "phi") || strings.Contains(modelLower, "codellama") ||
-	   strings.Contains(modelLower, "neural") || strings.Contains(modelLower, "orca") {
+	if strings.Contains(modelLower, "llama") || strings.Contains(modelLower, "mistral") ||
+		strings.Contains(modelLower, "phi") || strings.Contains(modelLower, "codellama") ||
+		strings.Contains(modelLower, "neural") || strings.Contains(modelLower, "orca") {
 		for _, provider := range availableProviders {
 			if provider.Name() == "local" {
 				return provider, nil

@@ -93,6 +93,9 @@
         <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white" id="page-title">AI Chat</h1>
         <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
           Chat with any AI model through UniRoute
+          <span v-if="currentConversationId && messages.length > 0" class="ml-1 text-gray-500 dark:text-gray-500">
+            · {{ messages.length }} message{{ messages.length === 1 ? '' : 's' }}
+          </span>
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2 sm:gap-4">
@@ -898,6 +901,9 @@ const handleSend = async () => {
             }
             messages.value[assistantMessageIndex] = { ...assistantMessage }
             scrollToBottomAfterUpdate()
+            if (currentConversationId.value) {
+              showToast('Conversation saved', 'success')
+            }
           }
 
           // Handle errors
@@ -931,7 +937,10 @@ const handleSend = async () => {
     }
 
     if (speakResponsesEnabled.value && speechSynthesis.value && assistantMessage.content) {
-      speakText(assistantMessage.content)
+      const textToSpeak = typeof assistantMessage.content === 'string'
+        ? assistantMessage.content
+        : assistantMessage.content.filter((p): p is ContentPart & { text: string } => p.type === 'text' && !!p.text).map(p => p.text).join(' ')
+      if (textToSpeak) speakText(textToSpeak)
     }
   } catch (error: any) {
     console.error('Chat error:', error)
