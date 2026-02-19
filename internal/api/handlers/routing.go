@@ -111,25 +111,34 @@ func (h *RoutingHandler) GetRoutingStrategy(c *gin.Context) {
 		currentStrategy = string(h.Router.GetStrategyType())
 	}
 
-	var isLocked bool = false
+	var isLocked bool
 	if h.SettingsRepository != nil {
 		locked, err := h.SettingsRepository.IsRoutingStrategyLocked(ctx)
-		if err != nil {
-		} else {
+		if err == nil {
 			isLocked = locked
 		}
 	}
-	
+
+	if userIDVal, exists := c.Get("user_id"); exists {
+		var userID *uuid.UUID
+		switch v := userIDVal.(type) {
+		case string:
+			if parsed, err := uuid.Parse(v); err == nil {
+				userID = &parsed
+			}
+		case uuid.UUID:
+			uid := v
+			userID = &uid
+		}
+		if userID != nil {
+			currentStrategy = string(h.Router.GetStrategyForUser(ctx, userID))
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"strategy":            currentStrategy,
-		"is_locked":           isLocked, // Always include this field
-		"available_strategies": []string{
-			"model",
-			"cost",
-			"latency",
-			"balanced",
-			"custom",
-		},
+		"strategy":             currentStrategy,
+		"is_locked":            isLocked,
+		"available_strategies": []string{"model", "cost", "latency", "balanced", "custom"},
 	})
 }
 
@@ -146,17 +155,38 @@ func (h *RoutingHandler) GetCostEstimate(c *gin.Context) {
 	}
 
 	estimates := make(map[string]float64)
-	calculator := gateway.NewCostCalculator()
+	calculator := h.Router.GetCostCalculator()
+	ctx := c.Request.Context()
 
-	providers := h.Router.ListProviders()
-	for _, providerName := range providers {
-		provider, err := h.Router.GetProvider(providerName)
-		if err != nil {
-			continue
+	var providersToCheck []gateway.ProviderEntry
+	if userIDVal, exists := c.Get("user_id"); exists {
+		var userID *uuid.UUID
+		switch v := userIDVal.(type) {
+		case string:
+			if parsed, err := uuid.Parse(v); err == nil {
+				userID = &parsed
+			}
+		case uuid.UUID:
+			uid := v
+			userID = &uid
 		}
+		if userID != nil {
+			providersToCheck = h.Router.GetProvidersForUser(ctx, userID)
+		}
+	}
+	if len(providersToCheck) == 0 {
+		for _, name := range h.Router.ListProviders() {
+			p, err := h.Router.GetProvider(name)
+			if err != nil {
+				continue
+			}
+			providersToCheck = append(providersToCheck, gateway.ProviderEntry{Name: name, Provider: p})
+		}
+	}
 
+	for _, entry := range providersToCheck {
 		supports := false
-		for _, model := range provider.GetModels() {
+		for _, model := range entry.Provider.GetModels() {
 			if model == req.Model {
 				supports = true
 				break
@@ -165,9 +195,8 @@ func (h *RoutingHandler) GetCostEstimate(c *gin.Context) {
 		if !supports {
 			continue
 		}
-
-		cost := calculator.EstimateCost(providerName, req.Model, req.Messages)
-		estimates[providerName] = cost
+		cost := calculator.EstimateCost(entry.Name, req.Model, req.Messages)
+		estimates[entry.Name] = cost
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -178,10 +207,32 @@ func (h *RoutingHandler) GetCostEstimate(c *gin.Context) {
 
 func (h *RoutingHandler) GetLatencyStats(c *gin.Context) {
 	stats := make(map[string]interface{})
-	
+	ctx := c.Request.Context()
 	tracker := h.Router.GetLatencyTracker()
-	providers := h.Router.ListProviders()
-	for _, providerName := range providers {
+
+	var providerNames []string
+	if userIDVal, exists := c.Get("user_id"); exists {
+		var userID *uuid.UUID
+		switch v := userIDVal.(type) {
+		case string:
+			if parsed, err := uuid.Parse(v); err == nil {
+				userID = &parsed
+			}
+		case uuid.UUID:
+			uid := v
+			userID = &uid
+		}
+		if userID != nil {
+			entries := h.Router.GetProvidersForUser(ctx, userID)
+			for _, e := range entries {
+				providerNames = append(providerNames, e.Name)
+			}
+		}
+	}
+	if len(providerNames) == 0 {
+		providerNames = h.Router.ListProviders()
+	}
+	for _, providerName := range providerNames {
 		avg, min, max, count := tracker.GetLatencyStats(providerName)
 		stats[providerName] = gin.H{
 			"average_ms": avg.Milliseconds(),

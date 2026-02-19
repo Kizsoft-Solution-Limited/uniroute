@@ -19,23 +19,32 @@ func NewCostCalculator() *CostCalculator {
 	pricing := make(map[string]map[string]Pricing)
 
 	pricing["openai"] = map[string]Pricing{
-		"gpt-4":               {InputCost: 30.0, OutputCost: 60.0},
-		"gpt-4-turbo-preview": {InputCost: 10.0, OutputCost: 30.0},
-		"gpt-3.5-turbo":       {InputCost: 0.5, OutputCost: 1.5},
-		"gpt-3.5-turbo-0125":  {InputCost: 0.5, OutputCost: 1.5},
+		"gpt-4o":                  {InputCost: 5.0, OutputCost: 15.0},
+		"gpt-4o-mini":             {InputCost: 0.15, OutputCost: 0.60},
+		"gpt-4":                   {InputCost: 30.0, OutputCost: 60.0},
+		"gpt-4-turbo":             {InputCost: 10.0, OutputCost: 30.0},
+		"gpt-4-turbo-preview":     {InputCost: 10.0, OutputCost: 30.0},
+		"gpt-3.5-turbo":           {InputCost: 0.5, OutputCost: 1.5},
+		"gpt-3.5-turbo-0125":      {InputCost: 0.5, OutputCost: 1.5},
 	}
 
 	pricing["anthropic"] = map[string]Pricing{
 		"claude-3-5-sonnet-20241022": {InputCost: 3.0, OutputCost: 15.0},
+		"claude-3-5-haiku-20241022":  {InputCost: 0.80, OutputCost: 4.0},
 		"claude-3-opus-20240229":     {InputCost: 15.0, OutputCost: 75.0},
 		"claude-3-sonnet-20240229":   {InputCost: 3.0, OutputCost: 15.0},
-		"claude-3-haiku-20240307":    {InputCost: 0.25, OutputCost: 1.25},
+		"claude-3-haiku-20240307":   {InputCost: 0.25, OutputCost: 1.25},
 	}
 
 	pricing["google"] = map[string]Pricing{
-		"gemini-pro":       {InputCost: 0.0, OutputCost: 0.0}, // Free tier
-		"gemini-1.5-pro":   {InputCost: 1.25, OutputCost: 5.0},
-		"gemini-1.5-flash": {InputCost: 0.075, OutputCost: 0.30},
+		"gemini-pro":             {InputCost: 0.0, OutputCost: 0.0},
+		"gemini-1.5-pro":         {InputCost: 1.25, OutputCost: 5.0},
+		"gemini-1.5-pro-latest":  {InputCost: 1.25, OutputCost: 5.0},
+		"gemini-1.5-flash":       {InputCost: 0.075, OutputCost: 0.30},
+		"gemini-1.5-flash-8b":    {InputCost: 0.0375, OutputCost: 0.15},
+		"gemini-2.5-pro":         {InputCost: 1.25, OutputCost: 5.0},
+		"gemini-2.5-flash":       {InputCost: 0.15, OutputCost: 0.60},
+		"gemini-2.0-flash-exp":   {InputCost: 0.10, OutputCost: 0.40},
 	}
 
 	pricing["local"] = map[string]Pricing{

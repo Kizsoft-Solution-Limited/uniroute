@@ -236,19 +236,25 @@ func (r *Router) Route(ctx context.Context, req providers.ChatRequest, userID *u
 	if len(r.providers) == 0 {
 		return nil, fmt.Errorf("no providers available")
 	}
-	allProviders := r.getAllProviders()
+	availableProviders := r.getAvailableProviders(ctx, userID)
+	if len(availableProviders) == 0 {
+		return nil, fmt.Errorf("no providers available")
+	}
 	strategy := r.GetStrategyInstanceForUser(ctx, userID)
-	selectedProvider, err := strategy.SelectProvider(ctx, req, allProviders)
+	selectedProvider, err := strategy.SelectProvider(ctx, req, availableProviders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to select provider: %w", err)
 	}
-	availableProviders := r.getAvailableProviders(ctx, userID)
 	if !r.providerInList(availableProviders, selectedProvider.Name()) {
 		availableProviders = []providers.Provider{selectedProvider}
 	}
-	providersToTry := []providers.Provider{selectedProvider}
+	primary := r.providerFromListByName(availableProviders, selectedProvider.Name())
+	if primary == nil {
+		primary = selectedProvider
+	}
+	providersToTry := []providers.Provider{primary}
 	for _, provider := range availableProviders {
-		if provider.Name() != selectedProvider.Name() {
+		if provider.Name() != primary.Name() {
 			providersToTry = append(providersToTry, provider)
 		}
 	}
@@ -283,24 +289,27 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 		defer close(chunkChan)
 		defer close(errChan)
 
-		if len(r.providers) == 0 {
+		availableProviders := r.getAvailableProviders(ctx, userID)
+		if len(availableProviders) == 0 {
 			errChan <- fmt.Errorf("no providers available")
 			return
 		}
-		allProviders := r.getAllProviders()
 		strategy := r.GetStrategyInstanceForUser(ctx, userID)
-		selectedProvider, err := strategy.SelectProvider(ctx, req, allProviders)
+		selectedProvider, err := strategy.SelectProvider(ctx, req, availableProviders)
 		if err != nil {
 			errChan <- fmt.Errorf("failed to select provider: %w", err)
 			return
 		}
-		availableProviders := r.getAvailableProviders(ctx, userID)
 		if !r.providerInList(availableProviders, selectedProvider.Name()) {
 			availableProviders = []providers.Provider{selectedProvider}
 		}
-		_, ok := selectedProvider.(providers.StreamingProvider)
+		primary := r.providerFromListByName(availableProviders, selectedProvider.Name())
+		if primary == nil {
+			primary = selectedProvider
+		}
+		_, ok := primary.(providers.StreamingProvider)
 		if !ok {
-			resp, err := selectedProvider.Chat(ctx, req)
+			resp, err := primary.Chat(ctx, req)
 			if err != nil {
 				errChan <- err
 				return
@@ -324,12 +333,12 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 			return
 		}
 
-		providersToTry := []providers.Provider{selectedProvider}
+		providersToTry := []providers.Provider{primary}
 		modelLower := strings.ToLower(req.Model)
 		ollamaStyle := strings.Contains(modelLower, ":")
 		if !ollamaStyle {
 			for _, provider := range availableProviders {
-				if provider.Name() != selectedProvider.Name() {
+				if provider.Name() != primary.Name() {
 					providersToTry = append(providersToTry, provider)
 				}
 			}
@@ -424,6 +433,15 @@ func (r *Router) providerInList(list []providers.Provider, name string) bool {
 	return false
 }
 
+func (r *Router) providerFromListByName(list []providers.Provider, name string) providers.Provider {
+	for _, p := range list {
+		if p.Name() == name {
+			return p
+		}
+	}
+	return nil
+}
+
 func (r *Router) getUserProviders(ctx context.Context, userID uuid.UUID) []providers.Provider {
 	userProviders := make([]providers.Provider, 0)
 	providersToCheck := []string{"openai", "anthropic", "google"}
@@ -448,6 +466,14 @@ func (r *Router) getUserProviders(ctx context.Context, userID uuid.UUID) []provi
 	}
 
 	return userProviders
+}
+
+func (r *Router) UserHasProviderKey(ctx context.Context, userID uuid.UUID, provider string) bool {
+	if r.providerKeyService == nil {
+		return false
+	}
+	key, err := r.providerKeyService.GetProviderKey(ctx, userID, provider)
+	return err == nil && key != ""
 }
 
 func (r *Router) selectProvider(model string) providers.Provider {
@@ -495,8 +521,33 @@ func (r *Router) ListProviders() []string {
 	return names
 }
 
-// ListProviderDetailsForUser returns provider details (name, healthy, models) for both
-// server-registered providers and any BYOK providers the user has a key for.
+type ProviderEntry struct {
+	Name     string
+	Provider providers.Provider
+}
+
+func (r *Router) GetProvidersForUser(ctx context.Context, userID *uuid.UUID) []ProviderEntry {
+	seen := make(map[string]bool)
+	out := make([]ProviderEntry, 0)
+	add := func(p providers.Provider) {
+		name := p.Name()
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		out = append(out, ProviderEntry{Name: name, Provider: p})
+	}
+	if userID != nil && r.providerKeyService != nil {
+		for _, p := range r.getUserProviders(ctx, *userID) {
+			add(p)
+		}
+	}
+	for _, p := range r.providers {
+		add(p)
+	}
+	return out
+}
+
 func (r *Router) ListProviderDetailsForUser(ctx context.Context, userID *uuid.UUID) []map[string]interface{} {
 	seen := make(map[string]bool)
 	out := make([]map[string]interface{}, 0)
@@ -515,13 +566,13 @@ func (r *Router) ListProviderDetailsForUser(ctx context.Context, userID *uuid.UU
 		})
 	}
 
-	for _, p := range r.providers {
-		add(p)
-	}
 	if userID != nil && r.providerKeyService != nil {
 		for _, p := range r.getUserProviders(ctx, *userID) {
 			add(p)
 		}
+	}
+	for _, p := range r.providers {
+		add(p)
 	}
 	return out
 }

@@ -193,6 +193,8 @@ func SetupRouter(
 			authProtected.GET("/routing/strategy", routingHandler.GetUserRoutingStrategy)
 			authProtected.PUT("/routing/strategy", routingHandler.SetUserRoutingStrategy)
 			authProtected.DELETE("/routing/strategy", routingHandler.ClearUserRoutingStrategy)
+			authProtected.POST("/routing/estimate-cost", routingHandler.GetCostEstimate)
+			authProtected.GET("/routing/latency", routingHandler.GetLatencyStats)
 
 			if postgresClient != nil {
 				customRulesRepo := storage.NewCustomRoutingRulesRepository(postgresClient.Pool())

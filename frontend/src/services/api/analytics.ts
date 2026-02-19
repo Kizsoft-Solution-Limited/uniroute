@@ -84,18 +84,22 @@ export const analyticsApi = {
   },
 
   /**
-   * Estimate cost for a chat request
+   * Estimate cost for a chat request.
+   * Uses /auth/routing/estimate-cost when logged in (includes BYOK providers).
    */
-  async estimateCost(data: CostEstimateRequest): Promise<CostEstimateResponse> {
-    const response = await apiClient.post<CostEstimateResponse>('/v1/routing/estimate-cost', data)
+  async estimateCost(data: CostEstimateRequest, useJWT: boolean = true): Promise<CostEstimateResponse> {
+    const endpoint = useJWT ? '/auth/routing/estimate-cost' : '/v1/routing/estimate-cost'
+    const response = await apiClient.post<CostEstimateResponse>(endpoint, data)
     return response.data
   },
 
   /**
-   * Get latency statistics for all providers
+   * Get latency statistics for all providers.
+   * Uses /auth/routing/latency when logged in.
    */
-  async getLatencyStats(): Promise<LatencyStats> {
-    const response = await apiClient.get<LatencyStats>('/v1/routing/latency')
+  async getLatencyStats(useJWT: boolean = true): Promise<LatencyStats> {
+    const endpoint = useJWT ? '/auth/routing/latency' : '/v1/routing/latency'
+    const response = await apiClient.get<LatencyStats>(endpoint)
     return response.data
   },
 }

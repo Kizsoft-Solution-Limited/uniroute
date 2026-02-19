@@ -128,6 +128,14 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 	} else {
 		provider = resp.Provider
 		c.JSON(http.StatusOK, resp)
+	}
+
+	billableCost := 0.0
+	if err == nil && resp != nil {
+		billableCost = resp.Cost
+		if userID != nil && h.router.UserHasProviderKey(c.Request.Context(), *userID, provider) {
+			billableCost = 0
+		}
 
 		if reqWithConv.ConversationID != nil && h.convRepo != nil && userID != nil {
 			conversationID, err := uuid.Parse(*reqWithConv.ConversationID)
@@ -181,12 +189,7 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 					}
 					return 0
 				}(),
-				Cost: func() float64 {
-					if resp != nil {
-						return resp.Cost
-					}
-					return 0
-				}(),
+				Cost:          billableCost,
 				LatencyMs:    int(latency.Milliseconds()),
 				StatusCode:   statusCode,
 				ErrorMessage: errorMsg,
@@ -305,6 +308,17 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 
 				if h.requestRepo != nil {
 					go func() {
+						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+
+						streamCost := 0.0
+						if finalUsage != nil {
+							streamCost = h.router.GetCostCalculator().CalculateActualCost(provider, req.Model, *finalUsage)
+							if userID != nil && h.router.UserHasProviderKey(ctx, *userID, provider) {
+								streamCost = 0
+							}
+						}
+
 						requestRecord := &storage.Request{
 							ID:            uuid.New(),
 							APIKeyID:      apiKeyID,
@@ -315,15 +329,12 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 							InputTokens:   func() int { if finalUsage != nil { return finalUsage.PromptTokens }; return 0 }(),
 							OutputTokens:  func() int { if finalUsage != nil { return finalUsage.CompletionTokens }; return 0 }(),
 							TotalTokens:   func() int { if finalUsage != nil { return finalUsage.TotalTokens }; return 0 }(),
-							Cost:          0, // Will be calculated if needed
+							Cost:          streamCost,
 							LatencyMs:     int(latency.Milliseconds()),
 							StatusCode:    http.StatusOK,
 							ErrorMessage:  nil,
 							CreatedAt:     time.Now(),
 						}
-
-						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-						defer cancel()
 
 						if err := h.requestRepo.Create(ctx, requestRecord); err != nil {
 							h.logger.Error().Err(err).Msg("Failed to track streaming request")
@@ -386,12 +397,21 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 				provider = chunk.Provider
 			}
 
-			// When stream completes (chunk.Done), persist messages and track request here.
-			// We return false below so we never receive the closed channel; the "if !ok" block would never run.
 			if chunk.Done {
 				latency := time.Since(startTime)
 				if h.requestRepo != nil {
 					go func() {
+						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+
+						streamCost := 0.0
+						if finalUsage != nil {
+							streamCost = h.router.GetCostCalculator().CalculateActualCost(provider, req.Model, *finalUsage)
+							if userID != nil && h.router.UserHasProviderKey(ctx, *userID, provider) {
+								streamCost = 0
+							}
+						}
+
 						requestRecord := &storage.Request{
 							ID:            uuid.New(),
 							APIKeyID:      apiKeyID,
@@ -402,14 +422,12 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 							InputTokens:   func() int { if finalUsage != nil { return finalUsage.PromptTokens }; return 0 }(),
 							OutputTokens:  func() int { if finalUsage != nil { return finalUsage.CompletionTokens }; return 0 }(),
 							TotalTokens:   func() int { if finalUsage != nil { return finalUsage.TotalTokens }; return 0 }(),
-							Cost:          0,
+							Cost:          streamCost,
 							LatencyMs:     int(latency.Milliseconds()),
 							StatusCode:    http.StatusOK,
 							ErrorMessage:  nil,
 							CreatedAt:     time.Now(),
 						}
-						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-						defer cancel()
 						if err := h.requestRepo.Create(ctx, requestRecord); err != nil {
 							h.logger.Error().Err(err).Msg("Failed to track streaming request")
 						}
@@ -638,6 +656,17 @@ func (h *ChatHandler) HandleChatWebSocket(c *gin.Context) {
 
 				if h.requestRepo != nil {
 					go func() {
+						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+
+						streamCost := 0.0
+						if finalUsage != nil {
+							streamCost = h.router.GetCostCalculator().CalculateActualCost(provider, req.Model, *finalUsage)
+							if userID != nil && h.router.UserHasProviderKey(ctx, *userID, provider) {
+								streamCost = 0
+							}
+						}
+
 						requestRecord := &storage.Request{
 							ID:            uuid.New(),
 							APIKeyID:      apiKeyID,
@@ -648,15 +677,12 @@ func (h *ChatHandler) HandleChatWebSocket(c *gin.Context) {
 							InputTokens:   func() int { if finalUsage != nil { return finalUsage.PromptTokens }; return 0 }(),
 							OutputTokens:  func() int { if finalUsage != nil { return finalUsage.CompletionTokens }; return 0 }(),
 							TotalTokens:   func() int { if finalUsage != nil { return finalUsage.TotalTokens }; return 0 }(),
-							Cost:          0,
+							Cost:          streamCost,
 							LatencyMs:     int(latency.Milliseconds()),
 							StatusCode:    http.StatusOK,
 							ErrorMessage:  nil,
 							CreatedAt:     time.Now(),
 						}
-
-						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-						defer cancel()
 
 						if err := h.requestRepo.Create(ctx, requestRecord); err != nil {
 							h.logger.Error().Err(err).Msg("Failed to track WebSocket streaming request")
