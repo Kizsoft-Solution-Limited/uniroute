@@ -266,7 +266,8 @@ const handleLogin = async () => {
   try {
     await authStore.login({
       email: email.value,
-      password: password.value
+      password: password.value,
+      remember_me: rememberMe.value
     })
 
     // Handle remember me

@@ -41,8 +41,9 @@ type RegisterRequest struct {
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+	Email      string `json:"email" binding:"required,email"`
+	Password   string `json:"password" binding:"required"`
+	RememberMe bool   `json:"remember_me"`
 }
 
 type AuthResponse struct {
@@ -238,7 +239,11 @@ func (h *AuthHandler) HandleLogin(c *gin.Context) {
 		roles = []string{"user"}
 	}
 
-	token, err := h.jwtService.GenerateToken(user.ID.String(), user.Email, roles, 24*time.Hour)
+	expiry := 24 * time.Hour
+	if req.RememberMe {
+		expiry = 30 * 24 * time.Hour
+	}
+	token, err := h.jwtService.GenerateToken(user.ID.String(), user.Email, roles, expiry)
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to generate token")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
