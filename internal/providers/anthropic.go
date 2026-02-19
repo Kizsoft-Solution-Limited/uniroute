@@ -39,6 +39,10 @@ func (p *AnthropicProvider) Name() string {
 	return "anthropic"
 }
 
+func (p *AnthropicProvider) streamClient() *http.Client {
+	return &http.Client{Timeout: 10 * time.Minute}
+}
+
 func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("Anthropic API key not configured")
@@ -239,7 +243,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 		httpReq.Header.Set("x-api-key", p.apiKey)
 		httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-		resp, err := p.client.Do(httpReq)
+		resp, err := p.streamClient().Do(httpReq)
 		if err != nil {
 			errChan <- fmt.Errorf("failed to send request: %w", err)
 			return
@@ -262,8 +266,10 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 			return
 		}
 
-		// Read streaming SSE response
 		scanner := bufio.NewScanner(resp.Body)
+		const maxLineSize = 1024 * 1024
+		buf := make([]byte, 0, 64*1024)
+		scanner.Buffer(buf, maxLineSize)
 		var responseID string
 		var fullContent strings.Builder
 		var finalUsage *Usage

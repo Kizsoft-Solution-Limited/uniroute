@@ -30,6 +30,10 @@ func NewLocalProvider(baseURL string, logger zerolog.Logger) *LocalProvider {
 	}
 }
 
+func (p *LocalProvider) streamClient() *http.Client {
+	return &http.Client{Timeout: 10 * time.Minute}
+}
+
 func (p *LocalProvider) Name() string {
 	return "local"
 }
@@ -219,7 +223,7 @@ func (p *LocalProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan
 
 		httpReq.Header.Set("Content-Type", "application/json")
 
-		resp, err := p.client.Do(httpReq)
+		resp, err := p.streamClient().Do(httpReq)
 		if err != nil {
 			errChan <- fmt.Errorf("failed to send request: %w", err)
 			return
@@ -232,9 +236,10 @@ func (p *LocalProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan
 			return
 		}
 
-		// Read streaming JSON response (Ollama uses JSON lines, not SSE)
-		// Each line contains the FULL message content so far, not just deltas
 		scanner := bufio.NewScanner(resp.Body)
+		const maxLineSize = 1024 * 1024
+		buf := make([]byte, 0, 64*1024)
+		scanner.Buffer(buf, maxLineSize)
 		var responseID string
 		var previousContent string
 		var finalUsage *Usage

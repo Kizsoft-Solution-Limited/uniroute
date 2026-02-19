@@ -37,6 +37,10 @@ func (p *VLLMProvider) Name() string {
 	return "vllm"
 }
 
+func (p *VLLMProvider) streamClient() *http.Client {
+	return &http.Client{Timeout: 10 * time.Minute}
+}
+
 func (p *VLLMProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	body := map[string]interface{}{
 		"model":    req.Model,
@@ -328,7 +332,7 @@ func (p *VLLMProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan 
 			httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 		}
 
-		resp, err := p.client.Do(httpReq)
+		resp, err := p.streamClient().Do(httpReq)
 		if err != nil {
 			errChan <- err
 			return
@@ -344,6 +348,9 @@ func (p *VLLMProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan 
 		var responseID string
 		var finalUsage *Usage
 		scanner := bufio.NewScanner(resp.Body)
+		const maxLineSize = 1024 * 1024
+		buf := make([]byte, 0, 64*1024)
+		scanner.Buffer(buf, maxLineSize)
 
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())

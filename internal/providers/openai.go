@@ -39,6 +39,10 @@ func (p *OpenAIProvider) Name() string {
 	return "openai"
 }
 
+func (p *OpenAIProvider) streamClient() *http.Client {
+	return &http.Client{Timeout: 10 * time.Minute}
+}
+
 func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("OpenAI API key not configured")
@@ -234,7 +238,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 		httpReq.Header.Set("Content-Type", "application/json")
 		httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", p.apiKey))
 
-		resp, err := p.client.Do(httpReq)
+		resp, err := p.streamClient().Do(httpReq)
 		if err != nil {
 			errChan <- fmt.Errorf("failed to send request: %w", err)
 			return
@@ -257,8 +261,10 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 			return
 		}
 
-		// Read streaming response
 		scanner := bufio.NewScanner(resp.Body)
+		const maxLineSize = 1024 * 1024
+		buf := make([]byte, 0, 64*1024)
+		scanner.Buffer(buf, maxLineSize)
 		var responseID string
 		var fullContent strings.Builder
 		var finalUsage *Usage
