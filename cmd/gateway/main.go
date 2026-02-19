@@ -223,7 +223,7 @@ func main() {
 	}
 
 	var providerKeyService *security.ProviderKeyService
-	if postgresClient != nil && cfg.ProviderKeyEncryptionKey != "" {
+	if postgresClient != nil && cfg.JWTSecret != "" {
 		providerKeyRepo := storage.NewProviderKeyRepository(postgresClient.Pool())
 		encryptionKey := cfg.ProviderKeyEncryptionKey
 		if encryptionKey == "" {
