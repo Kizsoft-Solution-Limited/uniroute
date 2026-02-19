@@ -461,6 +461,9 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 			}
 
 			fmt.Fprintf(w, "data: %s\n\n", chunkJSON)
+			if flusher, ok := c.Writer.(http.Flusher); ok {
+				flusher.Flush()
+			}
 			return !chunk.Done
 
 		case err, ok := <-errChan:
@@ -478,7 +481,9 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 
 			errorJSON, _ := json.Marshal(errorChunk)
 			fmt.Fprintf(w, "data: %s\n\n", errorJSON)
-			// Note: io.Writer doesn't have Flush(), but gin's Stream handles flushing
+			if flusher, ok := c.Writer.(http.Flusher); ok {
+				flusher.Flush()
+			}
 
 			if h.requestRepo != nil {
 				go func() {

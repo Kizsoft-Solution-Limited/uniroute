@@ -181,10 +181,10 @@ const handleDeleteKey = async (provider: string) => {
 const handleTestKey = async (provider: string) => {
   try {
     const result = await testKey(provider)
-    if (result.status === 'connected') {
-      showToast(`${provider} key is valid and connected`, 'success')
+    if (result.status === 'valid' || result.status === 'connected') {
+      showToast(result.message || `${provider} key is valid`, 'success')
     } else {
-      showToast(`${provider} key test failed`, 'error')
+      showToast(result.message || `${provider} key test failed`, 'error')
     }
   } catch (error: any) {
     showToast(error.message || 'Failed to test provider key', 'error')
