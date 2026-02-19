@@ -22,12 +22,12 @@
           <div v-if="conversationsLoading" class="text-center py-4 text-gray-500 dark:text-gray-400">
             Loading...
           </div>
-          <div v-else-if="conversations.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400 text-sm">
+          <div v-else-if="(conversations || []).length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400 text-sm">
             No conversations yet
           </div>
           <div v-else class="space-y-1">
             <button
-              v-for="conv in conversations"
+              v-for="conv in (conversations || [])"
               :key="conv.id"
               type="button"
               @click="loadConversation(conv.id)"
@@ -552,12 +552,12 @@
             <div v-if="conversationsLoading" class="text-center py-4 text-gray-400">
               Loading...
             </div>
-            <div v-else-if="conversations.length === 0" class="text-center py-4 text-gray-400 text-sm">
+            <div v-else-if="(conversations || []).length === 0" class="text-center py-4 text-gray-400 text-sm">
               No conversations yet
             </div>
             <div v-else class="space-y-1">
               <button
-                v-for="conv in conversations"
+                v-for="conv in (conversations || [])"
                 :key="conv.id"
                 type="button"
                 @click="loadConversation(conv.id)"
@@ -1078,10 +1078,12 @@ const clearChat = () => {
 const loadConversations = async () => {
   try {
     conversationsLoading.value = true
-    conversations.value = await conversationsApi.listConversations(50, 0)
+    const list = await conversationsApi.listConversations(50, 0)
+    conversations.value = Array.isArray(list) ? list : []
   } catch (error) {
     console.error('Failed to load conversations:', error)
     showToast('Failed to load conversations', 'error')
+    conversations.value = []
   } finally {
     conversationsLoading.value = false
   }
@@ -1097,6 +1099,8 @@ const loadConversation = async (id: string) => {
     const data = await conversationsApi.getConversation(conversationId)
     if (!data?.conversation) {
       showToast('Invalid response: conversation missing', 'error')
+      currentConversationId.value = null
+      messages.value = []
       return
     }
     currentConversationId.value = conversationId
@@ -1115,6 +1119,8 @@ const loadConversation = async (id: string) => {
     console.error('Failed to load conversation:', error)
     const msg = error.response?.data?.error ?? error.response?.data?.message ?? error.message ?? 'Failed to load conversation'
     showToast(typeof msg === 'string' ? msg : 'Failed to load conversation', 'error')
+    currentConversationId.value = null
+    messages.value = []
   }
 }
 
