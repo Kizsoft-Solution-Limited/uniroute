@@ -266,16 +266,18 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 			return
 		}
 
-		// Convert to Google Gemini format
 		googleReq := map[string]interface{}{
 			"contents": convertMessagesToGoogle(req.Messages),
 		}
-
+		genConfig := make(map[string]interface{})
 		if req.Temperature > 0 {
-			googleReq["temperature"] = req.Temperature
+			genConfig["temperature"] = req.Temperature
 		}
 		if req.MaxTokens > 0 {
-			googleReq["maxOutputTokens"] = req.MaxTokens
+			genConfig["maxOutputTokens"] = req.MaxTokens
+		}
+		if len(genConfig) > 0 {
+			googleReq["generationConfig"] = genConfig
 		}
 
 		reqBody, err := json.Marshal(googleReq)
@@ -338,6 +340,10 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 			}
 
 			data := strings.TrimPrefix(line, "data: ")
+			data = strings.TrimSpace(data)
+			if data == "" || data == "[DONE]" {
+				continue
+			}
 
 			var geminiResp struct {
 				Candidates []struct {
@@ -345,6 +351,7 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 						Parts []struct {
 							Text string `json:"text"`
 						} `json:"parts"`
+						Role string `json:"role,omitempty"`
 					} `json:"content"`
 					FinishReason string `json:"finishReason"`
 				} `json:"candidates"`
@@ -356,7 +363,28 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 			}
 
 			if err := json.Unmarshal([]byte(data), &geminiResp); err != nil {
+				var apiErr struct {
+					Error struct {
+						Message string `json:"message"`
+						Status  string `json:"status"`
+					} `json:"error"`
+				}
+				if json.Unmarshal([]byte(data), &apiErr) == nil && apiErr.Error.Message != "" {
+					errChan <- fmt.Errorf("Google API: %s", apiErr.Error.Message)
+					return
+				}
 				continue
+			}
+
+			var checkErr struct {
+				Error struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			_ = json.Unmarshal([]byte(data), &checkErr)
+			if checkErr.Error.Message != "" {
+				errChan <- fmt.Errorf("Google API: %s", checkErr.Error.Message)
+				return
 			}
 
 			if len(geminiResp.Candidates) > 0 {
