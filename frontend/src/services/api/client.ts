@@ -93,15 +93,16 @@ apiClient.interceptors.response.use(
       const status = error.response.status
 
       switch (status) {
-        case 401:
-          localStorage.removeItem('auth_token')
-          localStorage.removeItem('auth_token_expires')
-          sessionStorage.removeItem('auth_token')
-
-          const isAuthCheck = error.config?.url?.includes('/auth/profile') || error.config?.url?.includes('/auth/refresh')
-          if (window.location.pathname !== '/login' && !isAuthCheck) {
+        case 401: {
+          const url = error.config?.url ?? ''
+          const isAuthCheck = url.includes('/auth/profile') || url.includes('/auth/refresh')
+          if (isAuthCheck) {
+            localStorage.removeItem('auth_token')
+            localStorage.removeItem('auth_token_expires')
+            sessionStorage.removeItem('auth_token')
           }
           break
+        }
         case 403:
           console.error('Access forbidden')
           break

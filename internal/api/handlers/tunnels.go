@@ -502,3 +502,125 @@ func (h *TunnelHandler) GetTunnelStats(c *gin.Context) {
 		"data":           stats,
 	})
 }
+
+func (h *TunnelHandler) HandleAdminListTunnels(c *gin.Context) {
+	limit := 50
+	offset := 0
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+	if o := c.Query("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	tunnels, err := h.repository.ListAllTunnelsPaginated(c.Request.Context(), limit, offset)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to list tunnels (admin)")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list tunnels"})
+		return
+	}
+
+	total, err := h.repository.CountAllTunnels(c.Request.Context())
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to count tunnels (admin)")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to count tunnels"})
+		return
+	}
+
+	tunnelList := make([]map[string]interface{}, len(tunnels))
+	for i, t := range tunnels {
+		tunnelList[i] = map[string]interface{}{
+			"id":            t.ID,
+			"user_id":       t.UserID,
+			"subdomain":     t.Subdomain,
+			"public_url":    t.PublicURL,
+			"local_url":     t.LocalURL,
+			"status":        t.Status,
+			"request_count": t.RequestCount,
+			"created_at":    t.CreatedAt.Format(time.RFC3339),
+		}
+		if !t.LastActive.IsZero() {
+			tunnelList[i]["last_active"] = t.LastActive.Format(time.RFC3339)
+		}
+		if t.CustomDomain != "" {
+			tunnelList[i]["custom_domain"] = t.CustomDomain
+		}
+		protocol := t.Protocol
+		if protocol == "" {
+			protocol = "http"
+		}
+		tunnelList[i]["protocol"] = protocol
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"tunnels": tunnelList,
+		"total":   total,
+		"count":   len(tunnelList),
+	})
+}
+
+func (h *TunnelHandler) HandleAdminDeleteTunnel(c *gin.Context) {
+	idStr := c.Param("id")
+	tunnelID, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tunnel ID"})
+		return
+	}
+
+	_, err = h.repository.GetTunnelByID(c.Request.Context(), tunnelID)
+	if err != nil {
+		if err == tunnel.ErrTunnelNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "tunnel not found"})
+			return
+		}
+		h.logger.Error().Err(err).Str("tunnel_id", tunnelID.String()).Msg("Failed to get tunnel for delete")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get tunnel"})
+		return
+	}
+
+	if err := h.repository.DeleteTunnel(c.Request.Context(), tunnelID); err != nil {
+		h.logger.Error().Err(err).Str("tunnel_id", tunnelID.String()).Msg("Failed to delete tunnel")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete tunnel"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "tunnel deleted successfully"})
+}
+
+type DeleteTunnelsRequest struct {
+	TunnelIDs []string `json:"tunnel_ids" binding:"required,min=1,max=100,dive,uuid"`
+}
+
+func (h *TunnelHandler) HandleAdminDeleteTunnels(c *gin.Context) {
+	var req DeleteTunnelsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	deleted := 0
+	var failed []string
+
+	for _, idStr := range req.TunnelIDs {
+		tunnelID, err := uuid.Parse(idStr)
+		if err != nil {
+			failed = append(failed, idStr)
+			continue
+		}
+		if err := h.repository.DeleteTunnel(c.Request.Context(), tunnelID); err != nil {
+			failed = append(failed, idStr)
+		} else {
+			deleted++
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Bulk delete completed",
+		"deleted": deleted,
+		"failed":  failed,
+	})
+}

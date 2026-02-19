@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"os"
@@ -21,14 +22,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Quote with weight for weighted random selection
 type weightedQuote struct {
 	quote    string
 	weight   int
-	protocol string // "http", "tcp", "tls", "udp", or "" for all protocols
+	protocol string
 }
 
-// Protocol-specific quotes
 var httpQuotes = []weightedQuote{
 	{quote: "🌐 Your app is now rockin' the web!", weight: 10, protocol: "http"},
 	{quote: "💬 Your web app is now accessible worldwide!", weight: 10, protocol: "http"},
@@ -50,7 +49,6 @@ var httpQuotes = []weightedQuote{
 	{quote: "🎁 Your web app just got the best gift: global HTTP access!", weight: 10, protocol: "http"},
 	{quote: "🌐 From 127.0.0.1 to the world wide web!", weight: 10, protocol: "http"},
 	{quote: "🚀 Your localhost just became a world-class web citizen!", weight: 10, protocol: "http"},
-	// Donation link - appears most frequently (much higher weight)
 	{quote: "💝 Love UniRoute? Support us: https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs", weight: 200, protocol: "http"},
 }
 
@@ -75,7 +73,6 @@ var tcpQuotes = []weightedQuote{
 	{quote: "🎁 Your TCP service just got global access!", weight: 10, protocol: "tcp"},
 	{quote: "🔌 From localhost to global TCP connectivity!", weight: 10, protocol: "tcp"},
 	{quote: "🚀 Your TCP server just became a global citizen!", weight: 10, protocol: "tcp"},
-	// Donation link - appears most frequently (much higher weight)
 	{quote: "💝 Love UniRoute? Support us: https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs", weight: 200, protocol: "tcp"},
 }
 
@@ -100,7 +97,6 @@ var tlsQuotes = []weightedQuote{
 	{quote: "🎁 Your TLS service just got secure global access!", weight: 10, protocol: "tls"},
 	{quote: "🔒 From localhost to global encrypted TLS connectivity!", weight: 10, protocol: "tls"},
 	{quote: "🚀 Your secure TLS server just became a global citizen!", weight: 10, protocol: "tls"},
-	// Donation link - appears most frequently (much higher weight)
 	{quote: "💝 Love UniRoute? Support us: https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs", weight: 200, protocol: "tls"},
 }
 
@@ -125,11 +121,9 @@ var udpQuotes = []weightedQuote{
 	{quote: "🎁 Your UDP service just got global access!", weight: 10, protocol: "udp"},
 	{quote: "📡 From localhost to global UDP connectivity!", weight: 10, protocol: "udp"},
 	{quote: "🚀 Your UDP server just became a global citizen!", weight: 10, protocol: "udp"},
-	// Donation link - appears most frequently (much higher weight)
 	{quote: "💝 Love UniRoute? Support us: https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs", weight: 200, protocol: "udp"},
 }
 
-// Custom domain quotes (when user uses their own domain)
 var domainQuotes = []weightedQuote{
 	{quote: "🌐 Your custom domain is now live and accessible worldwide!", weight: 10, protocol: ""},
 	{quote: "🎯 Your own domain is now rockin' the web!", weight: 10, protocol: ""},
@@ -151,11 +145,9 @@ var domainQuotes = []weightedQuote{
 	{quote: "💎 Premium domain, premium experience!", weight: 10, protocol: ""},
 	{quote: "👑 Your domain is now ruling the internet!", weight: 10, protocol: ""},
 	{quote: "🌟 Your custom domain is now a global superstar!", weight: 10, protocol: ""},
-	// Donation link - appears most frequently (much higher weight)
 	{quote: "💝 Love UniRoute? Support us: https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs", weight: 200, protocol: ""},
 }
 
-// Generic quotes that work for all protocols
 var genericQuotes = []weightedQuote{
 	{quote: "💬 Your app is now accessible worldwide!", weight: 10, protocol: ""},
 	{quote: "🚀 Your local server just went global!", weight: 10, protocol: ""},
@@ -189,7 +181,6 @@ var genericQuotes = []weightedQuote{
 	{quote: "🎪 Your app just got its VIP pass to the internet!", weight: 10, protocol: ""},
 	{quote: "🎯 Direct hit! Your tunnel is perfectly connected!", weight: 10, protocol: ""},
 	{quote: "🎪 The tunnel is alive! Your app is breathing the global air!", weight: 10, protocol: ""},
-	// Donation link - appears most frequently (much higher weight = most likely)
 	{quote: "💝 Love UniRoute? Support us: https://buy.polar.sh/polar_cl_h5uF0bHhXXF6EO8Mx3tVP1Ry1G4wNWn4V8phg3rStVs", weight: 200, protocol: ""},
 }
 
@@ -218,15 +209,12 @@ func getQuotesForProtocol(protocol string, hasCustomDomain bool) []weightedQuote
 		quotes = append(quotes, udpQuotes...)
 	}
 
-	// Always add generic quotes (they work for all protocols)
 	quotes = append(quotes, genericQuotes...)
 
 	return quotes
 }
 
-// Bubble Tea model for tunnel UI
 type tunnelModel struct {
-	// Fixed header fields
 	connectionStatus string
 	sessionStatus    string
 	account          string
@@ -236,32 +224,26 @@ type tunnelModel struct {
 	publicURL        string
 	forwarding       string
 	connections      string
-	quote            string // Random funny quote
-
-	// Scrolling content
-	viewport            viewport.Model
-	logs                []string
-	logsMu              sync.Mutex // Mutex for thread-safe log access
-	viewportNeedsUpdate bool       // Flag to track if viewport needs updating
-	userHasScrolled     bool       // Track if user has manually scrolled (don't auto-scroll if true)
-
-	// State
-	client         *tunnel.TunnelClient
-	info           *tunnel.TunnelInfo
-	serverURL      string
-	localURL       string
-	updateInfo     *versioncheck.VersionInfo
-	updateInfoMu   sync.Mutex
-	internetOnline bool
-	wasOffline     bool      // Track if we were offline to show reconnecting when back
-	reconnectTime  time.Time // Time when internet came back
-	terminated     bool      // Track if tunnel was terminated
-	lastStatus     string    // Track last connection status to detect changes
-	ctx            context.Context
-	cancel         context.CancelFunc
-
-	// Styles (using Lip Gloss)
-	headerStyle     lipgloss.Style
+	quote            string
+	viewport         viewport.Model
+	logs             []string
+	logsMu           sync.Mutex
+	viewportNeedsUpdate bool
+	userHasScrolled  bool
+	client           *tunnel.TunnelClient
+	info             *tunnel.TunnelInfo
+	serverURL        string
+	localURL         string
+	updateInfo       *versioncheck.VersionInfo
+	updateInfoMu     sync.Mutex
+	internetOnline   bool
+	wasOffline       bool
+	reconnectTime    time.Time
+	terminated       bool
+	lastStatus       string
+	ctx              context.Context
+	cancel           context.CancelFunc
+	headerStyle      lipgloss.Style
 	labelStyle      lipgloss.Style
 	valueStyle      lipgloss.Style
 	statusGreen     lipgloss.Style
@@ -273,7 +255,6 @@ type tunnelModel struct {
 	statusCodeStyle lipgloss.Style
 }
 
-// Messages for Bubble Tea
 type internetStatusMsg bool
 type latencyUpdateMsg int64
 type connectionStatusMsg string
@@ -282,13 +263,10 @@ type requestEventMsg tunnel.RequestEvent
 type statsUpdateMsg *tunnel.ConnectionStats
 type versionUpdateMsg *versioncheck.VersionInfo
 type updateProgressMsg string
-type terminateMsg struct{} // Message to signal termination
+type terminateMsg struct{}
 
-// Initial model
 func initialTunnelModel(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, accountDisplay string, serverURL string, localURL string) *tunnelModel {
 	ctx, cancel := context.WithCancel(context.Background())
-
-	// Initialize viewport with proper dimensions
 	vp := viewport.New(80, 20)
 	vp.SetContent("")
 
@@ -311,10 +289,7 @@ func initialTunnelModel(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, ac
 		totalWeight += q.weight
 	}
 
-	// Pick random number in range [0, totalWeight)
 	randomNum := rand.Intn(totalWeight)
-
-	// Find which quote this corresponds to
 	var randomQuote string
 	currentWeight := 0
 	for _, q := range quotes {
@@ -325,7 +300,6 @@ func initialTunnelModel(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, ac
 		}
 	}
 
-	// Fallback (should never happen, but safety check)
 	if randomQuote == "" {
 		if len(quotes) > 0 {
 			randomQuote = quotes[0].quote
@@ -334,13 +308,12 @@ func initialTunnelModel(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, ac
 		}
 	}
 
-	// Initialize styles
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39")) // Cyan
-	labelStyle := lipgloss.NewStyle().Width(25).Foreground(lipgloss.Color("244"))  // Gray
-	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))            // Gray
-	statusGreen := lipgloss.NewStyle().Foreground(lipgloss.Color("46"))            // Green
-	statusYellow := lipgloss.NewStyle().Foreground(lipgloss.Color("226"))          // Yellow
-	statusRed := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))             // Red
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
+	labelStyle := lipgloss.NewStyle().Width(25).Foreground(lipgloss.Color("244"))
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	statusGreen := lipgloss.NewStyle().Foreground(lipgloss.Color("46"))
+	statusYellow := lipgloss.NewStyle().Foreground(lipgloss.Color("226"))
+	statusRed := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	timeStyle := lipgloss.NewStyle().Width(20).Foreground(lipgloss.Color("244"))
 	methodStyle := lipgloss.NewStyle().Width(7).Foreground(lipgloss.Color("39"))
 	pathStyle := lipgloss.NewStyle().Width(50).Foreground(lipgloss.Color("255"))
@@ -401,7 +374,6 @@ func initialTunnelModel(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, ac
 	}
 }
 
-// Init function for Bubble Tea
 func (m *tunnelModel) Init() tea.Cmd {
 	return tea.Batch(
 		m.checkInternet(),
@@ -423,7 +395,6 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		case "ctrl+u":
-			// Trigger update
 			m.updateInfoMu.Lock()
 			hasUpdate := m.updateInfo != nil && m.updateInfo.UpdateAvailable
 			m.updateInfoMu.Unlock()
@@ -437,17 +408,15 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case internetStatusMsg:
-		// Don't update if terminated
 		if m.terminated {
 			return m, nil
 		}
 		m.internetOnline = bool(msg)
 		if !m.internetOnline {
-			// Internet is offline - update both connection status and session status
 			m.connectionStatus = color.Red("No Internet - Connection Lost")
 			m.sessionStatus = fmt.Sprintf("%s %s", color.Red("●"), color.Red("offline"))
 			m.wasOffline = true
-			m.reconnectTime = time.Time{} // Reset reconnect time
+			m.reconnectTime = time.Time{}
 		} else {
 			m.wasOffline = false
 			m.reconnectTime = time.Time{}
@@ -477,13 +446,7 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.internetOnline {
 			isReconnecting := m.client.IsReconnecting()
 			isConnected := m.client.IsConnected()
-
-			// Trust the status from GetConnectionStatus() - it's the source of truth
-			// Only show reconnecting if BOTH status says reconnecting AND client confirms it
-			// This prevents showing reconnecting when connection is actually fine
 			if status == "online" {
-				// Connection is online - clear any reconnect flags and show connected
-				// Only update if we're actually connected (prevent false positives)
 				if isConnected {
 					if !m.reconnectTime.IsZero() {
 						m.reconnectTime = time.Time{}
@@ -491,26 +454,16 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.connectionStatus = color.Green("Tunnel Connected Successfully!")
 					m.sessionStatus = fmt.Sprintf("%s %s", color.Green("●"), color.Green("online"))
 				}
-				// If status says "online" but client says not connected, don't update (might be stale)
 			} else if status == "reconnecting" && isReconnecting && !isConnected {
-				// Only show reconnecting if:
-				// 1. Status says reconnecting
-				// 2. Client confirms it's reconnecting
-				// 3. Client confirms it's NOT connected
-				// This prevents false positives
 				m.connectionStatus = color.Yellow("Reconnecting...")
 				m.sessionStatus = fmt.Sprintf("%s %s", color.Yellow("●"), color.Yellow("reconnecting"))
 			} else if status == "offline" {
-				// Offline status
 				m.connectionStatus = color.Red("No Internet - Connection Lost")
 				m.sessionStatus = fmt.Sprintf("%s %s", color.Red("●"), color.Red("offline"))
-			} else {
-				// Unknown status or status doesn't match client state - don't update
-				// This prevents showing incorrect status
 			}
 		}
 		if !m.terminated {
-			return m, m.updateStatus() // Continue polling for latency/stats only
+			return m, m.updateStatus()
 		}
 		return m, nil
 	case sessionStatusMsg:
@@ -641,55 +594,27 @@ func (m *tunnelModel) View() string {
 	header.WriteString(color.Cyan("Starting UniRoute Tunnel..."))
 	header.WriteString("\n\n")
 
-	// Connection Status (with label to match other fields)
 	header.WriteString(fmt.Sprintf("Connection Status             %s\n", m.connectionStatus))
-
-	// Session Status
 	header.WriteString(fmt.Sprintf("Session Status                %s\n", m.sessionStatus))
-
-	// Account
 	header.WriteString(fmt.Sprintf("Account                       %s\n", color.Gray(m.account)))
 	header.WriteString("\n")
-
-	// Version
 	header.WriteString(fmt.Sprintf("Version                       %s\n", m.version))
 	header.WriteString("\n")
-
-	// Region
 	header.WriteString(fmt.Sprintf("Region                        %s\n", color.Gray(m.region)))
-
-	// Latency
 	header.WriteString(fmt.Sprintf("Latency                       %s\n", color.Gray(m.latency)))
 	header.WriteString("\n")
-
-	// Connections
 	header.WriteString("Connections                   ttl     opn     rt1     rt5     p50     p90\n")
 	header.WriteString(fmt.Sprintf("                              %s\n\n", m.connections))
-
-	// Public URL
 	header.WriteString("🌍 Public URL:\n")
 	header.WriteString(fmt.Sprintf("   %s\n", color.Cyan(m.publicURL)))
 	header.WriteString("\n")
-
-	// Forwarding
 	header.WriteString("🔗 Forwarding:\n")
 	header.WriteString(fmt.Sprintf("   %s\n", m.forwarding))
 	header.WriteString("\n")
-
-	// Quote and Ctrl+C message (before HTTP Requests)
 	header.WriteString(color.Yellow(m.quote))
 	header.WriteString("\n\nPress Ctrl+C to stop\n\n")
-
-	// HTTP Requests header
 	header.WriteString("HTTP Requests\n")
 	header.WriteString("-------------\n")
-
-	// View() should be pure - just render, don't modify state
-	// The viewport content is already updated in updateViewportContent()
-
-	// Combine header (with quote/Ctrl+C) with scrolling viewport
-	// HTTP Requests section is at the bottom and can scroll properly
-	// View() should be pure - don't modify state here, just render
 	return header.String() + m.viewport.View()
 }
 
@@ -718,13 +643,14 @@ func (m *tunnelModel) updateStatus() tea.Cmd {
 			}()
 			select {
 			case stats = <-statsChan:
-			case <-time.After(1 * time.Second): // Reduced timeout for faster updates
+			case <-time.After(1 * time.Second):
 			}
 		}
 
 		return tea.Batch(
 			func() tea.Msg { return latencyUpdateMsg(latency) },
 			func() tea.Msg { return statsUpdateMsg(stats) },
+			func() tea.Msg { return connectionStatusMsg(status) },
 		)()
 	})
 }
@@ -743,35 +669,29 @@ func (m *tunnelModel) checkForUpdates() tea.Cmd {
 
 func (m *tunnelModel) downloadUpdate() tea.Cmd {
 	return func() tea.Msg {
-		// Show downloading status immediately
-		// This will be sent as a message
 		return updateProgressMsg("Downloading update...")
 	}
 }
 
 func (m *tunnelModel) runUpgrade() tea.Cmd {
 	return func() tea.Msg {
-		// Run upgrade command with --yes flag to auto-confirm
 		upgradeCmd := exec.Command(os.Args[0], "upgrade", "--yes")
-		upgradeCmd.Stdout = os.Stderr
-		upgradeCmd.Stderr = os.Stderr
-		upgradeCmd.Stdin = os.Stdin // Ensure stdin is connected
+		upgradeCmd.Stdout = io.Discard
+		upgradeCmd.Stderr = io.Discard
+		upgradeCmd.Stdin = nil
 
-		// Run in background with timeout to prevent hanging
 		errChan := make(chan error, 1)
 		go func() {
 			errChan <- upgradeCmd.Run()
 		}()
 
-		// Wait for completion or timeout (30 seconds)
 		select {
 		case err := <-errChan:
 			if err != nil {
 				return updateProgressMsg("Update failed - run 'uniroute upgrade' manually")
 			}
-			return updateProgressMsg("✓ Update downloaded! Close and restart to apply")
+			return updateProgressMsg("✓ Update ready. Press Ctrl+C to stop the tunnel, then start it again to use the new version.")
 		case <-time.After(30 * time.Second):
-			// Timeout - kill the process
 			if upgradeCmd.Process != nil {
 				upgradeCmd.Process.Kill()
 			}
@@ -780,19 +700,9 @@ func (m *tunnelModel) runUpgrade() tea.Cmd {
 	}
 }
 
-// This follows Bubble Tea best practices: update state in Update, render in View
 func (m *tunnelModel) addRequestToLogs(event tunnel.RequestEvent) {
-	// Format request log entry
-
-	// Format: STATUS METHOD PATH LATENCY
-	// Example: 200 OK GET /auth/tunnels/stats 11ms
-	// Every request is unique and should be added, even if same path/method
-	// NO DEDUPLICATION - each request gets its own entry
-
-	// Format status code and text together
 	statusText := event.StatusText
 	if statusText == "" {
-		// Generate status text from code if not provided
 		switch event.StatusCode {
 		case 200:
 			statusText = "OK"
@@ -818,7 +728,6 @@ func (m *tunnelModel) addRequestToLogs(event tunnel.RequestEvent) {
 			statusText = fmt.Sprintf("Status %d", event.StatusCode)
 		}
 	} else {
-		// Extract status text if full status line provided (e.g., "200 OK" -> "OK")
 		if strings.Contains(statusText, " ") {
 			parts := strings.SplitN(statusText, " ", 2)
 			if len(parts) > 1 {
@@ -828,34 +737,26 @@ func (m *tunnelModel) addRequestToLogs(event tunnel.RequestEvent) {
 	}
 
 	statusFull := fmt.Sprintf("%d %s", event.StatusCode, statusText)
-
-	// Color code based on status (text color, not background)
 	var statusColored string
 	if event.StatusCode == 200 {
-		statusColored = color.Green(statusFull) // Green text for 200 OK
+		statusColored = color.Green(statusFull)
 	} else if event.StatusCode == 201 {
-		statusColored = color.Purple(statusFull) // Purple text for 201 Created
+		statusColored = color.Purple(statusFull)
 	} else if event.StatusCode >= 200 && event.StatusCode < 300 {
-		statusColored = color.Green(statusFull) // Green text for 2xx
+		statusColored = color.Green(statusFull)
 	} else if event.StatusCode >= 300 && event.StatusCode < 400 {
-		statusColored = color.Yellow(statusFull) // Yellow text for 3xx
+		statusColored = color.Yellow(statusFull)
 	} else if event.StatusCode >= 400 {
-		statusColored = color.Red(statusFull) // Red text for 4xx/5xx
+		statusColored = color.Red(statusFull)
 	} else {
 		statusColored = color.Gray(statusFull)
 	}
-
-	// Format method (white text)
 	methodColored := color.White(event.Method)
-
-	// Format path (white text) - ensure root path is shown as "/"
 	path := event.Path
 	if path == "" {
 		path = "/"
 	}
 	pathColored := color.White(path)
-
-	// Format latency in milliseconds
 	latencyStr := fmt.Sprintf("%dms", event.LatencyMs)
 	latencyColored := color.White(latencyStr)
 
@@ -880,10 +781,6 @@ func (m *tunnelModel) updateViewportContent() {
 	logsCopy := make([]string, len(m.logs))
 	copy(logsCopy, m.logs)
 	m.logsMu.Unlock()
-
-	// Show all accumulated requests (up to 100)
-	// Users can scroll through all requests to see older ones
-	// Newest requests are at the top, oldest at the bottom
 	displayLogs := logsCopy
 
 	var contentBuilder strings.Builder
@@ -1029,31 +926,23 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 		p.Quit()
 	}()
 
-	// Run program
 	if _, err := p.Run(); err != nil {
 		return err
 	}
-
-	// Cleanup - close tunnel with timeout to prevent hanging
 	fmt.Println()
 	fmt.Println(color.Yellow("Shutting down tunnel..."))
-
-	// Close tunnel with timeout to prevent hanging
 	closeDone := make(chan error, 1)
 	go func() {
 		closeDone <- client.Close()
 	}()
-
 	select {
 	case err := <-closeDone:
 		if err != nil {
-			// Log error but don't fail - connection might already be closed
 			fmt.Println(color.Yellow(fmt.Sprintf("Tunnel close warning: %v", err)))
 		} else {
 			fmt.Println(color.Green("Tunnel closed successfully"))
 		}
 	case <-time.After(2 * time.Second):
-		// Timeout - connection might be stuck, but we'll exit anyway
 		fmt.Println(color.Yellow("Tunnel shutdown timed out, exiting..."))
 	}
 

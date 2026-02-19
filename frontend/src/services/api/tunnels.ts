@@ -11,6 +11,7 @@ export interface Tunnel {
   last_active?: string | null
   custom_domain?: string | null
   protocol?: string // http, tcp, tls, udp
+  user_id?: string | null
 }
 
 export interface ListTunnelsResponse {
@@ -71,6 +72,27 @@ export const tunnelsApi = {
     const response = await apiClient.post<{ message: string; domain: string }>(endpoint, {
       domain
     })
+    return response.data
+  },
+
+  async listAdmin(limit = 50, offset = 0): Promise<{ tunnels: Tunnel[]; total: number; count: number }> {
+    const response = await apiClient.get<{ tunnels: Tunnel[]; total: number; count: number }>(
+      '/admin/tunnels',
+      { params: { limit, offset } }
+    )
+    return response.data
+  },
+
+  async deleteAdmin(tunnelId: string): Promise<{ message: string }> {
+    const response = await apiClient.delete<{ message: string }>(`/admin/tunnels/${tunnelId}`)
+    return response.data
+  },
+
+  async deleteManyAdmin(tunnelIds: string[]): Promise<{ message: string; deleted: number; failed: string[] }> {
+    const response = await apiClient.post<{ message: string; deleted: number; failed: string[] }>(
+      '/admin/tunnels/delete',
+      { tunnel_ids: tunnelIds }
+    )
     return response.data
   },
 }

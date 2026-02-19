@@ -176,6 +176,7 @@ const pageTitle = computed(() => {
     'settings-provider-keys': 'Provider Keys',
     'settings-routing-strategy': 'Routing Strategy',
     'admin-users': 'User Management',
+    'admin-tunnels': 'Tunnel Management',
     'admin-email': 'Email Configuration',
     'admin-provider-keys': 'Provider Keys Management',
     'admin-routing': 'Routing Strategy',
@@ -195,6 +196,7 @@ const pageDescription = computed(() => {
     analytics: 'Track usage, costs, and performance metrics',
     'webhook-testing': 'Inspect, replay, and test webhook requests',
     'admin-users': 'Manage users and their roles',
+    'admin-tunnels': 'View and delete tunnels',
     'admin-email': 'View SMTP configuration and test email delivery',
     'admin-provider-keys': 'Manage system-wide provider API keys',
     'admin-routing': 'Configure how UniRoute selects AI providers',
@@ -255,6 +257,11 @@ const navItems = computed(() => {
         path: '/dashboard/admin/users',
         label: 'User Management',
         icon: Users
+      },
+      {
+        path: '/dashboard/admin/tunnels',
+        label: 'Tunnel Management',
+        icon: Network
       },
       {
         path: '/dashboard/admin/email',

@@ -176,6 +176,12 @@ const routes: RouteRecordRaw[] = [
             meta: { permission: 'admin:users', title: 'User management', description: 'Manage users and roles.' }
           },
           {
+            path: 'tunnels',
+            name: 'admin-tunnels',
+            component: () => import('@/views/admin/TunnelManagement.vue'),
+            meta: { permission: 'admin:tunnels', title: 'Tunnel management', description: 'View and delete tunnels.' }
+          },
+          {
             path: 'email',
             name: 'admin-email',
             component: () => import('@/views/admin/EmailConfig.vue'),

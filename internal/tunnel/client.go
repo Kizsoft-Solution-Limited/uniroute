@@ -202,6 +202,27 @@ func (tc *TunnelClient) websocketURL() (scheme, host string) {
 	return "wss", host
 }
 
+func (tc *TunnelClient) statsURLSchemeAndHost(serverURL string) (scheme, host string) {
+	u := strings.TrimSpace(serverURL)
+	if idx := strings.Index(u, "/"); idx >= 0 {
+		u = u[:idx]
+	}
+	host = u
+	for _, prefix := range []string{"https://", "http://", "wss://", "ws://"} {
+		if strings.HasPrefix(strings.ToLower(u), prefix) {
+			host = u[len(prefix):]
+			if idx := strings.Index(host, "/"); idx >= 0 {
+				host = host[:idx]
+			}
+			break
+		}
+	}
+	if strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "127.0.0.1") {
+		return "http", host
+	}
+	return "https", host
+}
+
 func (tc *TunnelClient) Connect() error {
 	tc.reconnectMu.Lock()
 	defer tc.reconnectMu.Unlock()
@@ -1184,9 +1205,9 @@ func (tc *TunnelClient) GetConnectionStats(serverURL string, tunnelID string) (*
 	token := tc.token
 	tc.mu.RUnlock()
 
-	// Make HTTP request to stats endpoint
-	url := fmt.Sprintf("http://%s/api/tunnels/%s/stats", serverURL, tunnelID)
-	req, err := http.NewRequest("GET", url, nil)
+	scheme, host := tc.statsURLSchemeAndHost(serverURL)
+	statsURL := fmt.Sprintf("%s://%s/api/tunnels/%s/stats", scheme, host, tunnelID)
+	req, err := http.NewRequest("GET", statsURL, nil)
 	if err != nil {
 		return nil, err
 	}

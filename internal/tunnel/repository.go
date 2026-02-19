@@ -328,6 +328,9 @@ func (r *TunnelRepository) ListAllTunnels(ctx context.Context) ([]*Tunnel, error
 		if customDomain.Valid {
 			tunnel.CustomDomain = customDomain.String
 		}
+		if protocol.Valid {
+			tunnel.Protocol = protocol.String
+		}
 		if lastActive.Valid {
 			tunnel.LastActive = lastActive.Time
 		}
@@ -340,6 +343,83 @@ func (r *TunnelRepository) ListAllTunnels(ctx context.Context) ([]*Tunnel, error
 	}
 
 	return tunnels, nil
+}
+
+func (r *TunnelRepository) ListAllTunnelsPaginated(ctx context.Context, limit, offset int) ([]*Tunnel, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	query := `
+		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
+		       protocol, status, region, created_at, updated_at, last_active_at, request_count
+		FROM tunnels
+		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2
+	`
+	rows, err := r.pool.Query(ctx, query, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tunnels []*Tunnel
+	for rows.Next() {
+		var tunnel Tunnel
+		var userID sql.NullString
+		var customDomain sql.NullString
+		var protocol sql.NullString
+		var lastActive sql.NullTime
+
+		err := rows.Scan(
+			&tunnel.ID,
+			&userID,
+			&tunnel.Subdomain,
+			&customDomain,
+			&tunnel.LocalURL,
+			&tunnel.PublicURL,
+			&protocol,
+			&tunnel.Status,
+			&tunnel.Region,
+			&tunnel.CreatedAt,
+			&tunnel.UpdatedAt,
+			&lastActive,
+			&tunnel.RequestCount,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if userID.Valid {
+			tunnel.UserID = userID.String
+		}
+		if customDomain.Valid {
+			tunnel.CustomDomain = customDomain.String
+		}
+		if protocol.Valid {
+			tunnel.Protocol = protocol.String
+		}
+		if lastActive.Valid {
+			tunnel.LastActive = lastActive.Time
+		}
+
+		tunnels = append(tunnels, &tunnel)
+	}
+
+	return tunnels, rows.Err()
+}
+
+func (r *TunnelRepository) CountAllTunnels(ctx context.Context) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM tunnels`).Scan(&count)
+	return count, err
+}
+
+func (r *TunnelRepository) DeleteTunnel(ctx context.Context, tunnelID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM tunnels WHERE id = $1`, tunnelID)
+	return err
 }
 
 // Optimized query: Uses indexes on user_id and status, orders by status (active first) then created_at.

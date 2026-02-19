@@ -666,8 +666,22 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   google: 'Google (Gemini)',
   vllm: 'vLLM',
   ollama: 'Ollama',
-  local: 'Local'
+  local: 'Ollama'
 }
+
+const DEFAULT_OLLAMA_MODELS = [
+  { value: 'llama3.2', label: 'Llama 3.2' },
+  { value: 'llama3.1', label: 'Llama 3.1' },
+  { value: 'llama3.2:latest', label: 'Llama 3.2 (latest)' },
+  { value: 'mistral', label: 'Mistral' },
+  { value: 'codellama', label: 'Code Llama' },
+  { value: 'llama2', label: 'Llama 2' }
+]
+
+const DEFAULT_VLLM_MODELS = [
+  { value: 'meta-llama/Llama-2-7b-chat-hf', label: 'Llama 2 7B' },
+  { value: 'mistralai/Mistral-7B-Instruct-v0.2', label: 'Mistral 7B' }
+]
 
 const staticModelGroups = [
   { label: 'OpenAI', options: [
@@ -691,19 +705,26 @@ const staticModelGroups = [
     { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
     { value: 'gemini-pro', label: 'Gemini Pro' }
   ]},
-  { label: 'Local', options: [
-    { value: 'llama2', label: 'Llama 2' },
-    { value: 'mistral', label: 'Mistral' }
-  ]}
+  { label: 'Ollama', options: DEFAULT_OLLAMA_MODELS },
+  { label: 'vLLM', options: DEFAULT_VLLM_MODELS }
 ]
 
 const apiProviders = ref<ProviderInfo[]>([])
 const modelGroups = computed(() => {
   if (apiProviders.value.length === 0) return staticModelGroups
-  return apiProviders.value.map((p) => ({
-    label: PROVIDER_DISPLAY_NAMES[p.name] || p.name,
-    options: p.models.map((m) => ({ value: m, label: m }))
-  }))
+  return apiProviders.value.map((p) => {
+    let options = p.models.map((m) => ({ value: m, label: m }))
+    if (options.length === 0 && (p.name === 'local' || p.name === 'ollama')) {
+      options = DEFAULT_OLLAMA_MODELS
+    }
+    if (options.length === 0 && p.name === 'vllm') {
+      options = DEFAULT_VLLM_MODELS
+    }
+    return {
+      label: PROVIDER_DISPLAY_NAMES[p.name] || p.name,
+      options
+    }
+  })
 })
 
 // Auto-scroll to bottom when new messages arrive

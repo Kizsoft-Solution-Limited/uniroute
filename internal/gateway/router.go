@@ -36,14 +36,14 @@ type Router struct {
 	providers                  map[string]providers.Provider
 	defaultProvider            providers.Provider
 	strategy                   RoutingStrategy
-	currentStrategyType        StrategyType // Track current strategy type explicitly (default)
+	currentStrategyType        StrategyType
 	costCalculator             *CostCalculator
 	latencyTracker             *LatencyTracker
-	providerKeyService         ProviderKeyServiceInterface // BYOK: For user-specific provider keys
-	serverProviderKeys         ServerProviderKeys          // Server-level keys (fallback)
+	providerKeyService         ProviderKeyServiceInterface
+	serverProviderKeys         ServerProviderKeys
 	routingStrategyService     RoutingStrategyServiceInterface
 	userRoutingStrategyService UserRoutingStrategyServiceInterface
-	customRulesService         CustomRulesServiceInterface // For loading user-specific custom rules
+	customRulesService         CustomRulesServiceInterface
 }
 
 type ProviderKeyServiceInterface interface {
@@ -59,12 +59,12 @@ type ServerProviderKeys struct {
 func NewRouter() *Router {
 	return &Router{
 		providers:           make(map[string]providers.Provider),
-		strategy:            &ModelBasedStrategy{}, // Default strategy
-		currentStrategyType: StrategyModelBased,    // Default strategy type
+		strategy:            &ModelBasedStrategy{},
+		currentStrategyType: StrategyModelBased,
 		costCalculator:      NewCostCalculator(),
 		latencyTracker:      NewLatencyTracker(100),
-		providerKeyService:  nil,                  // Will be set if BYOK is enabled
-		serverProviderKeys:  ServerProviderKeys{}, // Will be set from config
+		providerKeyService:  nil,
+		serverProviderKeys:  ServerProviderKeys{},
 	}
 }
 
@@ -109,26 +109,20 @@ func (r *Router) SetStrategyType(strategyType StrategyType) {
 	case StrategyModelBased:
 		newStrategy = &ModelBasedStrategy{}
 	case StrategyCustom:
-		// Custom strategy with empty rules falls back to model-based
-		// Admin can configure custom rules via API in the future
-		newStrategy = NewCustomStrategy(nil) // nil rules = fallback to model-based
+		newStrategy = NewCustomStrategy(nil)
 	default:
 		newStrategy = &ModelBasedStrategy{}
 		strategyType = StrategyModelBased
 	}
 
-	// Set both the strategy and the type
 	r.strategy = newStrategy
 	r.currentStrategyType = strategyType
 }
 
 func (r *Router) GetStrategyType() StrategyType {
-	// Use explicit field first (more reliable)
 	if r.currentStrategyType != "" {
 		return r.currentStrategyType
 	}
-
-	// Fallback to type assertion if field is not set
 	if r.strategy == nil {
 		return StrategyModelBased
 	}
@@ -149,40 +143,28 @@ func (r *Router) GetStrategyType() StrategyType {
 	}
 }
 
-// Checks: user preference → default → fallback
 func (r *Router) GetStrategyForUser(ctx context.Context, userID *uuid.UUID) StrategyType {
-	// 1. Check if strategy is locked (admin override)
 	if r.routingStrategyService != nil {
 		locked, err := r.routingStrategyService.IsRoutingStrategyLocked(ctx)
 		if err == nil && locked {
-			// Strategy is locked, use default
 			return r.GetStrategyType()
 		}
 	}
-
-	// 2. If user ID provided, check user preference
 	if userID != nil && r.userRoutingStrategyService != nil {
 		userStrategy, err := r.userRoutingStrategyService.GetUserRoutingStrategy(ctx, *userID)
 		if err == nil && userStrategy != "" {
-			// User has a preference, use it
 			strategyType := StrategyType(userStrategy)
-			// Validate strategy type
 			switch strategyType {
 			case StrategyModelBased, StrategyCostBased, StrategyLatencyBased, StrategyLoadBalanced, StrategyCustom:
 				return strategyType
 			}
 		}
 	}
-
-	// 3. Fall back to default
 	return r.GetStrategyType()
 }
 
-// Used by Route() to get the actual strategy object.
 func (r *Router) GetStrategyInstanceForUser(ctx context.Context, userID *uuid.UUID) RoutingStrategy {
 	strategyType := r.GetStrategyForUser(ctx, userID)
-
-	// Create strategy instance based on type
 	switch strategyType {
 	case StrategyCostBased:
 		return NewCostBasedStrategy(r.costCalculator)
@@ -191,13 +173,9 @@ func (r *Router) GetStrategyInstanceForUser(ctx context.Context, userID *uuid.UU
 	case StrategyLoadBalanced:
 		return NewLoadBalancedStrategy()
 	case StrategyCustom:
-		// Custom strategy - load user-specific rules if available
 		if r.customRulesService != nil && userID != nil {
 			customRules, err := r.customRulesService.GetActiveRulesForUser(ctx, userID)
 			if err == nil && len(customRules) > 0 {
-				// Convert to routing rules with condition functions
-				// We need to build conditions, so we'll create a temporary adapter
-				// For now, we'll use a simple approach: create routing rules directly
 				routingRules := make([]RoutingRule, 0, len(customRules))
 				for _, rule := range customRules {
 					condition := r.buildCustomRuleCondition(rule)
@@ -210,14 +188,12 @@ func (r *Router) GetStrategyInstanceForUser(ctx context.Context, userID *uuid.UU
 				return NewCustomStrategy(routingRules)
 			}
 		}
-		// Fallback: use global custom rules if set, otherwise model-based
 		if r.strategy != nil {
 			if customStrategy, ok := r.strategy.(*CustomStrategy); ok && customStrategy != nil {
 				return customStrategy
 			}
 		}
-		// No rules available, fallback to model-based
-		return NewCustomStrategy(nil) // nil rules = fallback to model-based
+		return NewCustomStrategy(nil)
 	case StrategyModelBased:
 		fallthrough
 	default:
@@ -233,15 +209,12 @@ func (r *Router) buildCustomRuleCondition(rule CustomRule) func(req providers.Ch
 				return req.Model == model
 			}
 		case "cost_threshold":
-			// Check if estimated cost is below threshold
 			if maxCost, ok := rule.ConditionValue["max_cost"].(float64); ok {
-				// Estimate cost for the request
 				estimatedCost := r.costCalculator.EstimateCost(rule.ProviderName, req.Model, req.Messages)
 				return estimatedCost <= maxCost
 			}
 			return false
 		case "latency_threshold":
-			// Check if average latency is below threshold
 			if maxLatencyMs, ok := rule.ConditionValue["max_latency_ms"].(float64); ok {
 				avgLatency := r.latencyTracker.GetAverageLatency(rule.ProviderName)
 				return avgLatency.Milliseconds() <= int64(maxLatencyMs)
@@ -254,58 +227,39 @@ func (r *Router) buildCustomRuleCondition(rule CustomRule) func(req providers.Ch
 
 func (r *Router) RegisterProvider(provider providers.Provider) {
 	r.providers[provider.Name()] = provider
-	// Set first registered provider as default (usually local)
 	if r.defaultProvider == nil {
 		r.defaultProvider = provider
 	}
 }
 
-// userID is optional - if provided, will use user's provider keys (BYOK).
 func (r *Router) Route(ctx context.Context, req providers.ChatRequest, userID *uuid.UUID) (*providers.ChatResponse, error) {
 	if len(r.providers) == 0 {
 		return nil, fmt.Errorf("no providers available")
 	}
-
-	// Get available providers (healthy ones)
 	availableProviders := r.getAvailableProviders(ctx, userID)
-
 	if len(availableProviders) == 0 {
 		return nil, fmt.Errorf("no healthy providers available")
 	}
-
-	// Use routing strategy to select provider (user-specific if available)
 	strategy := r.GetStrategyInstanceForUser(ctx, userID)
 	selectedProvider, err := strategy.SelectProvider(ctx, req, availableProviders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to select provider: %w", err)
 	}
-
-	// Try selected provider with failover
 	providersToTry := []providers.Provider{selectedProvider}
-
-	// Add other providers as fallbacks (excluding the selected one)
 	for _, provider := range availableProviders {
 		if provider.Name() != selectedProvider.Name() {
 			providersToTry = append(providersToTry, provider)
 		}
 	}
-
-	// Try each provider until one succeeds
 	var lastErr error
 	for _, provider := range providersToTry {
 		start := time.Now()
 		resp, err := provider.Chat(ctx, req)
 		latency := time.Since(start)
-
-		// Record latency
 		r.latencyTracker.RecordLatency(provider.Name(), latency)
-
 		if err == nil {
-			// Add routing metadata to response
 			resp.Provider = provider.Name()
 			resp.LatencyMs = latency.Milliseconds()
-
-			// Calculate actual cost if we have usage data
 			if resp.Usage.TotalTokens > 0 {
 				resp.Cost = r.costCalculator.CalculateActualCost(provider.Name(), resp.Model, resp.Usage)
 			}
@@ -313,8 +267,6 @@ func (r *Router) Route(ctx context.Context, req providers.ChatRequest, userID *u
 		}
 		lastErr = err
 	}
-
-	// All providers failed
 	if lastErr != nil {
 		return nil, fmt.Errorf("all providers failed, last error: %w", lastErr)
 	}
@@ -322,7 +274,6 @@ func (r *Router) Route(ctx context.Context, req providers.ChatRequest, userID *u
 	return nil, fmt.Errorf("no providers available")
 }
 
-// Returns channels for streaming chunks and errors.
 func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, userID *uuid.UUID) (<-chan providers.StreamChunk, <-chan error) {
 	chunkChan := make(chan providers.StreamChunk, 10)
 	errChan := make(chan error, 1)
@@ -335,34 +286,24 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 			errChan <- fmt.Errorf("no providers available")
 			return
 		}
-
-		// Get available providers (healthy ones)
 		availableProviders := r.getAvailableProviders(ctx, userID)
-
 		if len(availableProviders) == 0 {
 			errChan <- fmt.Errorf("no healthy providers available")
 			return
 		}
-
-		// Use routing strategy to select provider (user-specific if available)
 		strategy := r.GetStrategyInstanceForUser(ctx, userID)
 		selectedProvider, err := strategy.SelectProvider(ctx, req, availableProviders)
 		if err != nil {
 			errChan <- fmt.Errorf("failed to select provider: %w", err)
 			return
 		}
-
-		// Check if selected provider supports streaming
 		_, ok := selectedProvider.(providers.StreamingProvider)
 		if !ok {
-			// Fallback to non-streaming: make a regular request and stream it as a single chunk
 			resp, err := selectedProvider.Chat(ctx, req)
 			if err != nil {
 				errChan <- err
 				return
 			}
-
-			// Send response as single chunk
 			if len(resp.Choices) > 0 {
 				content := ""
 				switch c := resp.Choices[0].Message.Content.(type) {
@@ -382,28 +323,20 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 			return
 		}
 
-		// Try selected provider with failover
 		providersToTry := []providers.Provider{selectedProvider}
-
-		// Add other providers as fallbacks
 		for _, provider := range availableProviders {
 			if provider.Name() != selectedProvider.Name() {
 				providersToTry = append(providersToTry, provider)
 			}
 		}
 
-		// Try each provider until one succeeds
 		var lastErr error
 		for _, provider := range providersToTry {
 			streamingProvider, ok := provider.(providers.StreamingProvider)
 			if !ok {
-				// Skip non-streaming providers
 				continue
 			}
-
 			streamChunks, streamErrs := streamingProvider.ChatStream(ctx, req)
-
-			// Forward chunks and errors
 			done := false
 			for !done {
 				select {
@@ -412,7 +345,6 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 						done = true
 						break
 					}
-					// Add provider name to chunk
 					chunk.Provider = provider.Name()
 					chunkChan <- chunk
 					if chunk.Done {
@@ -424,7 +356,6 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 						break
 					}
 					lastErr = err
-					// Try next provider
 					break
 				case <-ctx.Done():
 					errChan <- ctx.Err()
@@ -433,12 +364,9 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 			}
 
 			if lastErr == nil {
-				// Success
 				return
 			}
 		}
-
-		// All providers failed
 		if lastErr != nil {
 			errChan <- fmt.Errorf("all providers failed, last error: %w", lastErr)
 		} else {
@@ -449,11 +377,8 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 	return chunkChan, errChan
 }
 
-// If userID is provided, uses user's provider keys (BYOK), otherwise uses server-level keys.
 func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) []providers.Provider {
 	available := make([]providers.Provider, 0)
-
-	// BYOK: If user has provider keys, create providers with user's keys
 	if userID != nil && r.providerKeyService != nil {
 		userProviders := r.getUserProviders(ctx, *userID)
 		for _, provider := range userProviders {
@@ -461,13 +386,10 @@ func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) [
 				available = append(available, provider)
 			}
 		}
-		// If user has providers, return them (don't fall back to server-level)
 		if len(available) > 0 {
 			return available
 		}
 	}
-
-	// Fallback to server-level providers
 	for _, provider := range r.providers {
 		if err := provider.HealthCheck(ctx); err == nil {
 			available = append(available, provider)
@@ -478,17 +400,12 @@ func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) [
 
 func (r *Router) getUserProviders(ctx context.Context, userID uuid.UUID) []providers.Provider {
 	userProviders := make([]providers.Provider, 0)
-
-	// Try to get user's keys for each provider
 	providersToCheck := []string{"openai", "anthropic", "google"}
-
 	for _, providerName := range providersToCheck {
 		apiKey, err := r.providerKeyService.GetProviderKey(ctx, userID, providerName)
 		if err != nil || apiKey == "" {
-			continue // User doesn't have key for this provider
+			continue
 		}
-
-		// Create provider with user's key (using zerolog.Nop() for now)
 		var provider providers.Provider
 		switch providerName {
 		case "openai":
@@ -508,10 +425,7 @@ func (r *Router) getUserProviders(ctx context.Context, userID uuid.UUID) []provi
 }
 
 func (r *Router) selectProvider(model string) providers.Provider {
-	// Model-to-provider mapping
 	modelLower := strings.ToLower(model)
-
-	// Check each provider's models
 	for _, provider := range r.providers {
 		models := provider.GetModels()
 		for _, providerModel := range models {
@@ -521,8 +435,6 @@ func (r *Router) selectProvider(model string) providers.Provider {
 			}
 		}
 	}
-
-	// Default provider selection based on model prefix
 	if strings.HasPrefix(modelLower, "gpt") {
 		if provider, ok := r.providers["openai"]; ok {
 			return provider
@@ -538,8 +450,6 @@ func (r *Router) selectProvider(model string) providers.Provider {
 			return provider
 		}
 	}
-
-	// Fallback to default provider (usually local)
 	return r.defaultProvider
 }
 

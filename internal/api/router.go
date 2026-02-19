@@ -281,6 +281,9 @@ func SetupRouter(
 			tunnelRepo := tunnel.NewTunnelRepository(postgresClient.Pool(), zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 			tunnelHandler := handlers.NewTunnelHandler(tunnelRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 			admin.GET("/tunnels/stats", tunnelHandler.GetTunnelStats)
+			admin.GET("/tunnels", tunnelHandler.HandleAdminListTunnels)
+			admin.DELETE("/tunnels/:id", tunnelHandler.HandleAdminDeleteTunnel)
+			admin.POST("/tunnels/delete", tunnelHandler.HandleAdminDeleteTunnels)
 		}
 
 		if postgresClient != nil {
