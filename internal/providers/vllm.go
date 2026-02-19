@@ -272,7 +272,10 @@ func messageContentString(c interface{}) string {
 	return fmt.Sprintf("%v", c)
 }
 
-// HealthCheck verifies vLLM is reachable
+func (p *VLLMProvider) healthClient() *http.Client {
+	return &http.Client{Timeout: 5 * time.Second}
+}
+
 func (p *VLLMProvider) HealthCheck(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", p.baseURL+"/models", nil)
 	if err != nil {
@@ -282,7 +285,7 @@ func (p *VLLMProvider) HealthCheck(ctx context.Context) error {
 		req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
 
-	resp, err := p.client.Do(req)
+	resp, err := p.healthClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("health check failed: %w", err)
 	}

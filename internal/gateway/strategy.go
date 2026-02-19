@@ -24,13 +24,12 @@ const (
 
 type ModelBasedStrategy struct{}
 
-// isOllamaStyleModel returns true if the model name looks like an Ollama name:tag (e.g. llama3.2:latest, mistral:7b).
-// Such names must go to the local (Ollama) provider; vLLM uses different IDs and returns 404 for these.
 func isOllamaStyleModel(modelLower string) bool {
-	if strings.Contains(modelLower, ":") {
-		return true
-	}
-	return false
+	return strings.Contains(modelLower, ":")
+}
+
+func isVLLMStyleModel(modelLower string) bool {
+	return strings.Contains(modelLower, "/")
 }
 
 func (s *ModelBasedStrategy) SelectProvider(ctx context.Context, req providers.ChatRequest, availableProviders []providers.Provider) (providers.Provider, error) {
@@ -62,6 +61,13 @@ func (s *ModelBasedStrategy) SelectProvider(ctx context.Context, req providers.C
 		for _, model := range models {
 			providerModelLower := strings.ToLower(model)
 			if strings.Contains(providerModelLower, modelLower) || strings.Contains(modelLower, providerModelLower) {
+				return provider, nil
+			}
+		}
+	}
+	if isVLLMStyleModel(modelLower) {
+		for _, provider := range availableProviders {
+			if provider.Name() == "vllm" {
 				return provider, nil
 			}
 		}

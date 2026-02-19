@@ -236,14 +236,15 @@ func (r *Router) Route(ctx context.Context, req providers.ChatRequest, userID *u
 	if len(r.providers) == 0 {
 		return nil, fmt.Errorf("no providers available")
 	}
-	availableProviders := r.getAvailableProviders(ctx, userID)
-	if len(availableProviders) == 0 {
-		return nil, fmt.Errorf("no healthy providers available")
-	}
+	allProviders := r.getAllProviders()
 	strategy := r.GetStrategyInstanceForUser(ctx, userID)
-	selectedProvider, err := strategy.SelectProvider(ctx, req, availableProviders)
+	selectedProvider, err := strategy.SelectProvider(ctx, req, allProviders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to select provider: %w", err)
+	}
+	availableProviders := r.getAvailableProviders(ctx, userID)
+	if !r.providerInList(availableProviders, selectedProvider.Name()) {
+		availableProviders = []providers.Provider{selectedProvider}
 	}
 	providersToTry := []providers.Provider{selectedProvider}
 	for _, provider := range availableProviders {
@@ -286,16 +287,16 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 			errChan <- fmt.Errorf("no providers available")
 			return
 		}
-		availableProviders := r.getAvailableProviders(ctx, userID)
-		if len(availableProviders) == 0 {
-			errChan <- fmt.Errorf("no healthy providers available")
-			return
-		}
+		allProviders := r.getAllProviders()
 		strategy := r.GetStrategyInstanceForUser(ctx, userID)
-		selectedProvider, err := strategy.SelectProvider(ctx, req, availableProviders)
+		selectedProvider, err := strategy.SelectProvider(ctx, req, allProviders)
 		if err != nil {
 			errChan <- fmt.Errorf("failed to select provider: %w", err)
 			return
+		}
+		availableProviders := r.getAvailableProviders(ctx, userID)
+		if !r.providerInList(availableProviders, selectedProvider.Name()) {
+			availableProviders = []providers.Provider{selectedProvider}
 		}
 		_, ok := selectedProvider.(providers.StreamingProvider)
 		if !ok {
@@ -385,6 +386,14 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 	return chunkChan, errChan
 }
 
+func (r *Router) getAllProviders() []providers.Provider {
+	out := make([]providers.Provider, 0, len(r.providers))
+	for _, p := range r.providers {
+		out = append(out, p)
+	}
+	return out
+}
+
 func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) []providers.Provider {
 	available := make([]providers.Provider, 0)
 	if userID != nil && r.providerKeyService != nil {
@@ -404,6 +413,15 @@ func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) [
 		}
 	}
 	return available
+}
+
+func (r *Router) providerInList(list []providers.Provider, name string) bool {
+	for _, p := range list {
+		if p.Name() == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Router) getUserProviders(ctx context.Context, userID uuid.UUID) []providers.Provider {
