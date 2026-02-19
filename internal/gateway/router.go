@@ -495,6 +495,37 @@ func (r *Router) ListProviders() []string {
 	return names
 }
 
+// ListProviderDetailsForUser returns provider details (name, healthy, models) for both
+// server-registered providers and any BYOK providers the user has a key for.
+func (r *Router) ListProviderDetailsForUser(ctx context.Context, userID *uuid.UUID) []map[string]interface{} {
+	seen := make(map[string]bool)
+	out := make([]map[string]interface{}, 0)
+
+	add := func(p providers.Provider) {
+		name := p.Name()
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		healthy := p.HealthCheck(ctx) == nil
+		out = append(out, map[string]interface{}{
+			"name":    name,
+			"healthy": healthy,
+			"models":  p.GetModels(),
+		})
+	}
+
+	for _, p := range r.providers {
+		add(p)
+	}
+	if userID != nil && r.providerKeyService != nil {
+		for _, p := range r.getUserProviders(ctx, *userID) {
+			add(p)
+		}
+	}
+	return out
+}
+
 func (r *Router) GetCostCalculator() *CostCalculator {
 	return r.costCalculator
 }

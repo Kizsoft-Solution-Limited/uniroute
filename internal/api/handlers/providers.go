@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/gateway"
 	"github.com/Kizsoft-Solution-Limited/uniroute/pkg/errors"
 	"github.com/rs/zerolog"
@@ -22,24 +23,31 @@ func NewProviderHandler(router *gateway.Router, logger zerolog.Logger) *Provider
 }
 
 func (h *ProviderHandler) ListProviders(c *gin.Context) {
-	providers := h.Router.ListProviders()
-	
-	// Get details for each provider
-	providerDetails := make([]map[string]interface{}, 0, len(providers))
-	for _, name := range providers {
-		provider, err := h.Router.GetProvider(name)
-		if err != nil {
-			continue
+	ctx := c.Request.Context()
+	var providerDetails []map[string]interface{}
+
+	if userIDVal, exists := c.Get("user_id"); exists {
+		if userIDStr, ok := userIDVal.(string); ok {
+			if userID, err := uuid.Parse(userIDStr); err == nil {
+				providerDetails = h.Router.ListProviderDetailsForUser(ctx, &userID)
+			}
 		}
-		
-		// Check health
-		healthy := provider.HealthCheck(c.Request.Context()) == nil
-		
-		providerDetails = append(providerDetails, map[string]interface{}{
-			"name":    name,
-			"healthy": healthy,
-			"models":  provider.GetModels(),
-		})
+	}
+	if providerDetails == nil {
+		names := h.Router.ListProviders()
+		providerDetails = make([]map[string]interface{}, 0, len(names))
+		for _, name := range names {
+			provider, err := h.Router.GetProvider(name)
+			if err != nil {
+				continue
+			}
+			healthy := provider.HealthCheck(ctx) == nil
+			providerDetails = append(providerDetails, map[string]interface{}{
+				"name":    name,
+				"healthy": healthy,
+				"models":  provider.GetModels(),
+			})
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
