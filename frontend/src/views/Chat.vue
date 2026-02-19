@@ -669,18 +669,18 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   local: 'Ollama'
 }
 
+// Must match models on the Ollama host (ollama list). Fallback when API cannot reach Ollama.
 const DEFAULT_OLLAMA_MODELS = [
-  { value: 'llama3.2', label: 'Llama 3.2' },
-  { value: 'llama3.1', label: 'Llama 3.1' },
+  { value: 'llama3.2:3b', label: 'Llama 3.2 3B' },
   { value: 'llama3.2:latest', label: 'Llama 3.2 (latest)' },
-  { value: 'mistral', label: 'Mistral' },
-  { value: 'codellama', label: 'Code Llama' },
-  { value: 'llama2', label: 'Llama 2' }
+  { value: 'mistral:latest', label: 'Mistral (latest)' }
 ]
 
+// Fallback when backend cannot reach vLLM. Real list comes from the host (GET /v1/models).
+// On the host, run e.g.: vllm serve <model> (e.g. mistralai/Mistral-7B-Instruct-v0.2)
 const DEFAULT_VLLM_MODELS = [
-  { value: 'meta-llama/Llama-2-7b-chat-hf', label: 'Llama 2 7B' },
-  { value: 'mistralai/Mistral-7B-Instruct-v0.2', label: 'Mistral 7B' }
+  { value: 'mistralai/Mistral-7B-Instruct-v0.2', label: 'Mistral 7B Instruct' },
+  { value: 'meta-llama/Llama-2-7b-chat-hf', label: 'Llama 2 7B Chat' }
 ]
 
 const staticModelGroups = [

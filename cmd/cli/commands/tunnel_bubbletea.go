@@ -580,7 +580,10 @@ func (m *tunnelModel) View() string {
 	currentStatus := m.connectionStatus
 	statusChanged := m.lastStatus != "" && m.lastStatus != currentStatus
 
-	if statusChanged || (m.terminated && m.lastStatus == "") {
+	// When terminated, always clear and put cursor at top so status stays in place
+	if m.terminated {
+		header.WriteString("\033[2J\033[H")
+	} else if statusChanged || m.lastStatus == "" {
 		header.WriteString("\033[2J\033[H")
 	}
 
@@ -612,6 +615,12 @@ func (m *tunnelModel) View() string {
 	header.WriteString(fmt.Sprintf("   %s\n", m.forwarding))
 	header.WriteString("\n")
 	header.WriteString(color.Yellow(m.quote))
+	if m.terminated {
+		header.WriteString("\n\n")
+		header.WriteString(color.Gray("Tunnel stopped. Goodbye."))
+		header.WriteString("\n")
+		return header.String()
+	}
 	header.WriteString("\n\nPress Ctrl+C to stop\n\n")
 	header.WriteString("HTTP Requests\n")
 	header.WriteString("-------------\n")
