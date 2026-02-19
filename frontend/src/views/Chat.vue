@@ -702,8 +702,7 @@ const DEFAULT_OLLAMA_MODELS = [
 ]
 
 const DEFAULT_VLLM_MODELS = [
-  { value: 'mistralai/Mistral-7B-Instruct-v0.2', label: 'Mistral 7B Instruct' },
-  { value: 'meta-llama/Llama-2-7b-chat-hf', label: 'Llama 2 7B Chat' }
+  { value: 'TinyLlama/TinyLlama-1.1B-Chat-v1.0', label: 'TinyLlama 1.1B Chat' }
 ]
 
 const staticModelGroups = [
