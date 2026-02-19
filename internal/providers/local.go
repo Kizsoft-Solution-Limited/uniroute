@@ -34,32 +34,46 @@ func (p *LocalProvider) Name() string {
 	return "local"
 }
 
-func (p *LocalProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
-	// Convert messages - Ollama supports multimodal but we'll convert to text for now
-	ollamaMessages := make([]Message, 0, len(req.Messages))
-	for _, msg := range req.Messages {
-		// Convert multimodal content to text for Ollama (or pass through if supported)
-		var content interface{} = msg.Content
-		if contentParts, ok := msg.Content.([]ContentPart); ok {
-			// Extract text from multimodal content for Ollama
-			textParts := make([]string, 0)
-			for _, part := range contentParts {
-				if part.Type == "text" {
+func convertToOllamaMessages(messages []Message) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(messages))
+	for _, msg := range messages {
+		om := map[string]interface{}{"role": msg.Role}
+		switch content := msg.Content.(type) {
+		case string:
+			om["content"] = content
+		case []ContentPart:
+			var textParts []string
+			var images []string
+			for _, part := range content {
+				if part.Type == "text" && part.Text != "" {
 					textParts = append(textParts, part.Text)
-				} else if part.Type == "image_url" {
-					// Ollama supports images, but for now we'll note it
-					textParts = append(textParts, "[Image attached - Ollama vision models may support this]")
+				} else if part.Type == "image_url" && part.ImageURL != nil {
+					u := part.ImageURL.URL
+					if strings.HasPrefix(u, "data:image/") {
+						parts := strings.SplitN(u, ",", 2)
+						if len(parts) == 2 {
+							images = append(images, parts[1])
+						}
+					}
+				} else if part.Type == "audio_url" {
+					textParts = append(textParts, "[Audio attached]")
 				}
 			}
-			content = strings.Join(textParts, " ")
+			om["content"] = strings.Join(textParts, " ")
+			if len(images) > 0 {
+				om["images"] = images
+			}
+		default:
+			om["content"] = fmt.Sprintf("%v", content)
 		}
-		ollamaMessages = append(ollamaMessages, Message{
-			Role:    msg.Role,
-			Content: content,
-		})
+		out = append(out, om)
 	}
+	return out
+}
 
-	// Convert to Ollama format
+func (p *LocalProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	ollamaMessages := convertToOllamaMessages(req.Messages)
+
 	ollamaReq := map[string]interface{}{
 		"model":    req.Model,
 		"messages": ollamaMessages,
@@ -170,31 +184,7 @@ func (p *LocalProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan
 		defer close(chunkChan)
 		defer close(errChan)
 
-		// Convert messages - Ollama supports multimodal but we'll convert to text for now
-		ollamaMessages := make([]Message, 0, len(req.Messages))
-		for _, msg := range req.Messages {
-			// Convert multimodal content to text for Ollama (or pass through if supported)
-			var content interface{} = msg.Content
-			if contentParts, ok := msg.Content.([]ContentPart); ok {
-				// Extract text from multimodal content for Ollama
-				textParts := make([]string, 0)
-				for _, part := range contentParts {
-					if part.Type == "text" {
-						textParts = append(textParts, part.Text)
-					} else if part.Type == "image_url" {
-						// Ollama supports images, but for now we'll note it
-						textParts = append(textParts, "[Image attached - Ollama vision models may support this]")
-					}
-				}
-				content = strings.Join(textParts, " ")
-			}
-			ollamaMessages = append(ollamaMessages, Message{
-				Role:    msg.Role,
-				Content: content,
-			})
-		}
-
-		// Convert to Ollama format with stream=true
+		ollamaMessages := convertToOllamaMessages(req.Messages)
 		ollamaReq := map[string]interface{}{
 			"model":    req.Model,
 			"messages": ollamaMessages,

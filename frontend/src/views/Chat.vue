@@ -182,11 +182,10 @@
       </div>
     </Card>
 
-    <!-- Messages Container: min-h-0 so flex child can shrink and show scroll -->
-    <Card class="flex-1 flex flex-col overflow-hidden mb-4 min-h-0">
+    <div class="flex-1 flex flex-col min-h-0 overflow-hidden mb-4 rounded-lg border border-slate-700/50 bg-slate-800/60">
       <div
         ref="messagesContainer"
-        class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-6 space-y-3 sm:space-y-4"
+        class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-6 space-y-3 sm:space-y-4 overscroll-contain"
         role="log"
         aria-live="polite"
         aria-label="Chat messages"
@@ -300,7 +299,7 @@
           </div>
         </div>
       </div>
-    </Card>
+    </div>
 
     <!-- Input Area -->
     <Card class="sticky bottom-0 z-10">
@@ -503,7 +502,7 @@
           <!-- Send Button -->
           <button
             type="submit"
-            :disabled="loading || (!inputMessage.trim() && attachedImages.length === 0 && attachedAudios.length === 0)"
+            :disabled="loading || !hasContentToSend"
             class="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 flex-shrink-0 sm:h-auto min-h-[48px] sm:min-h-0"
             aria-label="Send message"
           >
@@ -519,10 +518,6 @@
         <div v-if="isRecording" class="mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded-lg flex items-center gap-2">
           <div class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
           <span class="text-xs text-red-700 dark:text-red-300">Recording... Click again to stop</span>
-        </div>
-        <div v-if="transcribedText" class="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-          <p class="text-xs text-blue-700 dark:text-blue-300 mb-1">Transcribed:</p>
-          <p class="text-sm text-blue-900 dark:text-blue-100">{{ transcribedText }}</p>
         </div>
       </div>
     </Card>
@@ -645,7 +640,18 @@ const attachedAudios = ref<AttachedAudio[]>([])
 const imageInputRef = ref<HTMLInputElement | null>(null)
 const audioInputRef = ref<HTMLInputElement | null>(null)
 const loading = ref(false)
-const selectedModel = ref('gpt-4')
+const CHAT_MODEL_STORAGE_KEY = 'uniroute-chat-selected-model'
+const getStoredModel = (): string => {
+  if (typeof window === 'undefined') return 'gpt-4'
+  const saved = localStorage.getItem(CHAT_MODEL_STORAGE_KEY)
+  return (saved && saved.trim()) ? saved.trim() : 'gpt-4'
+}
+const selectedModel = ref(getStoredModel())
+watch(selectedModel, (model) => {
+  if (typeof window !== 'undefined' && model) {
+    localStorage.setItem(CHAT_MODEL_STORAGE_KEY, model)
+  }
+}, { immediate: false })
 const temperature = ref(0.7)
 const maxTokens = ref(1000)
 const showSettings = ref(false)
@@ -656,18 +662,22 @@ const conversations = ref<Conversation[]>([])
 const conversationsLoading = ref(false)
 const currentConversationId = ref<string | null>(null)
 
-// Voice recording
 const isRecording = ref(false)
-const recognition: any = ref(null)
-const transcribedText = ref('')
+const mediaRecorderRef = ref<MediaRecorder | null>(null)
+const recordingChunksRef = ref<Blob[]>([])
+const recordingStreamRef = ref<MediaStream | null>(null)
 const speechSynthesis = ref<SpeechSynthesis | null>(null)
-const speakResponsesEnabled = ref(false) // opt-in: speak assistant response with TTS
-
-// Image error tracking
+const speakResponsesEnabled = ref(false)
 const imageErrors = ref(new Set<number>())
-
-// Mobile conversations drawer
 const showMobileConversations = ref(false)
+
+const hasContentToSend = computed(() => {
+  return !!(
+    (inputMessage.value && inputMessage.value.trim()) ||
+    attachedImages.value.length > 0 ||
+    attachedAudios.value.length > 0
+  )
+})
 
 const suggestions = [
   'Explain quantum computing',
@@ -769,9 +779,7 @@ const scrollToBottomAfterUpdate = () => {
 }
 
 const handleSend = async () => {
-  // Use transcribed text if available, otherwise use input
-  const textToSend = transcribedText.value || inputMessage.value.trim()
-  
+  const textToSend = inputMessage.value.trim()
   if ((!textToSend && attachedImages.value.length === 0 && attachedAudios.value.length === 0) || loading.value) return
 
   if (!currentConversationId.value) {
@@ -830,7 +838,6 @@ const handleSend = async () => {
 
   messages.value.push(userMessage)
   inputMessage.value = ''
-  transcribedText.value = ''
   attachedImages.value.forEach(img => {
     if (img.preview.startsWith('blob:')) {
       URL.revokeObjectURL(img.preview)
@@ -1128,7 +1135,6 @@ const createNewConversation = async () => {
   currentConversationId.value = null
   messages.value = []
   inputMessage.value = ''
-  transcribedText.value = ''
   showMobileConversations.value = false
   await loadConversations()
 }
@@ -1167,114 +1173,65 @@ const formatDate = (dateString: string | null | undefined): string => {
   return date.toLocaleDateString()
 }
 
-// Voice recording functions
-const initSpeechRecognition = () => {
-  if (typeof window === 'undefined') return
-  
-  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  if (!SpeechRecognition) {
-    console.warn('Speech recognition not supported')
-    return null
-  }
-
-  const recognition = new SpeechRecognition()
-  recognition.continuous = true
-  recognition.interimResults = true
-  recognition.lang = 'en-US'
-
-  recognition.onresult = (event: any) => {
-    let interimTranscript = ''
-    let finalTranscript = ''
-
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const transcript = event.results[i][0].transcript
-      if (event.results[i].isFinal) {
-        finalTranscript += transcript + ' '
-      } else {
-        interimTranscript += transcript
-      }
-    }
-
-    if (finalTranscript) {
-      transcribedText.value += finalTranscript
-    } else {
-      // Show interim results in input
-      inputMessage.value = transcribedText.value + interimTranscript
-    }
-  }
-
-  recognition.onerror = (event: any) => {
-    console.error('Speech recognition error:', event.error)
-    if (event.error === 'no-speech') {
-      showToast('No speech detected', 'warning')
-    } else {
-      showToast('Speech recognition error', 'error')
-    }
-    isRecording.value = false
-  }
-
-  recognition.onend = () => {
-    isRecording.value = false
-  }
-
-  return recognition
-}
-
 const toggleVoiceRecording = async () => {
-  if (!recognition.value) {
-    recognition.value = initSpeechRecognition()
-    if (!recognition.value) {
-      showToast('Speech recognition not supported in your browser', 'error')
-      return
+  if (isRecording.value) {
+    if (mediaRecorderRef.value && mediaRecorderRef.value.state !== 'inactive') {
+      mediaRecorderRef.value.stop()
     }
+    recordingStreamRef.value?.getTracks().forEach(track => track.stop())
+    recordingStreamRef.value = null
+    mediaRecorderRef.value = null
+    isRecording.value = false
+    return
   }
 
-  if (isRecording.value) {
-    recognition.value.stop()
-    isRecording.value = false
-    // Move transcribed text to input
-    if (transcribedText.value) {
-      inputMessage.value = transcribedText.value
-    }
-  } else {
-    // Check if Permissions-Policy allows microphone
-    if (typeof navigator.permissions !== 'undefined') {
-      try {
-        const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName })
-        if (permissionStatus.state === 'denied') {
-          showToast('Microphone access is blocked by browser permissions policy. Please check your browser settings.', 'error')
-          return
-        }
-      } catch (e) {
-        // Permissions API might not be fully supported, continue anyway
-        console.warn('Permissions API not fully supported:', e)
-      }
-    }
-
-    // Request microphone permission before starting
+  if (typeof navigator.permissions !== 'undefined') {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      // Stop the stream immediately - we just needed permission
-      stream.getTracks().forEach(track => track.stop())
-      
-      transcribedText.value = ''
-      recognition.value.start()
-      isRecording.value = true
-    } catch (error: any) {
-      console.error('Microphone permission error:', error)
-      isRecording.value = false
-      
-      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        showToast('Microphone permission denied. Please allow microphone access in your browser settings and try again.', 'error')
-      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-        showToast('No microphone found. Please connect a microphone and try again.', 'error')
-      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-        showToast('Microphone is already in use by another application.', 'error')
-      } else if (error.name === 'OverconstrainedError') {
-        showToast('Microphone constraints could not be satisfied.', 'error')
-      } else {
-        showToast(`Failed to access microphone: ${error.message || 'Unknown error'}. Please check your browser settings.`, 'error')
+      const status = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+      if (status.state === 'denied') {
+        showToast('Microphone access is blocked. Check browser settings.', 'error')
+        return
       }
+    } catch (_) {}
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    recordingStreamRef.value = stream
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
+    const recorder = new MediaRecorder(stream)
+    recordingChunksRef.value = []
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) recordingChunksRef.value.push(e.data)
+    }
+    recorder.onstop = () => {
+      const blob = new Blob(recordingChunksRef.value, { type: mime })
+      const reader = new FileReader()
+      reader.onload = () => {
+        const dataUrl = reader.result as string
+        const preview = URL.createObjectURL(blob)
+        const file = new File([blob], 'recording.webm', { type: blob.type })
+        attachedAudios.value.push({
+          file,
+          dataUrl: file.type.startsWith('audio/') ? dataUrl : dataUrl,
+          preview,
+          duration: undefined
+        })
+      }
+      reader.readAsDataURL(blob)
+    }
+    recorder.start(200)
+    mediaRecorderRef.value = recorder
+    isRecording.value = true
+  } catch (err: any) {
+    isRecording.value = false
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      showToast('Microphone permission denied.', 'error')
+    } else if (err.name === 'NotFoundError') {
+      showToast('No microphone found.', 'error')
+    } else {
+      showToast(err.message || 'Failed to access microphone', 'error')
     }
   }
 }
@@ -1390,11 +1347,12 @@ onUnmounted(() => {
     }
   })
   
-  // Stop speech recognition if active
-  if (recognition.value && isRecording.value) {
-    recognition.value.stop()
+  if (mediaRecorderRef.value && mediaRecorderRef.value.state !== 'inactive') {
+    mediaRecorderRef.value.stop()
   }
-  
+  recordingStreamRef.value?.getTracks().forEach(track => track.stop())
+  recordingStreamRef.value = null
+
   // Stop any ongoing speech
   if (speechSynthesis.value) {
     speechSynthesis.value.cancel()

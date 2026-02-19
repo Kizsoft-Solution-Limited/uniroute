@@ -394,7 +394,6 @@ func convertMessagesToAnthropic(messages []Message) []map[string]interface{} {
 						"text": part.Text,
 					})
 				} else if part.Type == "image_url" && part.ImageURL != nil {
-					// Extract base64 data from data URL if present
 					imageURL := part.ImageURL.URL
 					if strings.HasPrefix(imageURL, "data:image/") {
 						// Data URL format: data:image/png;base64,<data>
@@ -410,7 +409,21 @@ func convertMessagesToAnthropic(messages []Message) []map[string]interface{} {
 							})
 						}
 					}
-					// Note: HTTP URLs would need to be fetched and converted to base64
+				} else if part.Type == "audio_url" && part.AudioURL != nil {
+					audioURL := part.AudioURL.URL
+					if strings.HasPrefix(audioURL, "data:audio/") {
+						parts := strings.SplitN(audioURL, ",", 2)
+						if len(parts) == 2 {
+							contentArray = append(contentArray, map[string]interface{}{
+								"type": "audio",
+								"source": map[string]interface{}{
+									"type":       "base64",
+									"media_type": extractMediaType(audioURL),
+									"data":       parts[1],
+								},
+							})
+						}
+					}
 				}
 			}
 			messageMap["content"] = contentArray

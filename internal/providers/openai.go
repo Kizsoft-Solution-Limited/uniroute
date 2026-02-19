@@ -364,7 +364,6 @@ func (p *OpenAIProvider) GetModels() []string {
 	}
 }
 
-// Supports both text-only (string) and multimodal ([]ContentPart) content.
 func convertMessagesToOpenAI(messages []Message) []interface{} {
 	result := make([]interface{}, 0, len(messages))
 	for _, msg := range messages {
@@ -390,11 +389,17 @@ func convertMessagesToOpenAI(messages []Message) []interface{} {
 							"url": part.ImageURL.URL,
 						},
 					})
+				} else if part.Type == "audio_url" && part.AudioURL != nil {
+					contentArray = append(contentArray, map[string]interface{}{
+						"type": "audio_url",
+						"audio_url": map[string]interface{}{
+							"url": part.AudioURL.URL,
+						},
+					})
 				}
 			}
 			messageMap["content"] = contentArray
 		case []interface{}:
-			// Already in OpenAI format (for direct passthrough)
 			messageMap["content"] = content
 		default:
 			// Fallback: try to convert to string

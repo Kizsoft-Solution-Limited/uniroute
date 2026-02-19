@@ -206,10 +206,8 @@ func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 						"text": part.Text,
 					})
 				} else if part.Type == "image_url" && part.ImageURL != nil {
-					// Extract base64 data from data URL if present
 					imageURL := part.ImageURL.URL
 					if strings.HasPrefix(imageURL, "data:image/") {
-						// Data URL format: data:image/png;base64,<data>
 						urlParts := strings.SplitN(imageURL, ",", 2)
 						if len(urlParts) == 2 {
 							parts = append(parts, map[string]interface{}{
@@ -220,13 +218,25 @@ func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 							})
 						}
 					} else {
-						// HTTP URL - Google Gemini supports URLs directly
 						parts = append(parts, map[string]interface{}{
 							"file_data": map[string]interface{}{
-								"mime_type": "image/jpeg", // Default, could detect from URL
+								"mime_type": "image/jpeg",
 								"file_uri":  imageURL,
 							},
 						})
+					}
+				} else if part.Type == "audio_url" && part.AudioURL != nil {
+					audioURL := part.AudioURL.URL
+					if strings.HasPrefix(audioURL, "data:audio/") {
+						urlParts := strings.SplitN(audioURL, ",", 2)
+						if len(urlParts) == 2 {
+							parts = append(parts, map[string]interface{}{
+								"inline_data": map[string]interface{}{
+									"mime_type": extractMediaType(audioURL),
+									"data":      urlParts[1],
+								},
+							})
+						}
 					}
 				}
 			}
