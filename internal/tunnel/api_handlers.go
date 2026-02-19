@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func (ts *TunnelServer) handleListTunnels(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +87,51 @@ func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request
 		}
 	}
 	ts.tunnelsMu.RUnlock()
+
+	if tunnel == nil && ts.repository != nil {
+		var dbTunnel *Tunnel
+		if parsed, err := uuid.Parse(tunnelID); err == nil {
+			dbTunnel, _ = ts.repository.GetTunnelByID(r.Context(), parsed)
+		}
+		if dbTunnel == nil {
+			dbTunnel, _ = ts.repository.GetTunnelBySubdomain(r.Context(), tunnelID)
+		}
+		if dbTunnel != nil {
+			publicURL := dbTunnel.PublicURL
+			if publicURL == "" && ts.domainManager != nil && ts.domainManager.baseDomain != "" {
+				publicURL = ts.domainManager.GetPublicURL(dbTunnel.Subdomain, ts.port, true)
+			}
+			tunnelInfo := map[string]interface{}{
+				"id":            dbTunnel.ID,
+				"subdomain":     dbTunnel.Subdomain,
+				"local_url":     dbTunnel.LocalURL,
+				"public_url":    publicURL,
+				"request_count": dbTunnel.RequestCount,
+				"created_at":    dbTunnel.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+				"last_active":   dbTunnel.LastActive.Format("2006-01-02T15:04:05Z07:00"),
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"tunnel": tunnelInfo,
+				"stats": map[string]interface{}{
+					"total_requests":  int64(0),
+					"total_bytes":     int64(0),
+					"avg_latency_ms":  float64(0),
+					"error_count":     int64(0),
+					"last_request_at": time.Time{}.Format("2006-01-02T15:04:05Z07:00"),
+				},
+				"connections": map[string]interface{}{
+					"total": int64(0),
+					"open":  int64(0),
+					"rt1":   float64(0),
+					"rt5":   float64(0),
+					"p50":   float64(0),
+					"p90":   float64(0),
+				},
+			})
+			return
+		}
+	}
 
 	if tunnel == nil {
 		http.Error(w, "Tunnel not found", http.StatusNotFound)
