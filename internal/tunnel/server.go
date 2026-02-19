@@ -1716,7 +1716,7 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 	}()
 
 	heartbeatInterval := 30 * time.Second
-	readDeadline := 4 * heartbeatInterval // 120 seconds - should receive at least one ping/pong in this time
+	readDeadline := 3 * heartbeatInterval
 
 	for {
 		tunnel.mu.RLock()

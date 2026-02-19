@@ -441,7 +441,6 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.terminated {
 			return m, nil
 		}
-		wasOfflineBefore := !m.internetOnline
 		m.internetOnline = bool(msg)
 		if !m.internetOnline {
 			// Internet is offline - update both connection status and session status
@@ -450,26 +449,18 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.wasOffline = true
 			m.reconnectTime = time.Time{} // Reset reconnect time
 		} else {
-			// Internet is back
-			if wasOfflineBefore || m.wasOffline {
-				// We were offline, so show reconnecting first
+			m.wasOffline = false
+			m.reconnectTime = time.Time{}
+			status := m.client.GetConnectionStatus()
+			if status == "online" {
+				m.connectionStatus = color.Green("Tunnel Connected Successfully!")
+				m.sessionStatus = fmt.Sprintf("%s %s", color.Green("●"), color.Green("online"))
+			} else if status == "reconnecting" {
 				m.connectionStatus = color.Yellow("Reconnecting...")
 				m.sessionStatus = fmt.Sprintf("%s %s", color.Yellow("●"), color.Yellow("reconnecting"))
-				m.reconnectTime = time.Now()
-				m.wasOffline = false // Reset flag
 			} else {
-				// Internet was already online, check actual connection status
-				status := m.client.GetConnectionStatus()
-				if status == "online" {
-					m.connectionStatus = color.Green("Tunnel Connected Successfully!")
-					m.sessionStatus = fmt.Sprintf("%s %s", color.Green("●"), color.Green("online"))
-				} else if status == "reconnecting" {
-					m.connectionStatus = color.Yellow("Reconnecting...")
-					m.sessionStatus = fmt.Sprintf("%s %s", color.Yellow("●"), color.Yellow("reconnecting"))
-				} else {
-					m.connectionStatus = color.Yellow("Reconnecting...")
-					m.sessionStatus = fmt.Sprintf("%s %s", color.Yellow("●"), color.Yellow("reconnecting"))
-				}
+				m.connectionStatus = color.Yellow("Reconnecting...")
+				m.sessionStatus = fmt.Sprintf("%s %s", color.Yellow("●"), color.Yellow("reconnecting"))
 			}
 		}
 		return m, m.checkInternet()
@@ -706,13 +697,6 @@ func (m *tunnelModel) checkInternet() tea.Cmd {
 	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
 		client := &http.Client{Timeout: 2 * time.Second}
 		_, err := client.Head("http://clients3.google.com/generate_204")
-		if err == nil {
-			tunnelClient := &http.Client{Timeout: 1 * time.Second}
-			_, tunnelErr := tunnelClient.Get(fmt.Sprintf("http://%s/health", m.serverURL))
-			if tunnelErr != nil {
-				return internetStatusMsg(false)
-			}
-		}
 		return internetStatusMsg(err == nil)
 	})
 }

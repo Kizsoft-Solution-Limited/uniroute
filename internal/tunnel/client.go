@@ -225,16 +225,20 @@ func (tc *TunnelClient) Connect() error {
 	tc.mu.RLock()
 	authToken := tc.token
 	forceNew := tc.forceNew
+	resumeSubdomain := tc.subdomain
+	resumeTunnelID := tc.tunnelID
 	tc.mu.RUnlock()
 
 	initMsg := InitMessage{
-		Type:     MsgTypeInit,
-		Version:  "1.0",
-		Protocol: tc.protocol,
-		LocalURL: tc.localURL,
-		Host:     tc.host,
-		Token:    authToken, // Include auth token if available
-		ForceNew: forceNew,  // Signal to server to force new tunnel creation
+		Type:      MsgTypeInit,
+		Version:   "1.0",
+		Protocol:  tc.protocol,
+		LocalURL:  tc.localURL,
+		Host:      tc.host,
+		Token:     authToken,
+		ForceNew:  forceNew,
+		Subdomain: resumeSubdomain,
+		TunnelID:  resumeTunnelID,
 	}
 
 	if forceNew {
