@@ -337,32 +337,36 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 				continue
 			}
 			streamChunks, streamErrs := streamingProvider.ChatStream(ctx, req)
-			done := false
-			for !done {
+			sentAnyChunk := false
+		readLoop:
+			for {
 				select {
 				case chunk, ok := <-streamChunks:
 					if !ok {
-						done = true
-						break
+						break readLoop
 					}
 					chunk.Provider = provider.Name()
 					chunkChan <- chunk
+					sentAnyChunk = true
 					if chunk.Done {
 						return
 					}
 				case err, ok := <-streamErrs:
 					if !ok {
-						done = true
-						break
+						break readLoop
 					}
 					lastErr = err
-					break
+					break readLoop
 				case <-ctx.Done():
 					errChan <- ctx.Err()
 					return
 				}
 			}
 
+			if sentAnyChunk {
+				chunkChan <- providers.StreamChunk{Content: "", Done: true, Provider: provider.Name()}
+				return
+			}
 			if lastErr == nil {
 				return
 			}
