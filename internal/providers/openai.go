@@ -348,25 +348,12 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 }
 
 func (p *OpenAIProvider) GetModels() []string {
-	// Latest OpenAI models (as of 2025)
 	return []string{
-		// GPT-4o series (latest, 2024-2025)
-		"gpt-4o",                 // GPT-4 Optimized (latest, May 2024)
-		"gpt-4o-2024-08-06",      // GPT-4o (August 2024)
-		"gpt-4o-mini",            // GPT-4o Mini (latest)
-		"gpt-4o-mini-2024-07-18", // GPT-4o Mini (July 2024)
-		// GPT-4 Turbo series
-		"gpt-4-turbo", // GPT-4 Turbo
-		"gpt-4-turbo-preview",
-		"gpt-4-0125-preview",
-		"gpt-4-1106-preview",
-		// GPT-4 (original)
-		"gpt-4",
-		// GPT-3.5 series
-		"gpt-3.5-turbo", // GPT-3.5 Turbo (latest)
-		"gpt-3.5-turbo-0125",
-		"gpt-3.5-turbo-1106",
-		// Note: When OpenAI releases GPT-5.2, GPT-5.2 Pro, o4-mini via API,
+		"gpt-5.2", "gpt-5.2-pro", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano",
+		"gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+		"o3", "o3-mini", "o4-mini", "o1", "o1-pro",
+		"gpt-4o", "gpt-4o-2024-08-06", "gpt-4o-mini", "gpt-4o-mini-2024-07-18",
+		"gpt-4-turbo", "gpt-4-turbo-preview", "gpt-4", "gpt-3.5-turbo",
 	}
 }
 
@@ -382,8 +369,10 @@ func convertMessagesToOpenAI(messages []Message) []interface{} {
 			messageMap["content"] = content
 		case []ContentPart:
 			contentArray := make([]interface{}, 0, len(content))
+			hasText := false
 			for _, part := range content {
 				if part.Type == "text" {
+					hasText = true
 					contentArray = append(contentArray, map[string]interface{}{
 						"type": "text",
 						"text": part.Text,
@@ -403,6 +392,13 @@ func convertMessagesToOpenAI(messages []Message) []interface{} {
 						},
 					})
 				}
+			}
+			// Some backends (e.g. vLLM) expect at least one text part when image/audio are present
+			if len(contentArray) > 0 && !hasText {
+				contentArray = append([]interface{}{map[string]interface{}{
+					"type": "text",
+					"text": "Describe this.",
+				}}, contentArray...)
 			}
 			messageMap["content"] = contentArray
 		case []interface{}:

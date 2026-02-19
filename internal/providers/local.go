@@ -48,24 +48,29 @@ func convertToOllamaMessages(messages []Message) []map[string]interface{} {
 		case []ContentPart:
 			var textParts []string
 			var images []string
+			hasAudio := false
 			for _, part := range content {
 				if part.Type == "text" && part.Text != "" {
 					textParts = append(textParts, part.Text)
 				} else if part.Type == "image_url" && part.ImageURL != nil {
 					u := part.ImageURL.URL
-					if strings.HasPrefix(u, "data:image/") {
+					if strings.HasPrefix(strings.ToLower(u), "data:image/") {
 						parts := strings.SplitN(u, ",", 2)
 						if len(parts) == 2 {
 							images = append(images, parts[1])
 						}
 					}
 				} else if part.Type == "audio_url" {
+					hasAudio = true
 					textParts = append(textParts, "[Audio attached]")
 				}
 			}
 			textContent := strings.TrimSpace(strings.Join(textParts, " "))
 			if textContent == "" && len(images) > 0 {
 				textContent = "Describe this image."
+			}
+			if textContent == "" && hasAudio {
+				textContent = "Transcribe or describe this audio."
 			}
 			om["content"] = textContent
 			if len(images) > 0 {

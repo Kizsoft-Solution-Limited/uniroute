@@ -178,21 +178,14 @@ func (p *GoogleProvider) HealthCheck(ctx context.Context) error {
 
 func (p *GoogleProvider) GetModels() []string {
 	return []string{
-		// Gemini 2.0 series (latest, 2025)
-		"gemini-2.0-flash-exp", // Gemini 2.0 Flash (experimental)
-		// Gemini 1.5 series (2024-2025)
-		"gemini-1.5-pro-latest", // Gemini 1.5 Pro (latest)
-		"gemini-1.5-pro",        // Gemini 1.5 Pro
-		"gemini-1.5-flash-8b",   // Gemini 1.5 Flash 8B
-		"gemini-1.5-flash",      // Gemini 1.5 Flash
-		// Gemini 1.0 series
-		"gemini-pro",        // Gemini Pro (original)
-		"gemini-pro-vision", // Gemini Pro Vision
-		// Note: When Google releases Gemini 3 Pro, Gemini 3 Deep Think via API,
+		"gemini-3-pro-preview", "gemini-3-flash-preview",
+		"gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
+		"gemini-2.0-flash-exp",
+		"gemini-1.5-pro-latest", "gemini-1.5-pro", "gemini-1.5-flash-8b", "gemini-1.5-flash",
+		"gemini-pro", "gemini-pro-vision",
 	}
 }
 
-// Google Gemini supports multimodal content with images.
 func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, len(messages))
 	for _, msg := range messages {

@@ -368,19 +368,14 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 
 func (p *AnthropicProvider) GetModels() []string {
 	return []string{
-		// Claude 3.5 series (latest, 2024)
-		"claude-3-5-sonnet-20241022", // Claude 3.5 Sonnet (latest, Oct 2024)
-		"claude-3-5-sonnet-20240620", // Claude 3.5 Sonnet (June 2024)
-		"claude-3-5-haiku-20241022",  // Claude 3.5 Haiku (latest, Oct 2024)
-		// Claude 3.0 series
-		"claude-3-opus-20240229",   // Claude 3 Opus
-		"claude-3-sonnet-20240229", // Claude 3 Sonnet
-		"claude-3-haiku-20240307",  // Claude 3 Haiku
-		// Note: When Anthropic releases Claude Sonnet 4.5, Opus 4.5, Haiku 4.5 via API,
+		"claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
+		"claude-sonnet-4-5-20250929", "claude-opus-4-5-20251101",
+		"claude-opus-4-1-20250805", "claude-sonnet-4-20250514", "claude-opus-4-20250514",
+		"claude-3-5-sonnet-20241022", "claude-3-5-sonnet-20240620", "claude-3-5-haiku-20241022",
+		"claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307",
 	}
 }
 
-// Anthropic supports multimodal content with images.
 func convertMessagesToAnthropic(messages []Message) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, len(messages))
 	for _, msg := range messages {

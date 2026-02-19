@@ -698,8 +698,13 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
 const DEFAULT_OLLAMA_MODELS = [
   { value: 'llama3.2:3b', label: 'Llama 3.2 3B' },
   { value: 'llama3.2:latest', label: 'Llama 3.2 (latest)' },
+  { value: 'llava:latest', label: 'Llava (latest) — Vision' },
   { value: 'mistral:latest', label: 'Mistral (latest)' }
 ]
+
+const OLLAMA_VISION_MODELS: Record<string, string> = {
+  'llava:latest': 'Llava (latest) — Vision'
+}
 
 const DEFAULT_VLLM_MODELS = [
   { value: 'TinyLlama/TinyLlama-1.1B-Chat-v1.0', label: 'TinyLlama 1.1B Chat' }
@@ -707,25 +712,53 @@ const DEFAULT_VLLM_MODELS = [
 
 const staticModelGroups = [
   { label: 'OpenAI', options: [
-    { value: 'gpt-4o', label: 'GPT-4o (Latest)' },
+    { value: 'gpt-5.2', label: 'GPT-5.2 (Latest)' },
+    { value: 'gpt-5.2-pro', label: 'GPT-5.2 Pro' },
+    { value: 'gpt-5.1', label: 'GPT-5.1' },
+    { value: 'gpt-5', label: 'GPT-5' },
+    { value: 'gpt-5-mini', label: 'GPT-5 Mini' },
+    { value: 'gpt-5-nano', label: 'GPT-5 Nano' },
+    { value: 'gpt-4.1', label: 'GPT-4.1' },
+    { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+    { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano' },
+    { value: 'o3', label: 'o3 (Reasoning)' },
+    { value: 'o3-mini', label: 'o3 Mini' },
+    { value: 'o4-mini', label: 'o4 Mini' },
+    { value: 'o1', label: 'o1 (Reasoning)' },
+    { value: 'gpt-4o', label: 'GPT-4o' },
     { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
     { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
     { value: 'gpt-4', label: 'GPT-4' },
     { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' }
   ]},
   { label: 'Anthropic (Claude)', options: [
-    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet (Latest)' },
+    { value: 'claude-opus-4-6', label: 'Claude Opus 4.6 (Latest)' },
+    { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 — Extended thinking' },
+    { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+    { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
+    { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5' },
+    { value: 'claude-opus-4-1-20250805', label: 'Claude Opus 4.1' },
+    { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
+    { value: 'claude-opus-4-20250514', label: 'Claude Opus 4' },
+    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
     { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
     { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
     { value: 'claude-3-sonnet-20240229', label: 'Claude 3 Sonnet' },
     { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' }
   ]},
   { label: 'Google (Gemini)', options: [
+    { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Preview)' },
+    { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Preview)' },
+    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+    { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
     { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash (Experimental)' },
     { value: 'gemini-1.5-pro-latest', label: 'Gemini 1.5 Pro (Latest)' },
     { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+    { value: 'gemini-1.5-flash-8b', label: 'Gemini 1.5 Flash 8B' },
     { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
-    { value: 'gemini-pro', label: 'Gemini Pro' }
+    { value: 'gemini-pro', label: 'Gemini Pro' },
+    { value: 'gemini-pro-vision', label: 'Gemini Pro Vision' }
   ]},
   { label: 'Ollama', options: DEFAULT_OLLAMA_MODELS },
   { label: 'vLLM', options: DEFAULT_VLLM_MODELS }
@@ -735,8 +768,12 @@ const apiProviders = ref<ProviderInfo[]>([])
 const modelGroups = computed(() => {
   if (apiProviders.value.length === 0) return staticModelGroups
   return apiProviders.value.map((p) => {
-    let options = p.models.map((m) => ({ value: m, label: m }))
-    if (options.length === 0 && (p.name === 'local' || p.name === 'ollama')) {
+    const isOllama = p.name === 'local' || p.name === 'ollama'
+    let options = p.models.map((m) => ({
+      value: m,
+      label: isOllama && OLLAMA_VISION_MODELS[m] ? OLLAMA_VISION_MODELS[m] : m
+    }))
+    if (options.length === 0 && isOllama) {
       options = DEFAULT_OLLAMA_MODELS
     }
     if (options.length === 0 && p.name === 'vllm') {
@@ -753,7 +790,6 @@ watch(messages, () => {
   scrollToBottomAfterUpdate()
 }, { deep: true })
 
-// Lock body scroll when mobile drawer is open
 watch(showMobileConversations, (isOpen) => {
   if (isOpen) {
     document.body.style.overflow = 'hidden'
@@ -798,16 +834,12 @@ const handleSend = async () => {
 
   if (attachedImages.value.length > 0 || attachedAudios.value.length > 0) {
     const parts: ContentPart[] = []
-    
-    // Add text first if present
     if (textToSend) {
       parts.push({
         type: 'text',
         text: textToSend
       })
     }
-    
-    // Add all images
     for (const image of attachedImages.value) {
       parts.push({
         type: 'image_url',
@@ -816,8 +848,6 @@ const handleSend = async () => {
         }
       })
     }
-    
-    // Add all audio files
     for (const audio of attachedAudios.value) {
       parts.push({
         type: 'audio_url',
@@ -935,8 +965,6 @@ const handleSend = async () => {
     console.error('Chat error:', error)
     const errorMessage = error.response?.data?.error || error.message || 'Failed to get response'
     showToast(errorMessage, 'error')
-
-    // Add error message to chat
     const errorChatMessage: ChatMessage = {
       role: 'assistant',
       content: `Error: ${errorMessage}`,
@@ -960,7 +988,6 @@ const handleImageSelect = (event: Event) => {
       return
     }
 
-    // Check file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
       showToast('Image size must be less than 10MB', 'error')
       return
@@ -969,17 +996,10 @@ const handleImageSelect = (event: Event) => {
     const reader = new FileReader()
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string
-      // Use data URL for preview to avoid CSP blob: issues
-      attachedImages.value.push({
-        file,
-        dataUrl,
-        preview: dataUrl // Use data URL instead of blob URL
-      })
+      attachedImages.value.push({ file, dataUrl, preview: dataUrl })
     }
     reader.readAsDataURL(file)
   })
-
-  // Reset input
   target.value = ''
 }
 
@@ -993,7 +1013,6 @@ const handleAudioSelect = (event: Event) => {
       return
     }
 
-    // Check file size (max 25MB for audio)
     if (file.size > 25 * 1024 * 1024) {
       showToast('Audio file size must be less than 25MB', 'error')
       return
@@ -1002,34 +1021,24 @@ const handleAudioSelect = (event: Event) => {
     const reader = new FileReader()
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string
-      // Use data URL for audio preview to avoid CSP blob: issues
       const audio = new Audio()
-      audio.src = dataUrl // Use data URL instead of blob URL
-      
+      audio.src = dataUrl
       audio.addEventListener('loadedmetadata', () => {
         attachedAudios.value.push({
           file,
           dataUrl,
-          preview: dataUrl, // Use data URL instead of blob URL to avoid CSP issues
+          preview: dataUrl,
           duration: audio.duration
         })
       }, { once: true })
-      
-      // Fallback if metadata doesn't load
       setTimeout(() => {
         if (!attachedAudios.value.find(a => a.file === file)) {
-          attachedAudios.value.push({
-            file,
-            dataUrl,
-            preview: dataUrl // Use data URL instead of blob URL
-          })
+          attachedAudios.value.push({ file, dataUrl, preview: dataUrl })
         }
       }, 1000)
     }
     reader.readAsDataURL(file)
   })
-
-  // Reset input
   target.value = ''
 }
 
@@ -1041,7 +1050,6 @@ const formatDuration = (seconds: number): string => {
 }
 
 const removeImage = (index: number) => {
-  // Only revoke if it's a blob URL (not a data URL)
   const preview = attachedImages.value[index].preview
   if (preview.startsWith('blob:')) {
     URL.revokeObjectURL(preview)
@@ -1050,8 +1058,10 @@ const removeImage = (index: number) => {
 }
 
 const removeAudio = (index: number) => {
-  // Revoke object URL to free memory
-  URL.revokeObjectURL(attachedAudios.value[index].preview)
+  const preview = attachedAudios.value[index].preview
+  if (preview.startsWith('blob:')) {
+    URL.revokeObjectURL(preview)
+  }
   attachedAudios.value.splice(index, 1)
 }
 
@@ -1245,7 +1255,6 @@ const speakText = (text: string) => {
     return
   }
 
-  // Cancel any ongoing speech
   speechSynthesis.value.cancel()
 
   const utterance = new SpeechSynthesisUtterance(text)
@@ -1256,23 +1265,15 @@ const speakText = (text: string) => {
   speechSynthesis.value.speak(utterance)
 }
 
-// Image URL helper - ensures proper data URL format
 const getImageUrl = (url: string | undefined): string => {
   if (!url) return ''
-  
-  // If it's already a data URL or HTTP URL, return as-is
   if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
     return url
   }
-  
-  // If it's base64 without data URL prefix, add it
-  // Try to detect image type from the base64 data
   if (url.length > 0 && !url.includes('://')) {
-    // Check if it looks like base64
     const base64Pattern = /^[A-Za-z0-9+/=]+$/
     if (base64Pattern.test(url.substring(0, 100))) {
-      // Try to detect image type from first few characters
-      let mimeType = 'image/png' // default
+      let mimeType = 'image/png'
       if (url.startsWith('/9j/') || url.startsWith('/9j')) {
         mimeType = 'image/jpeg'
       } else if (url.startsWith('iVBORw0KGgo')) {
@@ -1289,7 +1290,6 @@ const getImageUrl = (url: string | undefined): string => {
   return url
 }
 
-// Image error handlers
 const handleImageError = (event: Event) => {
   const img = event.target as HTMLImageElement
   const partIndex = parseInt(img.getAttribute('data-part-index') || '0')
@@ -1312,29 +1312,22 @@ const handlePreviewImageError = (_event: Event, index: number) => {
   showToast('Failed to load image preview', 'error')
 }
 
-// Load conversations on mount
 onMounted(async () => {
   scrollToBottom()
   try {
     const res = await providersApi.list()
     if (res.providers?.length) apiProviders.value = res.providers
   } catch {
-    // use static model list
+    // fallback to static model list
   }
   await loadConversations()
-  
-  // Initialize speech synthesis
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     speechSynthesis.value = window.speechSynthesis
   }
 })
 
-// Cleanup on unmount
 onUnmounted(() => {
-  // Restore body scroll
   document.body.style.overflow = ''
-  
-  // Clean up preview URLs (only revoke blob URLs)
   attachedImages.value.forEach(img => {
     if (img.preview.startsWith('blob:')) {
       URL.revokeObjectURL(img.preview)
@@ -1351,8 +1344,6 @@ onUnmounted(() => {
   }
   recordingStreamRef.value?.getTracks().forEach(track => track.stop())
   recordingStreamRef.value = null
-
-  // Stop any ongoing speech
   if (speechSynthesis.value) {
     speechSynthesis.value.cancel()
   }
@@ -1360,7 +1351,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Custom scrollbar */
 .overflow-y-auto::-webkit-scrollbar {
   width: 8px;
 }
