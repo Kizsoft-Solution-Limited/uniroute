@@ -289,9 +289,9 @@ const handleVerify = async () => {
   try {
     const response = await authApi.verifyEmail(verificationToken.value)
     
-    // Store auth data
-    authStore.token = response.token
-    authStore.user = response.user
+    // Store auth data (coerce undefined to null for store types)
+    authStore.token = response.token ?? null
+    authStore.user = response.user ?? null
     
     verified.value = true
     
