@@ -275,15 +275,15 @@ func (r *ConversationRepository) GetMessages(ctx context.Context, conversationID
 			return nil, fmt.Errorf("failed to scan message: %w", err)
 		}
 
-		// Unmarshal content
-		if err := json.Unmarshal(contentJSONB, &msg.Content); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal content: %w", err)
+		if len(contentJSONB) > 0 {
+			if err := json.Unmarshal(contentJSONB, &msg.Content); err != nil {
+				// Resilient: if content is not valid JSON, treat as plain string (e.g. legacy or malformed)
+				msg.Content = string(contentJSONB)
+			}
 		}
-
-		// Unmarshal metadata
 		if len(metadataJSONB) > 0 {
 			if err := json.Unmarshal(metadataJSONB, &msg.Metadata); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal metadata: %w", err)
+				msg.Metadata = nil
 			}
 		}
 

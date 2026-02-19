@@ -325,6 +325,7 @@ func (tc *TunnelClient) Connect() error {
 	response.Subdomain, _ = responseData["subdomain"].(string)
 	response.PublicURL, _ = responseData["public_url"].(string)
 	response.Status, _ = responseData["status"].(string)
+	response.Region, _ = responseData["region"].(string)
 
 	tc.mu.Lock()
 	tc.tunnel = &TunnelInfo{
@@ -332,6 +333,7 @@ func (tc *TunnelClient) Connect() error {
 		Subdomain: response.Subdomain,
 		PublicURL: response.PublicURL,
 		Status:    response.Status,
+		Region:    response.Region,
 	}
 	tc.subdomain = response.Subdomain
 	tc.tunnelID = response.TunnelID

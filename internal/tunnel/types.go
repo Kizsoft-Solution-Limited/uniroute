@@ -48,6 +48,7 @@ type InitResponse struct {
 	Subdomain string `json:"subdomain"`
 	PublicURL string `json:"public_url"`
 	Status    string `json:"status"`
+	Region    string `json:"region,omitempty"` // Where the tunnel server runs, e.g. "Europe (eu)"
 }
 
 type TunnelMessage struct {
@@ -102,6 +103,7 @@ type TunnelInfo struct {
 	Subdomain string
 	PublicURL string
 	Status    string
+	Region    string // Where the tunnel server runs, e.g. "Europe (eu)"
 }
 
 type TunnelStatus struct {

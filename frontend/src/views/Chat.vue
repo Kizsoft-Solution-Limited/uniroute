@@ -162,6 +162,17 @@
             class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
           />
         </div>
+        <div class="flex items-center gap-2">
+          <input
+            id="speak-responses"
+            v-model="speakResponsesEnabled"
+            type="checkbox"
+            class="rounded border-gray-300 dark:border-gray-600"
+          />
+          <label for="speak-responses" class="text-sm text-gray-700 dark:text-gray-300">
+            Speak responses (read assistant reply aloud)
+          </label>
+        </div>
       </div>
     </Card>
 
@@ -646,6 +657,7 @@ const isRecording = ref(false)
 const recognition: any = ref(null)
 const transcribedText = ref('')
 const speechSynthesis = ref<SpeechSynthesis | null>(null)
+const speakResponsesEnabled = ref(false) // opt-in: speak assistant response with TTS
 
 // Image error tracking
 const imageErrors = ref(new Set<number>())
@@ -912,8 +924,8 @@ const handleSend = async () => {
       showToast('Failed to get response: ' + (error.message || 'Unknown error'), 'error')
     }
 
-    // Speak the response if text-to-speech is available (after streaming completes)
-    if (speechSynthesis.value && assistantMessage.content) {
+    // Speak the response only if user enabled "Speak responses" in settings
+    if (speakResponsesEnabled.value && speechSynthesis.value && assistantMessage.content) {
       speakText(assistantMessage.content)
     }
 
@@ -1083,23 +1095,31 @@ const loadConversations = async () => {
 }
 
 const loadConversation = async (id: string) => {
+  const conversationId = id != null ? (typeof id === 'string' ? id : String(id)) : ''
+  if (!conversationId) {
+    showToast('Cannot load: conversation ID missing', 'error')
+    return
+  }
   try {
-    const data = await conversationsApi.getConversation(id)
-    currentConversationId.value = id
+    const data = await conversationsApi.getConversation(conversationId)
+    if (!data?.conversation) {
+      showToast('Invalid response: conversation missing', 'error')
+      return
+    }
+    currentConversationId.value = conversationId
     selectedModel.value = data.conversation.model || 'gpt-4'
-    
-    // Convert stored messages to ChatMessage format
-    messages.value = data.messages.map(msg => ({
-      role: msg.role,
-      content: msg.content,
+    const rawMessages = Array.isArray(data.messages) ? data.messages : []
+    messages.value = rawMessages.map((msg: any) => ({
+      role: msg.role ?? 'user',
+      content: msg.content ?? '',
       metadata: msg.metadata || undefined
     }))
-    
     showToast('Conversation loaded', 'success')
-    showMobileConversations.value = false // Close mobile drawer
-  } catch (error) {
+    showMobileConversations.value = false
+  } catch (error: any) {
     console.error('Failed to load conversation:', error)
-    showToast('Failed to load conversation', 'error')
+    const msg = error.response?.data?.error ?? error.response?.data?.message ?? error.message ?? 'Failed to load conversation'
+    showToast(typeof msg === 'string' ? msg : 'Failed to load conversation', 'error')
   }
 }
 

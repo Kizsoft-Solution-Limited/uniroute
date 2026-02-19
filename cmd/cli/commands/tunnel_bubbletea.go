@@ -265,6 +265,14 @@ type versionUpdateMsg *versioncheck.VersionInfo
 type updateProgressMsg string
 type terminateMsg struct{}
 
+// regionDisplay returns the region string for the CLI (where the tunnel server runs). Like ngrok "Region: Europe (eu)".
+func regionDisplay(info *tunnel.TunnelInfo) string {
+	if info != nil && info.Region != "" {
+		return info.Region
+	}
+	return "Local"
+}
+
 func initialTunnelModel(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, accountDisplay string, serverURL string, localURL string) *tunnelModel {
 	ctx, cancel := context.WithCancel(context.Background())
 	vp := viewport.New(80, 20)
@@ -338,7 +346,7 @@ func initialTunnelModel(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, ac
 		sessionStatus:    fmt.Sprintf("%s %s", color.Green("●"), color.Green("online")),
 		account:          accountDisplay,
 		version:          color.Gray(currentVersion),
-		region:           "Local",
+		region:           regionDisplay(info),
 		latency:          "0ms",
 		publicURL:        info.PublicURL,
 		forwarding:       fmt.Sprintf("%s %s %s", color.Cyan(info.PublicURL), color.Gray("->"), color.Bold(localURL)),
@@ -443,6 +451,7 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		status := string(msg)
+		m.lastStatus = m.connectionStatus // track for clear-on-change in View
 		if m.internetOnline {
 			isReconnecting := m.client.IsReconnecting()
 			isConnected := m.client.IsConnected()
@@ -575,28 +584,21 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+const tunnelHeaderLines = 28 // fixed height so Connection/Session status always stay at top
+
 func (m *tunnelModel) View() string {
-	header := strings.Builder{}
 	currentStatus := m.connectionStatus
 	statusChanged := m.lastStatus != "" && m.lastStatus != currentStatus
+	needClear := m.terminated || statusChanged || m.lastStatus == ""
 
-	// When terminated, always clear and put cursor at top so status stays in place
-	if m.terminated {
+	header := strings.Builder{}
+	if needClear {
 		header.WriteString("\033[2J\033[H")
-	} else if statusChanged || m.lastStatus == "" {
-		header.WriteString("\033[2J\033[H")
-	}
-
-	if statusChanged {
-		m.lastStatus = currentStatus
-	} else if m.lastStatus == "" {
-		m.lastStatus = currentStatus
 	}
 
 	header.WriteString("\n")
 	header.WriteString(color.Cyan("Starting UniRoute Tunnel..."))
 	header.WriteString("\n\n")
-
 	header.WriteString(fmt.Sprintf("Connection Status             %s\n", m.connectionStatus))
 	header.WriteString(fmt.Sprintf("Session Status                %s\n", m.sessionStatus))
 	header.WriteString(fmt.Sprintf("Account                       %s\n", color.Gray(m.account)))
@@ -615,16 +617,29 @@ func (m *tunnelModel) View() string {
 	header.WriteString(fmt.Sprintf("   %s\n", m.forwarding))
 	header.WriteString("\n")
 	header.WriteString(color.Yellow(m.quote))
+
+	var body string
 	if m.terminated {
 		header.WriteString("\n\n")
 		header.WriteString(color.Gray("Tunnel stopped. Goodbye."))
-		header.WriteString("\n")
-		return header.String()
+		body = "\n"
+	} else {
+		header.WriteString("\n\nPress Ctrl+C to stop\n\n")
+		header.WriteString("HTTP Requests\n")
+		header.WriteString("-------------\n")
+		body = m.viewport.View()
 	}
-	header.WriteString("\n\nPress Ctrl+C to stop\n\n")
-	header.WriteString("HTTP Requests\n")
-	header.WriteString("-------------\n")
-	return header.String() + m.viewport.View()
+
+	// Pad header to fixed height so status lines never move (Bubble Tea reflows correctly)
+	s := header.String()
+	lines := strings.Count(s, "\n")
+	if len(s) > 0 && !strings.HasSuffix(s, "\n") {
+		lines++
+	}
+	if lines < tunnelHeaderLines {
+		s += strings.Repeat("\n", tunnelHeaderLines-lines)
+	}
+	return s + body
 }
 
 func (m *tunnelModel) checkInternet() tea.Cmd {

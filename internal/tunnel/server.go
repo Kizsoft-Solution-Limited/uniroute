@@ -1614,12 +1614,14 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.tunnelsMu.Unlock()
 	}
 
+	region := getEnv("TUNNEL_REGION", "")
 	response := InitResponse{
 		Type:      MsgTypeTunnelCreated,
 		TunnelID:  tunnelID,
 		Subdomain: subdomain,
 		PublicURL: publicURL,
 		Status:    "active",
+		Region:    region,
 	}
 	if err := ws.WriteJSON(response); err != nil {
 		ts.logger.Error().Err(err).Msg("Failed to send tunnel creation response")
