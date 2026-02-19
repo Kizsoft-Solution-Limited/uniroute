@@ -57,6 +57,15 @@ type ChatRequestWithConversation struct {
 	ConversationID *string `json:"conversation_id,omitempty"` // Optional: save to conversation
 }
 
+// chatStreamRequest has conversation_id as explicit field so JSON binding never misses it
+type chatStreamRequest struct {
+	ConversationID *string               `json:"conversation_id,omitempty"`
+	Model          string                `json:"model"`
+	Messages       []providers.Message   `json:"messages"`
+	Temperature    float64               `json:"temperature,omitempty"`
+	MaxTokens      int                   `json:"max_tokens,omitempty"`
+}
+
 func (h *ChatHandler) HandleChat(c *gin.Context) {
 	var reqWithConv ChatRequestWithConversation
 	if err := c.ShouldBindJSON(&reqWithConv); err != nil {
@@ -207,8 +216,8 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 }
 
 func (h *ChatHandler) HandleChatStream(c *gin.Context) {
-	var reqWithConv ChatRequestWithConversation
-	if err := c.ShouldBindJSON(&reqWithConv); err != nil {
+	var streamReq chatStreamRequest
+	if err := c.ShouldBindJSON(&streamReq); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   errors.ErrInvalidRequest.Error(),
 			"details": err.Error(),
@@ -216,7 +225,16 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 		return
 	}
 
-	req := reqWithConv.ChatRequest
+	req := providers.ChatRequest{
+		Model:       streamReq.Model,
+		Messages:    streamReq.Messages,
+		Temperature: streamReq.Temperature,
+		MaxTokens:   streamReq.MaxTokens,
+	}
+	reqWithConv := ChatRequestWithConversation{
+		ChatRequest:     req,
+		ConversationID:  streamReq.ConversationID,
+	}
 
 	if req.Model == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -321,6 +339,16 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 						if _, addErr := h.convRepo.AddMessage(c.Request.Context(), conversationID, "assistant", fullContent.String(), metadata); addErr != nil {
 							h.logger.Warn().Err(addErr).Str("conversation_id", conversationID.String()).Msg("Failed to save assistant message to conversation")
 						}
+					} else {
+						h.logger.Warn().Err(err).Str("conversation_id_raw", *reqWithConv.ConversationID).Msg("Invalid conversation_id, not saving messages")
+					}
+				} else {
+					if reqWithConv.ConversationID == nil {
+						h.logger.Debug().Msg("Chat stream: no conversation_id in request, messages not persisted")
+					} else if h.convRepo == nil {
+						h.logger.Debug().Msg("Chat stream: convRepo nil, messages not persisted")
+					} else if userID == nil {
+						h.logger.Debug().Msg("Chat stream: user_id nil, messages not persisted")
 					}
 				}
 

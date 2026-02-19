@@ -584,18 +584,37 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-const tunnelHeaderLines = 28 // fixed height so Connection/Session status always stay at top
+const tunnelHeaderLines = 28
+
+// terminatedView returns a minimal final view so status lines stay at top and nothing scrolls.
+func (m *tunnelModel) terminatedView() string {
+	var b strings.Builder
+	b.WriteString("\033[2J\033[H")
+	b.WriteString("\n")
+	b.WriteString(color.Cyan("Starting UniRoute Tunnel..."))
+	b.WriteString("\n\n")
+	b.WriteString(fmt.Sprintf("Connection Status             %s\n", m.connectionStatus))
+	b.WriteString(fmt.Sprintf("Session Status                %s\n", m.sessionStatus))
+	b.WriteString("\n")
+	b.WriteString(color.Gray("Tunnel stopped. Goodbye."))
+	b.WriteString("\n")
+	return b.String()
+}
 
 func (m *tunnelModel) View() string {
 	currentStatus := m.connectionStatus
 	statusChanged := m.lastStatus != "" && m.lastStatus != currentStatus
 	needClear := m.terminated || statusChanged || m.lastStatus == ""
 
+	// When terminated, only show status + goodbye so layout never breaks
+	if m.terminated {
+		return m.terminatedView()
+	}
+
 	header := strings.Builder{}
 	if needClear {
 		header.WriteString("\033[2J\033[H")
 	}
-
 	header.WriteString("\n")
 	header.WriteString(color.Cyan("Starting UniRoute Tunnel..."))
 	header.WriteString("\n\n")
@@ -617,20 +636,10 @@ func (m *tunnelModel) View() string {
 	header.WriteString(fmt.Sprintf("   %s\n", m.forwarding))
 	header.WriteString("\n")
 	header.WriteString(color.Yellow(m.quote))
+	header.WriteString("\n\nPress Ctrl+C to stop\n\n")
+	header.WriteString("HTTP Requests\n")
+	header.WriteString("-------------\n")
 
-	var body string
-	if m.terminated {
-		header.WriteString("\n\n")
-		header.WriteString(color.Gray("Tunnel stopped. Goodbye."))
-		body = "\n"
-	} else {
-		header.WriteString("\n\nPress Ctrl+C to stop\n\n")
-		header.WriteString("HTTP Requests\n")
-		header.WriteString("-------------\n")
-		body = m.viewport.View()
-	}
-
-	// Pad header to fixed height so status lines never move (Bubble Tea reflows correctly)
 	s := header.String()
 	lines := strings.Count(s, "\n")
 	if len(s) > 0 && !strings.HasSuffix(s, "\n") {
@@ -639,7 +648,7 @@ func (m *tunnelModel) View() string {
 	if lines < tunnelHeaderLines {
 		s += strings.Repeat("\n", tunnelHeaderLines-lines)
 	}
-	return s + body
+	return s + m.viewport.View()
 }
 
 func (m *tunnelModel) checkInternet() tea.Cmd {
@@ -950,8 +959,13 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 		p.Quit()
 	}()
 
-	if _, err := p.Run(); err != nil {
+	finalModel, err := p.Run()
+	if err != nil {
 		return err
+	}
+	// After Bubble Tea exits, re-print terminated view so it appears in main buffer (status at top)
+	if tm, ok := finalModel.(*tunnelModel); ok && tm.terminated {
+		fmt.Print(tm.terminatedView())
 	}
 	fmt.Println()
 	fmt.Println(color.Yellow("Shutting down tunnel..."))
