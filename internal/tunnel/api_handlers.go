@@ -110,23 +110,34 @@ func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request
 				"created_at":    dbTunnel.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 				"last_active":   dbTunnel.LastActive.Format("2006-01-02T15:04:05Z07:00"),
 			}
+			totalReq, totalBytes, avgLatency, errorCount, lastReqAt := int64(0), int64(0), float64(0), int64(0), time.Time{}.Format("2006-01-02T15:04:05Z07:00")
+			connTotal, connOpen, rt1, rt5, p50, p90 := int64(0), int64(0), float64(0), float64(0), float64(0), float64(0)
+			if redisStats, _ := ts.statsCollector.GetStatsFromRedis(r.Context(), dbTunnel.ID); redisStats != nil {
+				totalReq = redisStats.TotalRequests
+				totalBytes = redisStats.TotalBytes
+				avgLatency = redisStats.AvgLatencyMs
+				errorCount = redisStats.ErrorCount
+				lastReqAt = redisStats.LastRequestAt.Format("2006-01-02T15:04:05Z07:00")
+				conn := GetConnectionStatsFromTunnelStats(redisStats, 0)
+				connTotal, connOpen, rt1, rt5, p50, p90 = conn.Total, conn.Open, conn.RT1, conn.RT5, conn.P50, conn.P90
+			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"tunnel": tunnelInfo,
 				"stats": map[string]interface{}{
-					"total_requests":  int64(0),
-					"total_bytes":     int64(0),
-					"avg_latency_ms":  float64(0),
-					"error_count":     int64(0),
-					"last_request_at": time.Time{}.Format("2006-01-02T15:04:05Z07:00"),
+					"total_requests":  totalReq,
+					"total_bytes":     totalBytes,
+					"avg_latency_ms":  avgLatency,
+					"error_count":     errorCount,
+					"last_request_at": lastReqAt,
 				},
 				"connections": map[string]interface{}{
-					"total": int64(0),
-					"open":  int64(0),
-					"rt1":   float64(0),
-					"rt5":   float64(0),
-					"p50":   float64(0),
-					"p90":   float64(0),
+					"total": connTotal,
+					"open":  connOpen,
+					"rt1":   rt1,
+					"rt5":   rt5,
+					"p50":   p50,
+					"p90":   p90,
 				},
 			})
 			return

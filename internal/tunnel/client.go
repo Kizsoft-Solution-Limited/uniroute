@@ -443,10 +443,8 @@ func (tc *TunnelClient) handleMessages() {
 				tc.mu.Lock()
 				tc.isConnected = false
 				tc.mu.Unlock()
-				// Notify status change immediately
 				tc.notifyStatusChange()
-				// Attempt to reconnect
-				tc.reconnect()
+				go tc.reconnect()
 				return
 			}
 
@@ -479,10 +477,8 @@ func (tc *TunnelClient) handleMessages() {
 				tc.mu.Lock()
 				tc.isConnected = false
 				tc.mu.Unlock()
-				// Notify status change immediately
 				tc.notifyStatusChange()
-				// Attempt to reconnect
-				tc.reconnect()
+				go tc.reconnect()
 				return
 			} else {
 				// Log other errors (like unexpected EOF without close code) at debug level

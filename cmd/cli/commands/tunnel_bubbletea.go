@@ -881,7 +881,7 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 						continue
 					}
 
-					if status == "online" && actualIsConnected && !actualIsReconnecting {
+					if status == "online" && actualIsConnected {
 						p.Send(connectionStatusMsg(status))
 						p.Send(sessionStatusMsg(status))
 					} else if status == "reconnecting" && actualIsReconnecting && !actualIsConnected {

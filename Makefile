@@ -85,6 +85,10 @@ build-cli:
 	@echo "Building CLI..."
 	@CGO_ENABLED=0 go build -o bin/uniroute cmd/cli/main.go
 
+# Test Ollama at OLLAMA_BASE_URL (default http://localhost:11434)
+test-ollama:
+	@./scripts/test_ollama.sh
+
 # Test CLI manually
 test-cli: build-cli
 	@echo "Testing CLI commands..."

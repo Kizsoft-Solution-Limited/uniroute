@@ -42,7 +42,7 @@
                     {{ conv.title || 'New Conversation' }}
                   </div>
                   <div class="text-xs opacity-75 truncate">
-                    {{ formatDate(conv.updated_at) }}
+                    {{ formatDate(conv.updated_at ?? conv.UpdatedAt) }}
                   </div>
                 </div>
                 <button
@@ -559,7 +559,7 @@
                       {{ conv.title || 'New Conversation' }}
                     </div>
                     <div class="text-xs opacity-75 truncate">
-                      {{ formatDate(conv.updated_at) }}
+                      {{ formatDate(conv.updated_at ?? conv.UpdatedAt) }}
                     </div>
                   </div>
                   <button
@@ -1129,8 +1129,10 @@ const deleteConversation = async (id: string) => {
   }
 }
 
-const formatDate = (dateString: string): string => {
+const formatDate = (dateString: string | null | undefined): string => {
+  if (dateString == null || dateString === '') return 'Just now'
   const date = new Date(dateString)
+  if (Number.isNaN(date.getTime())) return 'Just now'
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMins = Math.floor(diffMs / 60000)

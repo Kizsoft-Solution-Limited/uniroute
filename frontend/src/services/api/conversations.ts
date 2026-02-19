@@ -7,6 +7,8 @@ export interface Conversation {
   model: string | null
   created_at: string
   updated_at: string
+  /** Backward compat if API ever returns PascalCase */
+  UpdatedAt?: string
 }
 
 export interface ConversationMessage {

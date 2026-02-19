@@ -75,19 +75,19 @@ type ErrorLog struct {
 }
 
 type Conversation struct {
-	ID        uuid.UUID  `db:"id"`
-	UserID    uuid.UUID  `db:"user_id"`
-	Title     *string    `db:"title"` // Nullable, auto-generated if not set
-	Model     *string    `db:"model"` // Nullable, default model for conversation
-	CreatedAt time.Time  `db:"created_at"`
-	UpdatedAt time.Time  `db:"updated_at"`
+	ID        uuid.UUID `json:"id" db:"id"`
+	UserID    uuid.UUID `json:"user_id" db:"user_id"`
+	Title     *string   `json:"title" db:"title"`
+	Model     *string   `json:"model" db:"model"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type Message struct {
-	ID             uuid.UUID              `db:"id"`
-	ConversationID uuid.UUID              `db:"conversation_id"`
-	Role           string                 `db:"role"` // 'system', 'user', 'assistant'
-	Content        interface{}            `db:"content"` // JSONB: string or []ContentPart
-	Metadata       map[string]interface{} `db:"metadata"` // JSONB: tokens, cost, provider, etc.
-	CreatedAt      time.Time              `db:"created_at"`
+	ID             uuid.UUID              `json:"id" db:"id"`
+	ConversationID uuid.UUID              `json:"conversation_id" db:"conversation_id"`
+	Role           string                 `json:"role" db:"role"`
+	Content        interface{}            `json:"content" db:"content"`
+	Metadata       map[string]interface{} `json:"metadata" db:"metadata"`
+	CreatedAt      time.Time              `json:"created_at" db:"created_at"`
 }

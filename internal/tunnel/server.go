@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
@@ -184,6 +185,10 @@ func (ts *TunnelServer) SetRepository(repo *TunnelRepository) {
 
 func (ts *TunnelServer) SetRateLimiter(limiter RateLimiterInterface) {
 	ts.rateLimiter = limiter
+}
+
+func (ts *TunnelServer) SetStatsRedis(client *storage.RedisClient) {
+	ts.statsCollector.SetRedisClient(client)
 }
 
 func (ts *TunnelServer) SetDomainManager(manager *DomainManager) {

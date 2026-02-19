@@ -1,9 +1,11 @@
 package tunnel
 
 import (
+	"context"
 	"sync"
 	"time"
 
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
 	"github.com/rs/zerolog"
 )
 
@@ -19,9 +21,11 @@ type TunnelStats struct {
 }
 
 type StatsCollector struct {
-	stats  map[string]*TunnelStats
-	mu     sync.RWMutex
-	logger zerolog.Logger
+	stats       map[string]*TunnelStats
+	mu          sync.RWMutex
+	redisClient *storage.RedisClient
+	redisMu     sync.RWMutex
+	logger      zerolog.Logger
 }
 
 func NewStatsCollector(logger zerolog.Logger) *StatsCollector {
@@ -63,6 +67,8 @@ func (sc *StatsCollector) RecordRequest(tunnelID string, latencyMs int, requestS
 	}
 	stats.LastRequestAt = time.Now()
 	stats.mu.Unlock()
+
+	sc.recordRequestRedis(context.Background(), tunnelID, latencyMs, requestSize, responseSize, isError)
 }
 
 func (sc *StatsCollector) GetStats(tunnelID string) *TunnelStats {
@@ -127,16 +133,20 @@ func (sc *StatsCollector) GetConnectionStats(tunnelID string, openConnections in
 	if stats == nil {
 		return ConnectionStats{}
 	}
+	return GetConnectionStatsFromTunnelStats(stats, openConnections)
+}
 
+// GetConnectionStatsFromTunnelStats builds ConnectionStats from a TunnelStats (e.g. from Redis).
+func GetConnectionStatsFromTunnelStats(stats *TunnelStats, openConnections int64) ConnectionStats {
+	if stats == nil {
+		return ConnectionStats{}
+	}
 	stats.mu.RLock()
 	defer stats.mu.RUnlock()
-
 	p50 := calculatePercentile(stats.latencyHistory, 50)
 	p90 := calculatePercentile(stats.latencyHistory, 90)
-
 	rt1 := calculateRecentAverage(stats.latencyHistory, 60)
 	rt5 := calculateRecentAverage(stats.latencyHistory, 300)
-
 	return ConnectionStats{
 		Total: stats.TotalRequests,
 		Open:  openConnections,

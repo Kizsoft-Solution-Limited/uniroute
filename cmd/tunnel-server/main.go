@@ -135,7 +135,8 @@ func main() {
 			defer redisClient.Close()
 			redisRateLimiter := tunnel.NewRedisRateLimiter(redisClient, log)
 			server.SetRateLimiter(redisRateLimiter)
-			log.Info().Msg("Redis connected, distributed rate limiting enabled")
+			server.SetStatsRedis(redisClient)
+			log.Info().Msg("Redis connected, distributed rate limiting and stats enabled")
 		}
 	}
 
