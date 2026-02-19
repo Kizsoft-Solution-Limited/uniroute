@@ -739,11 +739,9 @@ const modelGroups = computed(() => {
   })
 })
 
-// Auto-scroll to bottom when new messages arrive
+// Auto-scroll to bottom when new messages arrive (user send, etc.)
 watch(messages, () => {
-  nextTick(() => {
-    scrollToBottom()
-  })
+  scrollToBottomAfterUpdate()
 }, { deep: true })
 
 // Lock body scroll when mobile drawer is open
@@ -759,6 +757,13 @@ const scrollToBottom = () => {
   if (messagesContainer.value) {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
   }
+}
+
+// Scroll after DOM/layout update (e.g. after streaming or loading conversation)
+const scrollToBottomAfterUpdate = () => {
+  nextTick(() => {
+    requestAnimationFrame(() => scrollToBottom())
+  })
 }
 
 const handleSend = async () => {
@@ -880,7 +885,7 @@ const handleSend = async () => {
           if (chunk.content) {
             assistantMessage.content += chunk.content
             messages.value[assistantMessageIndex] = { ...assistantMessage }
-            scrollToBottom()
+            scrollToBottomAfterUpdate()
           }
 
           // Update metadata when stream completes
@@ -892,6 +897,7 @@ const handleSend = async () => {
               latency: 0 // Latency tracking can be added later
             }
             messages.value[assistantMessageIndex] = { ...assistantMessage }
+            scrollToBottomAfterUpdate()
           }
 
           // Handle errors
@@ -1116,6 +1122,7 @@ const loadConversation = async (id: string) => {
     }))
     showToast('Conversation loaded', 'success')
     showMobileConversations.value = false
+    scrollToBottomAfterUpdate()
   } catch (error: any) {
     console.error('Failed to load conversation:', error)
     const msg = error.response?.data?.error ?? error.response?.data?.message ?? error.message ?? 'Failed to load conversation'
