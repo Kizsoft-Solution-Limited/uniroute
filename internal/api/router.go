@@ -146,6 +146,9 @@ func SetupRouter(
 		authProtected.POST("/chat/stream", chatHandler.HandleChatStream) // SSE streaming endpoint
 		authProtected.GET("/chat/ws", chatHandler.HandleChatWebSocket)
 
+		authProviderHandler := handlers.NewProviderHandler(router, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		authProtected.GET("/providers", authProviderHandler.ListProviders)
+
 		if requestRepo != nil {
 			analyticsHandler := handlers.NewAnalyticsHandler(requestRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 			authProtected.GET("/analytics/usage", analyticsHandler.GetUsageStats)

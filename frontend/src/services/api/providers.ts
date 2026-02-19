@@ -12,7 +12,9 @@ export interface ProvidersResponse {
 
 export const providersApi = {
   async list(): Promise<ProvidersResponse> {
-    const response = await apiClient.get<ProvidersResponse>('/v1/providers')
+    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')
+    const endpoint = token ? '/auth/providers' : '/v1/providers'
+    const response = await apiClient.get<ProvidersResponse>(endpoint)
     return response.data
   }
 }
