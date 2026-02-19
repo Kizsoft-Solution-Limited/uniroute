@@ -46,5 +46,24 @@ export const usersApi = {
     })
     return response.data
   },
+
+  /**
+   * Delete a single user and all related data (admin only)
+   */
+  async delete(userId: string): Promise<{ message: string }> {
+    const response = await apiClient.delete<{ message: string }>(`/admin/users/${userId}`)
+    return response.data
+  },
+
+  /**
+   * Delete multiple users and all their related data (admin only)
+   */
+  async deleteMany(userIds: string[]): Promise<{ message: string; deleted: number; failed: string[]; error?: string }> {
+    const response = await apiClient.post<{ message: string; deleted: number; failed: string[]; error?: string }>(
+      '/admin/users/delete',
+      { user_ids: userIds }
+    )
+    return response.data
+  },
 }
 

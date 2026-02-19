@@ -303,6 +303,8 @@ func SetupRouter(
 			userHandler := handlers.NewUserHandler(adminUserRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 			admin.GET("/users", userHandler.HandleListUsers)
 			admin.PUT("/users/:id/roles", userHandler.HandleUpdateUserRoles)
+			admin.DELETE("/users/:id", userHandler.HandleDeleteUser)
+			admin.POST("/users/delete", userHandler.HandleDeleteUsers)
 		}
 	}
 

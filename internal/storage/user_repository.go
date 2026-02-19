@@ -480,3 +480,24 @@ func (r *UserRepository) UpdateUserEmailVerified(ctx context.Context, userID uui
 
 	return nil
 }
+
+func (r *UserRepository) CountAdmins(ctx context.Context) (int, error) {
+	query := `SELECT COUNT(*) FROM users WHERE 'admin' = ANY(COALESCE(roles, ARRAY['user']::TEXT[]))`
+	var count int
+	err := r.client.pool.QueryRow(ctx, query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count admins: %w", err)
+	}
+	return count, nil
+}
+
+func (r *UserRepository) DeleteUser(ctx context.Context, userID uuid.UUID) error {
+	result, err := r.client.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}

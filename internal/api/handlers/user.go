@@ -291,3 +291,135 @@ func (h *UserHandler) HandleListUsers(c *gin.Context) {
 		"total": total,
 	})
 }
+
+func (h *UserHandler) HandleDeleteUser(c *gin.Context) {
+	currentIDStr, _ := c.Get("user_id")
+	currentID, _ := uuid.Parse(currentIDStr.(string))
+
+	userIDParam := c.Param("id")
+	targetID, err := uuid.Parse(userIDParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	if targetID == currentID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You cannot delete your own account"})
+		return
+	}
+
+	user, err := h.userRepo.GetUserByID(c.Request.Context(), targetID)
+	if err != nil {
+		if err == storage.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		h.logger.Error().Err(err).Str("user_id", targetID.String()).Msg("Failed to get user for delete")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user"})
+		return
+	}
+
+	isAdmin := false
+	for _, r := range user.Roles {
+		if r == "admin" {
+			isAdmin = true
+			break
+		}
+	}
+	if isAdmin {
+		count, err := h.userRepo.CountAdmins(c.Request.Context())
+		if err != nil {
+			h.logger.Error().Err(err).Msg("Failed to count admins")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check admins"})
+			return
+		}
+		if count <= 1 {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete the last admin"})
+			return
+		}
+	}
+
+	err = h.userRepo.DeleteUser(c.Request.Context(), targetID)
+	if err != nil {
+		if err == storage.ErrUserNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+		h.logger.Error().Err(err).Str("user_id", targetID.String()).Msg("Failed to delete user")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
+}
+
+type DeleteUsersRequest struct {
+	UserIDs []string `json:"user_ids" binding:"required,min=1,max=100,dive,uuid"`
+}
+
+func (h *UserHandler) HandleDeleteUsers(c *gin.Context) {
+	currentIDStr, _ := c.Get("user_id")
+	currentID, _ := uuid.Parse(currentIDStr.(string))
+
+	var req DeleteUsersRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	deleted := 0
+	var failed []string
+	var forbidden string
+
+	for _, idStr := range req.UserIDs {
+		targetID, err := uuid.Parse(idStr)
+		if err != nil {
+			failed = append(failed, idStr)
+			continue
+		}
+		if targetID == currentID {
+			forbidden = "Cannot delete your own account"
+			continue
+		}
+		user, err := h.userRepo.GetUserByID(c.Request.Context(), targetID)
+		if err != nil {
+			failed = append(failed, idStr)
+			continue
+		}
+		isAdmin := false
+		for _, r := range user.Roles {
+			if r == "admin" {
+				isAdmin = true
+				break
+			}
+		}
+		if isAdmin {
+			count, err := h.userRepo.CountAdmins(c.Request.Context())
+			if err != nil {
+				failed = append(failed, idStr)
+				continue
+			}
+			if count <= 1 {
+				forbidden = "Cannot delete the last admin"
+				continue
+			}
+		}
+		if err := h.userRepo.DeleteUser(c.Request.Context(), targetID); err != nil {
+			failed = append(failed, idStr)
+		} else {
+			deleted++
+		}
+	}
+
+	if forbidden != "" && deleted == 0 && len(failed) == 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": forbidden})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Bulk delete completed",
+		"deleted": deleted,
+		"failed":  failed,
+		"error":   forbidden,
+	})
+}
