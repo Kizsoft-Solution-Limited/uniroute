@@ -41,13 +41,13 @@
           <div>
             <h3 class="text-2xl font-semibold text-white mb-2">Email Verified!</h3>
             <p class="text-slate-300 mb-6">
-              Your email has been successfully verified. You can now access all features.
+              Your email has been successfully verified. You can now sign in to your account.
             </p>
             <router-link
-              to="/dashboard"
+              to="/login"
               class="inline-block px-8 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg text-base font-semibold hover:from-blue-600 hover:to-indigo-600 transition-all shadow-lg shadow-blue-500/20"
             >
-              Go to Dashboard
+              Sign in
             </router-link>
           </div>
         </div>
@@ -295,9 +295,9 @@ const handleVerify = async () => {
     
     verified.value = true
     
-    // Redirect to dashboard after 2 seconds
+    // Redirect to login after 2 seconds so user can sign in
     setTimeout(() => {
-      router.push('/dashboard')
+      router.push('/login')
     }, 2000)
   } catch (err: any) {
     const appError = ErrorHandler.handleApiError(err)

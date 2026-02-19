@@ -24,11 +24,12 @@ type Config struct {
 	// BYOK: Encryption key for user provider keys
 	ProviderKeyEncryptionKey string
 	// Email/SMTP configuration
-	SMTPHost     string
-	SMTPPort     int
-	SMTPUsername string
-	SMTPPassword string
-	SMTPFrom     string
+	SMTPHost       string
+	SMTPPort       int
+	SMTPUsername   string
+	SMTPPassword   string
+	SMTPFrom       string
+	SMTPEncryption string // "ssl", "tls", or "" (none / use STARTTLS when available)
 	FrontendURL  string
 	// OAuth Configuration
 	GoogleOAuthClientID     string
@@ -87,6 +88,7 @@ func Load() *Config {
 		SMTPUsername:             getEnv("SMTP_USERNAME", ""),
 		SMTPPassword:             getEnv("SMTP_PASSWORD", ""),
 		SMTPFrom:                 getEnv("SMTP_FROM", ""),
+		SMTPEncryption:           getEnv("SMTP_ENCRYPTION", getEnv("SMTP_SECURE", "")),
 		FrontendURL:              getEnv("FRONTEND_URL", "http://localhost:3002"),
 		GoogleOAuthClientID:      getEnv("GOOGLE_OAUTH_CLIENT_ID", ""),
 		GoogleOAuthClientSecret:  getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),

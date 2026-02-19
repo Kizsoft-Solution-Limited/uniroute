@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +30,23 @@ On Windows, it downloads the latest release.`,
 
 func init() {
 	upgradeCmd.Flags().BoolVarP(&upgradeAutoYes, "yes", "y", false, "Auto-confirm upgrade without prompting")
+}
+
+func tryReplaceBinary(src, dst string) bool {
+	in, err := os.Open(src)
+	if err != nil {
+		return false
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		return false
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return false
+	}
+	return out.Sync() == nil
 }
 
 func runUpgrade(cmd *cobra.Command, args []string) error {
@@ -145,16 +163,18 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 			}
 			fmt.Println()
 			fmt.Println(color.Green("✓ Upgrade completed successfully!"))
-			if len(upgradeCmd) > 0 && upgradeCmd[0] == "go" {
+			if len(upgradeCmd) > 0 && upgradeCmd[0] == "go" && (runtime.GOOS == "darwin" || runtime.GOOS == "linux") {
 				currentExe, _ := os.Executable()
 				currentExe, _ = filepath.EvalSymlinks(currentExe)
 				if out, err := exec.Command("go", "env", "GOPATH").Output(); err == nil {
 					gopath := strings.TrimSpace(string(out))
 					if gopath != "" {
 						newBin := filepath.Join(gopath, "bin", "cli")
-						if currentExe != newBin {
-							if _, err := os.Stat(newBin); err == nil {
-								fmt.Println(color.Yellow("  You're running the CLI from a different location. To use the new version, run:"))
+						if !strings.HasPrefix(currentExe, filepath.Join(gopath, "bin")) {
+							if tryReplaceBinary(newBin, currentExe) {
+								fmt.Println(color.Green("  Binary updated. The new version will be used on the next run."))
+							} else {
+								fmt.Println(color.Yellow("  Run the command below to use the new version:"))
 								fmt.Printf("  %s\n", color.Bold(fmt.Sprintf("sudo cp %s %s", newBin, currentExe)))
 							}
 						}

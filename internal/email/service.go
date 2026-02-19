@@ -1,6 +1,7 @@
 package email
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -22,12 +23,14 @@ func (s *EmailService) GetConfig() map[string]interface{} {
 	username := os.Getenv("SMTP_USERNAME")
 	from := os.Getenv("SMTP_FROM")
 	passwordSet := os.Getenv("SMTP_PASSWORD") != ""
+	encryption := getSMTPEncryption()
 
 	return map[string]interface{}{
 		"host":       host,
 		"port":       port,
 		"username":   username,
 		"from":       from,
+		"encryption": encryption,
 		"configured": host != "" && username != "" && passwordSet,
 	}
 }
@@ -63,6 +66,17 @@ func (s *EmailService) getSMTPConfig() (host string, port int, username, passwor
 	return
 }
 
+func getSMTPEncryption() string {
+	e := strings.ToLower(strings.TrimSpace(os.Getenv("SMTP_ENCRYPTION")))
+	if e == "" {
+		e = strings.ToLower(strings.TrimSpace(os.Getenv("SMTP_SECURE")))
+	}
+	if e == "1" || e == "true" || e == "yes" {
+		return "ssl"
+	}
+	return e
+}
+
 func (s *EmailService) SendEmail(to, subject, body string) error {
 	host, port, username, password, from, configured := s.getSMTPConfig()
 
@@ -74,12 +88,48 @@ func (s *EmailService) SendEmail(to, subject, body string) error {
 	auth := smtp.PlainAuth("", username, password, host)
 	message := s.buildMessage(from, to, subject, body)
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
+
+	encryption := getSMTPEncryption()
+	if encryption == "ssl" || encryption == "tls" {
+		tlsConfig := &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}
+		conn, err := tls.Dial("tcp", addr, tlsConfig)
+		if err != nil {
+			s.logger.Error().Err(err).Str("host", host).Int("port", port).Msg("SMTP TLS connection failed")
+			return fmt.Errorf("SMTP TLS connection failed: %w", err)
+		}
+		defer conn.Close()
+		client, err := smtp.NewClient(conn, host)
+		if err != nil {
+			return fmt.Errorf("SMTP client failed: %w", err)
+		}
+		defer client.Close()
+		if err = client.Auth(auth); err != nil {
+			return fmt.Errorf("SMTP auth failed: %w", err)
+		}
+		if err = client.Mail(from); err != nil {
+			return fmt.Errorf("SMTP mail failed: %w", err)
+		}
+		if err = client.Rcpt(to); err != nil {
+			return fmt.Errorf("SMTP rcpt failed: %w", err)
+		}
+		w, err := client.Data()
+		if err != nil {
+			return fmt.Errorf("SMTP data failed: %w", err)
+		}
+		if _, err = w.Write([]byte(message)); err != nil {
+			return fmt.Errorf("SMTP write failed: %w", err)
+		}
+		if err = w.Close(); err != nil {
+			return fmt.Errorf("SMTP close failed: %w", err)
+		}
+		return nil
+	}
+
 	err := smtp.SendMail(addr, auth, from, []string{to}, []byte(message))
 	if err != nil {
 		s.logger.Error().Err(err).Str("to", to).Str("host", host).Int("port", port).Msg("Failed to send email")
 		return fmt.Errorf("failed to send email: %w", err)
 	}
-
 	return nil
 }
 

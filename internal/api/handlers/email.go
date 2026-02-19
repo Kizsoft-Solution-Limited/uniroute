@@ -148,8 +148,9 @@ func (h *EmailTestHandler) HandleGetEmailConfig(c *gin.Context) {
 		config["troubleshooting"] = gin.H{
 			"check_mailtrap": "Verify your Mailtrap inbox at https://mailtrap.io",
 			"check_credentials": "Ensure SMTP_USERNAME and SMTP_PASSWORD match your Mailtrap credentials",
-			"check_port": "Mailtrap typically uses port 587 (STARTTLS) or 2525",
+			"check_port": "Mailtrap typically uses port 587 (STARTTLS) or 2525; use 465 for SSL",
 			"check_host": "Mailtrap sandbox host: sandbox.smtp.mailtrap.io",
+			"check_encryption": "For port 465 set SMTP_ENCRYPTION=ssl or SMTP_SECURE=true",
 		}
 	} else {
 		config["note"] = "SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USERNAME, and SMTP_PASSWORD environment variables."
@@ -159,6 +160,7 @@ func (h *EmailTestHandler) HandleGetEmailConfig(c *gin.Context) {
 			"SMTP_USERNAME (your Mailtrap username)",
 			"SMTP_PASSWORD (your Mailtrap password)",
 			"SMTP_FROM (e.g., noreply@uniroute.co)",
+			"SMTP_ENCRYPTION (optional: ssl or tls for port 465; or SMTP_SECURE=true)",
 		}
 	}
 
