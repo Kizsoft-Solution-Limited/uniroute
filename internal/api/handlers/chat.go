@@ -52,13 +52,11 @@ func (h *ChatHandler) SetJWTService(jwtService *security.JWTService) {
 	h.jwtService = jwtService
 }
 
-// ChatRequestWithConversation extends ChatRequest with optional conversation_id
 type ChatRequestWithConversation struct {
 	providers.ChatRequest
-	ConversationID *string `json:"conversation_id,omitempty"` // Optional: save to conversation
+	ConversationID *string `json:"conversation_id,omitempty"`
 }
 
-// chatStreamRequest has conversation_id as explicit field so JSON binding never misses it
 type chatStreamRequest struct {
 	ConversationID *string               `json:"conversation_id,omitempty"`
 	Model          string                `json:"model"`
@@ -232,7 +230,6 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 		})
 		return
 	}
-	// Fallback: some clients may send conversation_id in a way that doesn't bind
 	if streamReq.ConversationID == nil {
 		var raw map[string]interface{}
 		if json.Unmarshal(body, &raw) == nil {
@@ -343,7 +340,6 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 				if reqWithConv.ConversationID != nil && h.convRepo != nil && userID != nil {
 					conversationID, err := uuid.Parse(*reqWithConv.ConversationID)
 					if err == nil {
-						// Use background context so save succeeds even if request is already closing
 						ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 						defer cancel()
 						if len(req.Messages) > 0 {

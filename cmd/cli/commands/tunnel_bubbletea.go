@@ -265,7 +265,6 @@ type versionUpdateMsg *versioncheck.VersionInfo
 type updateProgressMsg string
 type terminateMsg struct{}
 
-// regionDisplay returns the region string for the CLI (where the tunnel server runs). Like ngrok "Region: Europe (eu)".
 func regionDisplay(info *tunnel.TunnelInfo) string {
 	if info != nil && info.Region != "" {
 		return info.Region
@@ -586,7 +585,6 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 const tunnelHeaderLines = 28
 
-// terminatedView uses the same header layout as the live view so Connection/Session status stay in the same place.
 func (m *tunnelModel) terminatedView() string {
 	var b strings.Builder
 	b.WriteString("\033[2J\033[H")
@@ -971,7 +969,6 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 	if err != nil {
 		return err
 	}
-	// After Bubble Tea exits, re-print terminated view so it appears in main buffer (status at top)
 	if tm, ok := finalModel.(*tunnelModel); ok && tm.terminated {
 		fmt.Print(tm.terminatedView())
 	}

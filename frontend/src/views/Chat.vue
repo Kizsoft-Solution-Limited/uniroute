@@ -683,15 +683,12 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   local: 'Ollama'
 }
 
-// Must match models on the Ollama host (ollama list). Fallback when API cannot reach Ollama.
 const DEFAULT_OLLAMA_MODELS = [
   { value: 'llama3.2:3b', label: 'Llama 3.2 3B' },
   { value: 'llama3.2:latest', label: 'Llama 3.2 (latest)' },
   { value: 'mistral:latest', label: 'Mistral (latest)' }
 ]
 
-// Fallback when backend cannot reach vLLM. Real list comes from the host (GET /v1/models).
-// On the host, run e.g.: vllm serve <model> (e.g. mistralai/Mistral-7B-Instruct-v0.2)
 const DEFAULT_VLLM_MODELS = [
   { value: 'mistralai/Mistral-7B-Instruct-v0.2', label: 'Mistral 7B Instruct' },
   { value: 'meta-llama/Llama-2-7b-chat-hf', label: 'Llama 2 7B Chat' }
@@ -741,7 +738,6 @@ const modelGroups = computed(() => {
   })
 })
 
-// Auto-scroll to bottom when new messages arrive (user send, etc.)
 watch(messages, () => {
   scrollToBottomAfterUpdate()
 }, { deep: true })
@@ -764,7 +760,6 @@ const scrollToBottom = () => {
   }
 }
 
-// Scroll after DOM/layout update (e.g. after streaming or loading conversation)
 const scrollToBottomAfterUpdate = () => {
   nextTick(() => {
     requestAnimationFrame(() => scrollToBottom())
@@ -935,13 +930,9 @@ const handleSend = async () => {
       showToast('Failed to get response: ' + (error.message || 'Unknown error'), 'error')
     }
 
-    // Speak the response only if user enabled "Speak responses" in settings
     if (speakResponsesEnabled.value && speechSynthesis.value && assistantMessage.content) {
       speakText(assistantMessage.content)
     }
-
-    // Note: Success toast is shown in the streaming callback
-    await loadConversations() // Refresh conversation list
   } catch (error: any) {
     console.error('Chat error:', error)
     const errorMessage = error.response?.data?.error || error.message || 'Failed to get response'
