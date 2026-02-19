@@ -404,22 +404,25 @@ func (r *Router) getAllProviders() []providers.Provider {
 }
 
 func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) []providers.Provider {
+	seen := make(map[string]bool)
 	available := make([]providers.Provider, 0)
-	if userID != nil && r.providerKeyService != nil {
-		userProviders := r.getUserProviders(ctx, *userID)
-		for _, provider := range userProviders {
-			if err := provider.HealthCheck(ctx); err == nil {
-				available = append(available, provider)
-			}
+	add := func(p providers.Provider) {
+		name := p.Name()
+		if seen[name] {
+			return
 		}
-		if len(available) > 0 {
-			return available
+		seen[name] = true
+		if err := p.HealthCheck(ctx); err == nil {
+			available = append(available, p)
 		}
 	}
-	for _, provider := range r.providers {
-		if err := provider.HealthCheck(ctx); err == nil {
-			available = append(available, provider)
+	if userID != nil && r.providerKeyService != nil {
+		for _, p := range r.getUserProviders(ctx, *userID) {
+			add(p)
 		}
+	}
+	for _, p := range r.providers {
+		add(p)
 	}
 	return available
 }

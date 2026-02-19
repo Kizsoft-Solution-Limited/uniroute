@@ -921,10 +921,16 @@ const handleSend = async () => {
           if (chunk.done && chunk.usage) {
             assistantMessage.metadata = {
               tokens: chunk.usage.total_tokens,
-              cost: 0, // Cost calculation can be added later
+              cost: 0,
               provider: chunk.provider || 'unknown',
-              latency: 0 // Latency tracking can be added later
+              latency: 0
             }
+            messages.value[assistantMessageIndex] = { ...assistantMessage }
+            scrollToBottomAfterUpdate()
+          }
+
+          if (chunk.done && typeof assistantMessage.content === 'string' && assistantMessage.content.trim() === '') {
+            assistantMessage.content = 'No response from the model. Check your API key and model name, or try again.'
             messages.value[assistantMessageIndex] = { ...assistantMessage }
             scrollToBottomAfterUpdate()
           }
@@ -953,6 +959,14 @@ const handleSend = async () => {
         messages.value.splice(assistantMessageIndex, 1)
       }
       showToast('Failed to get response: ' + (error.message || 'Unknown error'), 'error')
+    }
+
+    const contentStr = typeof assistantMessage.content === 'string' ? assistantMessage.content : ''
+    if (contentStr.trim() === '') {
+      assistantMessage.content = 'No response from the model. Check your API key and model name, or try again.'
+      messages.value[assistantMessageIndex] = { ...assistantMessage }
+      scrollToBottomAfterUpdate()
+      showToast('No response from the model', 'error')
     }
 
     if (speakResponsesEnabled.value && speechSynthesis.value && assistantMessage.content) {

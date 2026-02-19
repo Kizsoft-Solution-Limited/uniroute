@@ -418,6 +418,15 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 			errChan <- fmt.Errorf("failed to read stream: %w", err)
 			return
 		}
+
+		if !isDone {
+			chunkChan <- StreamChunk{
+				ID:      responseID,
+				Content: previousText,
+				Done:    true,
+				Usage:   finalUsage,
+			}
+		}
 	}()
 
 	return chunkChan, errChan
