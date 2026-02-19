@@ -586,7 +586,7 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 const tunnelHeaderLines = 28
 
-// terminatedView returns a minimal final view so status lines stay at top and nothing scrolls.
+// terminatedView uses the same header layout as the live view so Connection/Session status stay in the same place.
 func (m *tunnelModel) terminatedView() string {
 	var b strings.Builder
 	b.WriteString("\033[2J\033[H")
@@ -595,26 +595,34 @@ func (m *tunnelModel) terminatedView() string {
 	b.WriteString("\n\n")
 	b.WriteString(fmt.Sprintf("Connection Status             %s\n", m.connectionStatus))
 	b.WriteString(fmt.Sprintf("Session Status                %s\n", m.sessionStatus))
+	b.WriteString(fmt.Sprintf("Account                       %s\n", color.Gray(m.account)))
 	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("Version                       %s\n", m.version))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("Region                        %s\n", color.Gray(m.region)))
+	b.WriteString(fmt.Sprintf("Latency                       %s\n", color.Gray(m.latency)))
+	b.WriteString("\n")
+	b.WriteString("Connections                   ttl     opn     rt1     rt5     p50     p90\n")
+	b.WriteString(fmt.Sprintf("                              %s\n\n", m.connections))
+	b.WriteString("🌍 Public URL:\n")
+	b.WriteString(fmt.Sprintf("   %s\n", color.Cyan(m.publicURL)))
+	b.WriteString("\n")
+	b.WriteString("🔗 Forwarding:\n")
+	b.WriteString(fmt.Sprintf("   %s\n", m.forwarding))
+	b.WriteString("\n")
+	b.WriteString(color.Yellow(m.quote))
+	b.WriteString("\n\n")
 	b.WriteString(color.Gray("Tunnel stopped. Goodbye."))
 	b.WriteString("\n")
 	return b.String()
 }
 
 func (m *tunnelModel) View() string {
-	currentStatus := m.connectionStatus
-	statusChanged := m.lastStatus != "" && m.lastStatus != currentStatus
-	needClear := m.terminated || statusChanged || m.lastStatus == ""
-
-	// When terminated, only show status + goodbye so layout never breaks
 	if m.terminated {
 		return m.terminatedView()
 	}
 
 	header := strings.Builder{}
-	if needClear {
-		header.WriteString("\033[2J\033[H")
-	}
 	header.WriteString("\n")
 	header.WriteString(color.Cyan("Starting UniRoute Tunnel..."))
 	header.WriteString("\n\n")

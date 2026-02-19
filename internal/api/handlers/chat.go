@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -216,13 +217,31 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 }
 
 func (h *ChatHandler) HandleChatStream(c *gin.Context) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+
 	var streamReq chatStreamRequest
-	if err := c.ShouldBindJSON(&streamReq); err != nil {
+	if err := json.Unmarshal(body, &streamReq); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   errors.ErrInvalidRequest.Error(),
 			"details": err.Error(),
 		})
 		return
+	}
+	// Fallback: some clients may send conversation_id in a way that doesn't bind
+	if streamReq.ConversationID == nil {
+		var raw map[string]interface{}
+		if json.Unmarshal(body, &raw) == nil {
+			if v, ok := raw["conversation_id"]; ok {
+				if s, ok := v.(string); ok && s != "" {
+					streamReq.ConversationID = &s
+				}
+			}
+		}
 	}
 
 	req := providers.ChatRequest{
@@ -232,8 +251,8 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 		MaxTokens:   streamReq.MaxTokens,
 	}
 	reqWithConv := ChatRequestWithConversation{
-		ChatRequest:     req,
-		ConversationID:  streamReq.ConversationID,
+		ChatRequest:    req,
+		ConversationID: streamReq.ConversationID,
 	}
 
 	if req.Model == "" {
@@ -324,9 +343,12 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 				if reqWithConv.ConversationID != nil && h.convRepo != nil && userID != nil {
 					conversationID, err := uuid.Parse(*reqWithConv.ConversationID)
 					if err == nil {
+						// Use background context so save succeeds even if request is already closing
+						ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+						defer cancel()
 						if len(req.Messages) > 0 {
 							lastUserMsg := req.Messages[len(req.Messages)-1]
-							if _, addErr := h.convRepo.AddMessage(c.Request.Context(), conversationID, lastUserMsg.Role, lastUserMsg.Content, nil); addErr != nil {
+							if _, addErr := h.convRepo.AddMessage(ctx, conversationID, lastUserMsg.Role, lastUserMsg.Content, nil); addErr != nil {
 								h.logger.Warn().Err(addErr).Str("conversation_id", conversationID.String()).Msg("Failed to save user message to conversation")
 							}
 						}
@@ -336,7 +358,7 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 							"provider":   provider,
 							"latency_ms": latency.Milliseconds(),
 						}
-						if _, addErr := h.convRepo.AddMessage(c.Request.Context(), conversationID, "assistant", fullContent.String(), metadata); addErr != nil {
+						if _, addErr := h.convRepo.AddMessage(ctx, conversationID, "assistant", fullContent.String(), metadata); addErr != nil {
 							h.logger.Warn().Err(addErr).Str("conversation_id", conversationID.String()).Msg("Failed to save assistant message to conversation")
 						}
 					} else {
