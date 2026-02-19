@@ -152,6 +152,9 @@ func (h *ConversationHandler) GetConversation(c *gin.Context) {
 		})
 		return
 	}
+	if messages == nil {
+		messages = []storage.Message{}
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"conversation": conv,

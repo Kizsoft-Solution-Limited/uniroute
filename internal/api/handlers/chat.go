@@ -126,9 +126,10 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 			if err == nil {
 				if len(req.Messages) > 0 {
 					lastUserMsg := req.Messages[len(req.Messages)-1]
-					_, _ = h.convRepo.AddMessage(c.Request.Context(), conversationID, lastUserMsg.Role, lastUserMsg.Content, nil)
+					if _, addErr := h.convRepo.AddMessage(c.Request.Context(), conversationID, lastUserMsg.Role, lastUserMsg.Content, nil); addErr != nil {
+						h.logger.Warn().Err(addErr).Str("conversation_id", conversationID.String()).Msg("Failed to save user message to conversation")
+					}
 				}
-
 				if resp != nil && len(resp.Choices) > 0 {
 					assistantMsg := resp.Choices[0].Message
 					metadata := map[string]interface{}{
@@ -137,7 +138,9 @@ func (h *ChatHandler) HandleChat(c *gin.Context) {
 						"provider": resp.Provider,
 						"latency_ms": latency.Milliseconds(),
 					}
-					_, _ = h.convRepo.AddMessage(c.Request.Context(), conversationID, assistantMsg.Role, assistantMsg.Content, metadata)
+					if _, addErr := h.convRepo.AddMessage(c.Request.Context(), conversationID, assistantMsg.Role, assistantMsg.Content, metadata); addErr != nil {
+						h.logger.Warn().Err(addErr).Str("conversation_id", conversationID.String()).Msg("Failed to save assistant message to conversation")
+					}
 				}
 			}
 		}
@@ -305,16 +308,19 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 					if err == nil {
 						if len(req.Messages) > 0 {
 							lastUserMsg := req.Messages[len(req.Messages)-1]
-							_, _ = h.convRepo.AddMessage(c.Request.Context(), conversationID, lastUserMsg.Role, lastUserMsg.Content, nil)
+							if _, addErr := h.convRepo.AddMessage(c.Request.Context(), conversationID, lastUserMsg.Role, lastUserMsg.Content, nil); addErr != nil {
+								h.logger.Warn().Err(addErr).Str("conversation_id", conversationID.String()).Msg("Failed to save user message to conversation")
+							}
 						}
-
 						metadata := map[string]interface{}{
 							"tokens":     func() int { if finalUsage != nil { return finalUsage.TotalTokens }; return 0 }(),
 							"cost":       0,
 							"provider":   provider,
 							"latency_ms": latency.Milliseconds(),
 						}
-						_, _ = h.convRepo.AddMessage(c.Request.Context(), conversationID, "assistant", fullContent.String(), metadata)
+						if _, addErr := h.convRepo.AddMessage(c.Request.Context(), conversationID, "assistant", fullContent.String(), metadata); addErr != nil {
+							h.logger.Warn().Err(addErr).Str("conversation_id", conversationID.String()).Msg("Failed to save assistant message to conversation")
+						}
 					}
 				}
 

@@ -1108,7 +1108,7 @@ const loadConversation = async (id: string) => {
     }
     currentConversationId.value = conversationId
     selectedModel.value = data.conversation.model || 'gpt-4'
-    const rawMessages = Array.isArray(data.messages) ? data.messages : []
+    const rawMessages = data.messages != null && Array.isArray(data.messages) ? data.messages : []
     messages.value = rawMessages.map((msg: any) => ({
       role: msg.role ?? 'user',
       content: msg.content ?? '',

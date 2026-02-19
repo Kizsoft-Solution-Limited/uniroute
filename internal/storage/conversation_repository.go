@@ -257,7 +257,7 @@ func (r *ConversationRepository) GetMessages(ctx context.Context, conversationID
 	}
 	defer rows.Close()
 
-	var messages []Message
+	messages := make([]Message, 0)
 	for rows.Next() {
 		var msg Message
 		var contentJSONB []byte
