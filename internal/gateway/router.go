@@ -406,7 +406,7 @@ func (r *Router) getAllProviders() []providers.Provider {
 func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) []providers.Provider {
 	seen := make(map[string]bool)
 	available := make([]providers.Provider, 0)
-	add := func(p providers.Provider) {
+	addWithHealth := func(p providers.Provider) {
 		name := p.Name()
 		if seen[name] {
 			return
@@ -416,13 +416,21 @@ func (r *Router) getAvailableProviders(ctx context.Context, userID *uuid.UUID) [
 			available = append(available, p)
 		}
 	}
+	addTrusted := func(p providers.Provider) {
+		name := p.Name()
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		available = append(available, p)
+	}
 	if userID != nil && r.providerKeyService != nil {
 		for _, p := range r.getUserProviders(ctx, *userID) {
-			add(p)
+			addTrusted(p)
 		}
 	}
 	for _, p := range r.providers {
-		add(p)
+		addWithHealth(p)
 	}
 	return available
 }
