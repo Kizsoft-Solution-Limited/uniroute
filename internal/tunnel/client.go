@@ -224,9 +224,6 @@ func (tc *TunnelClient) statsURLSchemeAndHost(serverURL string) (scheme, host st
 }
 
 func (tc *TunnelClient) Connect() error {
-	tc.reconnectMu.Lock()
-	defer tc.reconnectMu.Unlock()
-
 	scheme, host := tc.websocketURL()
 	wsURL := fmt.Sprintf("%s://%s/tunnel", scheme, host)
 	tc.logger.Debug().Str("url", wsURL).Msg("Connecting to tunnel server")
