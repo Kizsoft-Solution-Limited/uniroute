@@ -69,6 +69,18 @@ Deploy frontend, backend, and tunnel as three separate Coolify applications from
 - **Backend:** Root Dockerfile; set env vars (e.g. `DATABASE_URL`, `JWT_SECRET`, `API_KEY_SECRET`, `TUNNEL_BASE_DOMAIN`, `WEBSITE_URL`).
 - **Tunnel:** Use `Dockerfile.tunnel`; set `TUNNEL_BASE_DOMAIN`, `WEBSITE_URL`, `DATABASE_URL`, `JWT_SECRET`, `API_KEY_SECRET`. For wildcard SSL use DNS challenge (e.g. Cloudflare) in Coolify/Traefik.
 
+### Persisting tunnel state when the tunnel client runs in Coolify
+
+If you run the **tunnel client** (CLI) inside Coolify (e.g. a service that runs `uniroute tunnel` to expose an app), redeploys clear the in-memory connection on the tunnel server. The client cannot “keep” a WebSocket across a restart, but it can **resume the same tunnel** after restart by loading saved state.
+
+To persist tunnel state (subdomain, tunnel ID, auth) across Coolify redeploys/restarts:
+
+1. **Add a persistent volume** in Coolify for the tunnel client app, e.g. mount path `/data`.
+2. **Set environment variable:** `UNIROUTE_CONFIG_DIR=/data/.uniroute`
+3. Ensure the tunnel client writes into that directory (auth, `tunnel-state.json`, `tunnels.json`). The CLI uses `UNIROUTE_CONFIG_DIR` when set.
+
+After a redeploy, the new container will read the same `tunnel-state.json` and reconnect with the same subdomain, so the tunnel is back in the tunnel server’s memory without manual steps.
+
 ## Managed Service
 
 Use UniRoute's managed service for:

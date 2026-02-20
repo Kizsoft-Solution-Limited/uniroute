@@ -244,15 +244,6 @@ func (ts *TunnelServer) Start() error {
 
 	ts.logger.Info().Int("port", ts.port).Msg("Tunnel server starting")
 	if ts.repository != nil {
-		// Only mark all tunnels inactive when this is the only tunnel server instance (e.g. single Coolify container).
-		// Set TUNNEL_MARK_ALL_INACTIVE_ON_START=true for single-instance; leave false if you run multiple tunnel servers sharing the same DB.
-		if getEnv("TUNNEL_MARK_ALL_INACTIVE_ON_START", "false") == "true" {
-			if err := ts.repository.SetAllTunnelsInactive(context.Background()); err != nil {
-				ts.logger.Warn().Err(err).Msg("Failed to mark tunnels inactive on startup (in-memory state is still empty)")
-			} else {
-				ts.logger.Info().Msg("Marked all tunnels inactive on startup (no active WebSockets until clients reconnect)")
-			}
-		}
 		go ts.monitorInactiveTunnels()
 	}
 	return ts.httpServer.ListenAndServe()
@@ -1266,7 +1257,6 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			}
 		}
 
-		// Register new tunnel in memory before DB save and response (resume path does this earlier).
 		ts.tunnelsMu.Lock()
 		existingTunnel := ts.tunnels[subdomain]
 		ts.tunnels[subdomain] = tunnel
@@ -2005,7 +1995,6 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		ts.handleRootRequest(w, r)
 		return
 	}
-	// Log all available tunnels for debugging
 	ts.tunnelsMu.RLock()
 	availableSubdomains := make([]string, 0, len(ts.tunnels))
 	tunnelDetails := make(map[string]string)
@@ -2126,10 +2115,7 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 	}
 
 	if !exists {
-		// Tunnel not in memory - check database to see if it exists but is disconnected
 		if ts.repository != nil {
-			// First, wait longer in case resume is in progress (max 1 second)
-			// This is important because resume can take a moment to register the tunnel
 			for i := 0; i < 100; i++ {
 				time.Sleep(10 * time.Millisecond)
 				ts.tunnelsMu.RLock()
@@ -2150,7 +2136,6 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 						ts.logger.Debug().
 							Str("subdomain", lookupSubdomain).
 							Msg("Tunnel found but handler not ready - waiting for handler")
-						// Wait up to 500ms more for handler to be ready
 						for j := 0; j < 50; j++ {
 							time.Sleep(10 * time.Millisecond)
 							tunnel.mu.RLock()
@@ -2200,7 +2185,6 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// Final check: ensure tunnel is still valid before forwarding
 	if tunnel == nil {
 		ts.logger.Error().
 			Str("subdomain", subdomain).
@@ -2275,8 +2259,6 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		Str("local_url", tunnel.LocalURL).
 		Msg("Forwarding HTTP request to tunnel client")
 
-	// Forward request to tunnel client
-	// Pass tunnel subdomain to writeResponse for correct redirect rewriting
 	ts.forwardHTTPRequest(tunnel, w, r)
 }
 

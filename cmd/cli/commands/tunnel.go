@@ -382,16 +382,13 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 	}
 
 	accountDisplay := "Free"
-	homeDir, err := os.UserHomeDir()
-	if err == nil {
-		configPath := filepath.Join(homeDir, ".uniroute", "auth.json")
-		if data, err := os.ReadFile(configPath); err == nil {
-			var authConfig struct {
-				Email string `json:"email"`
-			}
-			if err := json.Unmarshal(data, &authConfig); err == nil && authConfig.Email != "" {
-				accountDisplay = authConfig.Email + " (Plan: Free)"
-			}
+	configPath := filepath.Join(tunnel.GetConfigDir(), "auth.json")
+	if data, err := os.ReadFile(configPath); err == nil {
+		var authConfig struct {
+			Email string `json:"email"`
+		}
+		if err := json.Unmarshal(data, &authConfig); err == nil && authConfig.Email != "" {
+			accountDisplay = authConfig.Email + " (Plan: Free)"
 		}
 	}
 
@@ -646,16 +643,13 @@ func setCustomDomain(tunnelID, domain, token string) error {
 	if envURL := os.Getenv("UNIROUTE_API_URL"); envURL != "" {
 		apiURL = envURL
 	} else {
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-	configPath := filepath.Join(homeDir, ".uniroute", "auth.json")
-			if data, err := os.ReadFile(configPath); err == nil {
-	var authConfig struct {
-					ServerURL string `json:"server_url"`
-				}
-				if err := json.Unmarshal(data, &authConfig); err == nil && authConfig.ServerURL != "" {
-					apiURL = authConfig.ServerURL
-				}
+		configPath := filepath.Join(tunnel.GetConfigDir(), "auth.json")
+		if data, err := os.ReadFile(configPath); err == nil {
+			var authConfig struct {
+				ServerURL string `json:"server_url"`
+			}
+			if err := json.Unmarshal(data, &authConfig); err == nil && authConfig.ServerURL != "" {
+				apiURL = authConfig.ServerURL
 			}
 		}
 		if apiURL == "" {

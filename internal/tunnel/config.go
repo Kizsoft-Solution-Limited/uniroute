@@ -9,20 +9,26 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// GetConfigDir returns the CLI config directory; uses UNIROUTE_CONFIG_DIR if set.
+func GetConfigDir() string {
+	if d := os.Getenv("UNIROUTE_CONFIG_DIR"); d != "" {
+		return d
+	}
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ".uniroute"
+	}
+	return filepath.Join(homeDir, ".uniroute")
+}
+
 type ConfigManager struct {
 	configPath string
 	logger     zerolog.Logger
 }
 
 func NewConfigManager(logger zerolog.Logger) *ConfigManager {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		homeDir = "."
-	}
-
-	configDir := filepath.Join(homeDir, ".uniroute")
+	configDir := GetConfigDir()
 	os.MkdirAll(configDir, 0755)
-
 	configPath := filepath.Join(configDir, "tunnels.json")
 
 	return &ConfigManager{
@@ -134,7 +140,6 @@ func (cm *ConfigManager) AddTunnel(tunnel TunnelConfig) error {
 	return cm.Save(config)
 }
 
-// RemoveTunnel removes a tunnel from the configuration
 func (cm *ConfigManager) RemoveTunnel(name string) error {
 	config, err := cm.Load()
 	if err != nil {

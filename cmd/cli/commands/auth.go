@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/tunnel"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -104,11 +105,7 @@ type AuthConfig struct {
 }
 
 func getConfigPath() (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	configDir := filepath.Join(homeDir, ".uniroute")
+	configDir := tunnel.GetConfigDir()
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return "", err
 	}

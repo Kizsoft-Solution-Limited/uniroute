@@ -55,15 +55,12 @@ Examples:
 		if tunnelID != "" || subdomain != "" {
 			assignToTunnel = true
 		} else {
-			homeDir, err := os.UserHomeDir()
-			if err == nil {
-				statePath := filepath.Join(homeDir, ".uniroute", "tunnel-state.json")
-				if data, err := os.ReadFile(statePath); err == nil {
-					var state tunnel.TunnelState
-					if err := json.Unmarshal(data, &state); err == nil && state.TunnelID != "" {
-						tunnelID = state.TunnelID
-						assignToTunnel = true
-					}
+			statePath := filepath.Join(tunnel.GetConfigDir(), "tunnel-state.json")
+			if data, err := os.ReadFile(statePath); err == nil {
+				var state tunnel.TunnelState
+				if err := json.Unmarshal(data, &state); err == nil && state.TunnelID != "" {
+					tunnelID = state.TunnelID
+					assignToTunnel = true
 				}
 			}
 		}
@@ -537,9 +534,8 @@ func getAPIURL() string {
 	if envURL := os.Getenv("UNIROUTE_API_URL"); envURL != "" {
 		apiURL = envURL
 	} else {
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			configPath := filepath.Join(homeDir, ".uniroute", "auth.json")
+		configPath := filepath.Join(tunnel.GetConfigDir(), "auth.json")
+		if _, err := os.Stat(configPath); err == nil {
 			if data, err := os.ReadFile(configPath); err == nil {
 				var authConfig struct {
 					ServerURL string `json:"server_url"`
@@ -570,11 +566,7 @@ type DomainAssignment struct {
 }
 
 func getDomainStatePath() string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		homeDir = "."
-	}
-	configDir := filepath.Join(homeDir, ".uniroute")
+	configDir := tunnel.GetConfigDir()
 	os.MkdirAll(configDir, 0755)
 	return filepath.Join(configDir, "domain-assignments.json")
 }

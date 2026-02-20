@@ -15,7 +15,6 @@ type TunnelPersistence struct {
 	logger   zerolog.Logger
 }
 
-// For backward compatibility - single tunnel.
 type TunnelState struct {
 	TunnelID    string    `json:"tunnel_id"`
 	Subdomain   string    `json:"subdomain"`
@@ -33,14 +32,8 @@ type MultiTunnelState struct {
 }
 
 func NewTunnelPersistence(logger zerolog.Logger) *TunnelPersistence {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		homeDir = "."
-	}
-	
-	configDir := filepath.Join(homeDir, ".uniroute")
+	configDir := GetConfigDir()
 	os.MkdirAll(configDir, 0755)
-	
 	filePath := filepath.Join(configDir, "tunnel-state.json")
 	
 	return &TunnelPersistence{
@@ -90,7 +83,6 @@ func (tp *TunnelPersistence) Load() (*TunnelState, error) {
 	return &state, nil
 }
 
-// Clear clears saved tunnel state
 func (tp *TunnelPersistence) Clear() error {
 	if err := os.Remove(tp.filePath); err != nil {
 		if os.IsNotExist(err) {
