@@ -473,7 +473,12 @@ func (tc *TunnelClient) handleMessages() {
 				isConnectionError = true
 			}
 
-			// Only reconnect on actual connection errors (network disconnection)
+			// EOF / unexpected EOF: server process or container restarted, connection closed without close frame
+			if err == io.EOF || strings.Contains(errStr, "EOF") {
+				isConnectionError = true
+			}
+
+			// Only reconnect on actual connection errors (network disconnection / server restart)
 			if isConnectionError {
 				tc.logger.Debug().Err(err).Msg("Connection lost - attempting to reconnect")
 				tc.mu.Lock()

@@ -244,6 +244,11 @@ func (ts *TunnelServer) Start() error {
 
 	ts.logger.Info().Int("port", ts.port).Msg("Tunnel server starting")
 	if ts.repository != nil {
+		if err := ts.repository.SetAllTunnelsInactive(context.Background()); err != nil {
+			ts.logger.Warn().Err(err).Msg("Failed to mark tunnels inactive on startup (in-memory state is still empty)")
+		} else {
+			ts.logger.Info().Msg("Marked all tunnels inactive on startup (no active WebSockets until clients reconnect)")
+		}
 		go ts.monitorInactiveTunnels()
 	}
 	return ts.httpServer.ListenAndServe()
@@ -2164,12 +2169,13 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 				dbTunnel, err := ts.repository.GetTunnelBySubdomain(context.Background(), lookupSubdomain)
 				if err == nil && dbTunnel != nil {
 					ts.logger.Info().
-						Str("subdomain", subdomain).
+						Str("subdomain", lookupSubdomain).
 						Str("tunnel_id", dbTunnel.ID).
 						Str("status", dbTunnel.Status).
 						Str("local_url", dbTunnel.LocalURL).
 						Msg("Tunnel exists in database but not in memory - showing disconnected page (503)")
-					ts.writeErrorPage(w, r, nil, http.StatusServiceUnavailable, "The endpoint is offline", "The tunnel exists but is not currently connected.", fmt.Sprintf("The endpoint '%s' is associated with a tunnel, but the tunnel client is not connected. Please start the tunnel client to resume this tunnel.", html.EscapeString(subdomain)))
+					detailMsg := "The endpoint '%s' is associated with a tunnel, but the tunnel client is not connected. Please start the tunnel client (e.g. run your tunnel command again). If the tunnel server was recently restarted, re-running the tunnel client will reconnect it."
+					ts.writeErrorPage(w, r, nil, http.StatusServiceUnavailable, "The endpoint is offline", "The tunnel exists but is not currently connected.", fmt.Sprintf(detailMsg, html.EscapeString(lookupSubdomain)))
 					return
 				}
 			}

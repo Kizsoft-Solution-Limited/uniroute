@@ -519,6 +519,19 @@ func (r *TunnelRepository) UpdateTunnelStatus(ctx context.Context, tunnelID, sta
 	return err
 }
 
+// SetAllTunnelsInactive marks every tunnel as inactive. Call this when the tunnel server
+// process starts so that DB status matches reality (no in-memory connections yet).
+// When a client reconnects, the tunnel is set back to "active".
+func (r *TunnelRepository) SetAllTunnelsInactive(ctx context.Context) error {
+	query := `
+		UPDATE tunnels
+		SET status = 'inactive', updated_at = NOW()
+		WHERE status != 'inactive'
+	`
+	_, err := r.pool.Exec(ctx, query)
+	return err
+}
+
 // If requestCount is 0, only last_active_at is updated; if > 0, request_count is incremented.
 func (r *TunnelRepository) UpdateTunnelActivity(ctx context.Context, tunnelID string, requestCount int64) error {
 	var query string
