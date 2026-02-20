@@ -399,8 +399,10 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 
 			if len(geminiResp.Candidates) > 0 {
 				candidate := geminiResp.Candidates[0]
+				if candidate.FinishReason != "" {
+					isDone = true
+				}
 				if len(candidate.Content.Parts) > 0 {
-					// Gemini sends full text in each chunk, calculate delta
 					var currentText strings.Builder
 					for _, part := range candidate.Content.Parts {
 						if part.Text != "" {
@@ -409,12 +411,10 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 					}
 
 					fullText := currentText.String()
-					// Calculate delta (new content since last chunk)
 					var delta string
 					if strings.HasPrefix(fullText, previousText) {
 						delta = fullText[len(previousText):]
 					} else {
-						// Content changed (shouldn't happen, but handle it)
 						delta = fullText
 					}
 
@@ -425,10 +425,6 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 							Done:    candidate.FinishReason != "",
 						}
 						previousText = fullText
-					}
-
-					if candidate.FinishReason != "" {
-						isDone = true
 					}
 				}
 			}

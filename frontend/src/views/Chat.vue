@@ -640,6 +640,7 @@ const attachedAudios = ref<AttachedAudio[]>([])
 const imageInputRef = ref<HTMLInputElement | null>(null)
 const audioInputRef = ref<HTMLInputElement | null>(null)
 const loading = ref(false)
+const streamAbortController = ref<AbortController | null>(null)
 const CHAT_MODEL_STORAGE_KEY = 'uniroute-chat-selected-model'
 const getStoredModel = (): string => {
   if (typeof window === 'undefined') return 'gpt-4'
@@ -881,6 +882,13 @@ const handleSend = async () => {
   attachedAudios.value = []
   loading.value = true
 
+  if (streamAbortController.value) {
+    streamAbortController.value.abort()
+  }
+  const controller = new AbortController()
+  streamAbortController.value = controller
+  let streamAborted = false
+
   try {
     const chatMessages: Message[] = messages.value
       .filter(m => m.role !== 'system' || messages.value.indexOf(m) === 0)
@@ -951,14 +959,22 @@ const handleSend = async () => {
             messages.value[assistantMessageIndex] = { ...assistantMessage }
           }
         },
-        true
+        true,
+        controller.signal
       )
     } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        messages.value.splice(assistantMessageIndex, 1)
+        streamAborted = true
+        return
+      }
       if (messages.value[assistantMessageIndex]?.content === '') {
         messages.value.splice(assistantMessageIndex, 1)
       }
       showToast('Failed to get response: ' + (error.message || 'Unknown error'), 'error')
     }
+
+    if (streamAborted) return
 
     const contentStr = typeof assistantMessage.content === 'string' ? assistantMessage.content : ''
     if (contentStr.trim() === '') {
@@ -987,7 +1003,9 @@ const handleSend = async () => {
     }
     messages.value.push(errorChatMessage)
   } finally {
-    loading.value = false
+    if (!streamAborted) {
+      loading.value = false
+    }
   }
 }
 

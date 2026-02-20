@@ -69,7 +69,8 @@ export const chatApi = {
     onChunk: StreamChunkCallback,
     onError?: StreamErrorCallback,
     onComplete?: StreamCompleteCallback,
-    useJWT: boolean = true
+    useJWT: boolean = true,
+    signal?: AbortSignal
   ): Promise<void> {
     const endpoint = useJWT ? '/auth/chat/stream' : '/v1/chat/stream'
     let token = useJWT ? localStorage.getItem('auth_token') : null
@@ -85,8 +86,9 @@ export const chatApi = {
           'Content-Type': 'application/json',
           ...(token && { Authorization: `Bearer ${token}` }),
         },
-        credentials: 'include', // Include cookies for httpOnly cookies
+        credentials: 'include',
         body: JSON.stringify(data),
+        signal,
       })
 
       if (!response.ok) {
