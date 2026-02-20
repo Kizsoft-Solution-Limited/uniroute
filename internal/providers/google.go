@@ -244,8 +244,12 @@ func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 			})
 		}
 
+		role := msg.Role
+		if role == "assistant" {
+			role = "model"
+		}
 		result = append(result, map[string]interface{}{
-			"role": msg.Role,
+			"role":  role,
 			"parts": parts,
 		})
 	}

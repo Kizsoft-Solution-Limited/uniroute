@@ -306,11 +306,19 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 			if !ok {
 				latency := time.Since(startTime)
 				if fullContent.Len() == 0 {
+					errMsg := "Stream ended with no response. Check your API key, model name, and network."
+					select {
+					case streamErr := <-errChan:
+						if streamErr != nil {
+							errMsg = streamErr.Error()
+						}
+					default:
+					}
 					errorChunk := providers.StreamChunk{
 						ID:      responseID,
 						Content: "",
 						Done:    true,
-						Error:   "Stream ended with no response. Check your API key, model name, and network.",
+						Error:   errMsg,
 					}
 					errorJSON, _ := json.Marshal(errorChunk)
 					fmt.Fprintf(w, "data: %s\n\n", errorJSON)

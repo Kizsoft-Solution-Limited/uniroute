@@ -270,8 +270,8 @@
                   v-if="message.metadata"
                   class="mt-2 text-xs opacity-75 flex items-center space-x-3"
                 >
-                  <span v-if="message.metadata.tokens">
-                    {{ message.metadata.tokens }} tokens
+                  <span v-if="message.metadata.tokens" :title="'Input + output tokens for this reply'">
+                    {{ message.metadata.tokens }} total tokens
                   </span>
                   <span v-if="message.metadata.cost">
                     ${{ message.metadata.cost.toFixed(6) }}
@@ -828,6 +828,8 @@ const handleSend = async () => {
       await loadConversations()
     } catch (error) {
       console.error('Failed to create conversation:', error)
+      showToast('Failed to create conversation. Try again.', 'error')
+      return
     }
   }
 
