@@ -386,12 +386,12 @@ func convertMessagesToAnthropic(messages []Message) []map[string]interface{} {
 			"role": msg.Role,
 		}
 
-		switch content := msg.Content.(type) {
-		case string:
-			messageMap["content"] = content
-		case []ContentPart:
-			contentArray := make([]map[string]interface{}, 0, len(content))
-			for _, part := range content {
+		text, partList := NormalizeMessageContent(msg.Content)
+		if partList == nil {
+			messageMap["content"] = text
+		} else {
+			contentArray := make([]map[string]interface{}, 0, len(partList))
+			for _, part := range partList {
 				if part.Type == "text" {
 					contentArray = append(contentArray, map[string]interface{}{
 						"type": "text",
@@ -434,8 +434,6 @@ func convertMessagesToAnthropic(messages []Message) []map[string]interface{} {
 				}
 			}
 			messageMap["content"] = contentArray
-		default:
-			messageMap["content"] = fmt.Sprintf("%v", content)
 		}
 
 		result = append(result, messageMap)

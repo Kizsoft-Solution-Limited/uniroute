@@ -187,14 +187,11 @@ func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, len(messages))
 	for _, msg := range messages {
 		parts := make([]map[string]interface{}, 0)
-
-		switch content := msg.Content.(type) {
-		case string:
-			parts = append(parts, map[string]interface{}{
-				"text": content,
-			})
-		case []ContentPart:
-			for _, part := range content {
+		text, partList := NormalizeMessageContent(msg.Content)
+		if partList == nil {
+			parts = append(parts, map[string]interface{}{"text": text})
+		} else {
+			for _, part := range partList {
 				if part.Type == "text" {
 					parts = append(parts, map[string]interface{}{
 						"text": part.Text,
@@ -238,10 +235,6 @@ func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 					}
 				}
 			}
-		default:
-			parts = append(parts, map[string]interface{}{
-				"text": fmt.Sprintf("%v", content),
-			})
 		}
 
 		role := msg.Role

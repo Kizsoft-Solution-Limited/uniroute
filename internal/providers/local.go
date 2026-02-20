@@ -42,14 +42,14 @@ func convertToOllamaMessages(messages []Message) []map[string]interface{} {
 	out := make([]map[string]interface{}, 0, len(messages))
 	for _, msg := range messages {
 		om := map[string]interface{}{"role": msg.Role}
-		switch content := msg.Content.(type) {
-		case string:
-			om["content"] = content
-		case []ContentPart:
+		text, partList := NormalizeMessageContent(msg.Content)
+		if partList == nil {
+			om["content"] = text
+		} else {
 			var textParts []string
 			var images []string
 			hasAudio := false
-			for _, part := range content {
+			for _, part := range partList {
 				if part.Type == "text" && part.Text != "" {
 					textParts = append(textParts, part.Text)
 				} else if part.Type == "image_url" && part.ImageURL != nil {
@@ -80,8 +80,6 @@ func convertToOllamaMessages(messages []Message) []map[string]interface{} {
 			if len(images) > 0 {
 				om["images"] = images
 			}
-		default:
-			om["content"] = fmt.Sprintf("%v", content)
 		}
 		out = append(out, om)
 	}

@@ -374,13 +374,13 @@ func convertMessagesToOpenAI(messages []Message) []interface{} {
 			"role": msg.Role,
 		}
 
-		switch content := msg.Content.(type) {
-		case string:
-			messageMap["content"] = content
-		case []ContentPart:
-			contentArray := make([]interface{}, 0, len(content))
+		text, partList := NormalizeMessageContent(msg.Content)
+		if partList == nil {
+			messageMap["content"] = text
+		} else {
+			contentArray := make([]interface{}, 0, len(partList))
 			hasText := false
-			for _, part := range content {
+			for _, part := range partList {
 				if part.Type == "text" {
 					hasText = true
 					contentArray = append(contentArray, map[string]interface{}{
@@ -410,10 +410,6 @@ func convertMessagesToOpenAI(messages []Message) []interface{} {
 				}}, contentArray...)
 			}
 			messageMap["content"] = contentArray
-		case []interface{}:
-			messageMap["content"] = content
-		default:
-			messageMap["content"] = fmt.Sprintf("%v", content)
 		}
 
 		result = append(result, messageMap)
