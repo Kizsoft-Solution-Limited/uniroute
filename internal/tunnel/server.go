@@ -1256,6 +1256,29 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 				ts.rateLimiter.SetRateLimit(tunnelID, rateLimitConfig)
 			}
 		}
+
+		// Register new tunnel in memory before DB save and response (resume path does this earlier).
+		ts.tunnelsMu.Lock()
+		existingTunnel := ts.tunnels[subdomain]
+		ts.tunnels[subdomain] = tunnel
+		ts.tunnelsMu.Unlock()
+		if existingTunnel != nil && existingTunnel != tunnel {
+			existingTunnel.mu.Lock()
+			oldWSConn := existingTunnel.WSConn
+			existingTunnel.WSConn = nil
+			existingTunnel.mu.Unlock()
+			if oldWSConn != nil && oldWSConn != ws {
+				go func() {
+					time.Sleep(50 * time.Millisecond)
+					oldWSConn.Close()
+				}()
+			}
+			ts.logger.Info().
+				Str("tunnel_id", tunnelID).
+				Str("subdomain", subdomain).
+				Str("old_tunnel_id", existingTunnel.ID).
+				Msg("Replaced existing tunnel with new tunnel for subdomain")
+		}
 	}
 
 	if tunnel == nil {
