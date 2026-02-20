@@ -871,27 +871,29 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 	lastStatusTime := time.Time{}
 	statusChangeHandler := func(status string) {
 		now := time.Now()
-		if status != lastStatus {
-			if lastStatusTime.IsZero() || time.Since(lastStatusTime) > 500*time.Millisecond {
-				lastStatus = status
-				lastStatusTime = now
-				select {
-				case statusChangeChan <- status:
-				default:
-				}
-			} else {
+		throttle := !lastStatusTime.IsZero() && time.Since(lastStatusTime) < 500*time.Millisecond
+		if status == "online" {
+			lastStatus = status
+			lastStatusTime = now
+			select {
+			case statusChangeChan <- status:
+			default:
 				go func() {
-					time.Sleep(500 * time.Millisecond)
-					currentStatus := client.GetConnectionStatus()
-					if currentStatus == status && currentStatus != lastStatus {
-						lastStatus = currentStatus
-						lastStatusTime = time.Now()
-						select {
-						case statusChangeChan <- currentStatus:
-						default:
-						}
+					time.Sleep(100 * time.Millisecond)
+					select {
+					case statusChangeChan <- status:
+					default:
 					}
 				}()
+			}
+			return
+		}
+		if status != lastStatus && !throttle {
+			lastStatus = status
+			lastStatusTime = now
+			select {
+			case statusChangeChan <- status:
+			default:
 			}
 		}
 	}

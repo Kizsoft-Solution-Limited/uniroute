@@ -1027,10 +1027,6 @@ func (tc *TunnelClient) reconnect() {
 	maxBackoff := 60 * time.Second
 
 	for {
-		tc.logger.Debug().
-			Dur("backoff", backoff).
-			Str("subdomain", tc.subdomain).
-			Msg("Attempting to reconnect...")
 
 		time.Sleep(backoff)
 
@@ -1044,7 +1040,7 @@ func (tc *TunnelClient) reconnect() {
 
 		err := tc.Connect()
 		if err == nil {
-			tc.logger.Info().
+			tc.logger.Debug().
 				Str("subdomain", tc.subdomain).
 				Str("public_url", tc.tunnel.PublicURL).
 				Msg("Reconnected successfully - resumed same tunnel")
@@ -1064,7 +1060,7 @@ func (tc *TunnelClient) reconnect() {
 			return
 		}
 
-		tc.logger.Warn().
+		tc.logger.Debug().
 			Err(err).
 			Dur("next_attempt", backoff).
 			Msg("Reconnection failed, will retry")
