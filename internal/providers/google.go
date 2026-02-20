@@ -426,7 +426,7 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 						chunkChan <- StreamChunk{
 							ID:      responseID,
 							Content: delta,
-							Done:    candidate.FinishReason != "",
+							Done:    false,
 						}
 						previousText = fullText
 					}
@@ -440,16 +440,6 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 					TotalTokens:      geminiResp.UsageMetadata.TotalTokenCount,
 				}
 			}
-
-			if isDone {
-				chunkChan <- StreamChunk{
-					ID:      responseID,
-					Content: "",
-					Done:    true,
-					Usage:   finalUsage,
-				}
-				return
-			}
 		}
 
 		if err := scanner.Err(); err != nil {
@@ -457,18 +447,16 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 			return
 		}
 
-		if !isDone {
-			errMsg := ""
-			if previousText == "" {
-				errMsg = "No content in response from model"
-			}
-			chunkChan <- StreamChunk{
-				ID:      responseID,
-				Content: previousText,
-				Done:    true,
-				Usage:   finalUsage,
-				Error:   errMsg,
-			}
+		errMsg := ""
+		if !isDone && previousText == "" {
+			errMsg = "No content in response from model"
+		}
+		chunkChan <- StreamChunk{
+			ID:      responseID,
+			Content: "",
+			Done:    true,
+			Usage:   finalUsage,
+			Error:   errMsg,
 		}
 	}()
 
