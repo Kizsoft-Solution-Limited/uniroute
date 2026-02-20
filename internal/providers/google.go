@@ -319,11 +319,13 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 					Status  string `json:"status"`
 				} `json:"error"`
 			}
-			if err := json.Unmarshal(body, &errorResp); err == nil {
-				errChan <- fmt.Errorf("Google API error: %s", errorResp.Error.Message)
+			var apiErr string
+			if err := json.Unmarshal(body, &errorResp); err == nil && errorResp.Error.Message != "" {
+				apiErr = fmt.Sprintf("Google API error: %s", errorResp.Error.Message)
 			} else {
-				errChan <- fmt.Errorf("Google API returned status %d: %s", resp.StatusCode, string(body))
+				apiErr = fmt.Sprintf("Google API returned status %d: %s", resp.StatusCode, string(body))
 			}
+			chunkChan <- StreamChunk{Content: "", Done: true, Error: apiErr}
 			return
 		}
 

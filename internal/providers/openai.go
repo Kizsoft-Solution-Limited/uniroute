@@ -212,7 +212,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 		defer close(errChan)
 
 		if p.apiKey == "" {
-			errChan <- fmt.Errorf("OpenAI API key not configured")
+			chunkChan <- StreamChunk{Content: "", Done: true, Error: "OpenAI API key not configured"}
 			return
 		}
 
@@ -232,14 +232,14 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 
 		reqBody, err := json.Marshal(openAIReq)
 		if err != nil {
-			errChan <- fmt.Errorf("failed to marshal request: %w", err)
+			chunkChan <- StreamChunk{Content: "", Done: true, Error: fmt.Sprintf("failed to marshal request: %v", err)}
 			return
 		}
 
 		url := fmt.Sprintf("%s/chat/completions", p.baseURL)
 		httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
 		if err != nil {
-			errChan <- fmt.Errorf("failed to create request: %w", err)
+			chunkChan <- StreamChunk{Content: "", Done: true, Error: fmt.Sprintf("failed to create request: %v", err)}
 			return
 		}
 
@@ -248,7 +248,8 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 
 		resp, err := p.streamClient().Do(httpReq)
 		if err != nil {
-			errChan <- fmt.Errorf("failed to send request: %w", err)
+			msg := fmt.Sprintf("failed to send request: %v", err)
+			chunkChan <- StreamChunk{Content: "", Done: true, Error: msg}
 			return
 		}
 		defer resp.Body.Close()
@@ -261,11 +262,13 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 					Type    string `json:"type"`
 				} `json:"error"`
 			}
-			if err := json.Unmarshal(body, &errorResp); err == nil {
-				errChan <- fmt.Errorf("OpenAI API error: %s", errorResp.Error.Message)
+			var apiErr string
+			if err := json.Unmarshal(body, &errorResp); err == nil && errorResp.Error.Message != "" {
+				apiErr = fmt.Sprintf("OpenAI API error: %s", errorResp.Error.Message)
 			} else {
-				errChan <- fmt.Errorf("OpenAI API returned status %d: %s", resp.StatusCode, string(body))
+				apiErr = fmt.Sprintf("OpenAI API returned status %d: %s", resp.StatusCode, string(body))
 			}
+			chunkChan <- StreamChunk{Content: "", Done: true, Error: apiErr}
 			return
 		}
 
@@ -347,7 +350,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 		}
 
 		if err := scanner.Err(); err != nil {
-			errChan <- fmt.Errorf("failed to read stream: %w", err)
+			chunkChan <- StreamChunk{Content: "", Done: true, Error: fmt.Sprintf("failed to read stream: %v", err)}
 			return
 		}
 	}()

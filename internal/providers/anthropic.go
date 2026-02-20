@@ -258,11 +258,13 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 					Type    string `json:"type"`
 				} `json:"error"`
 			}
-			if err := json.Unmarshal(body, &errorResp); err == nil {
-				errChan <- fmt.Errorf("Anthropic API error: %s", errorResp.Error.Message)
+			var apiErr string
+			if err := json.Unmarshal(body, &errorResp); err == nil && errorResp.Error.Message != "" {
+				apiErr = fmt.Sprintf("Anthropic API error: %s", errorResp.Error.Message)
 			} else {
-				errChan <- fmt.Errorf("Anthropic API returned status %d: %s", resp.StatusCode, string(body))
+				apiErr = fmt.Sprintf("Anthropic API returned status %d: %s", resp.StatusCode, string(body))
 			}
+			chunkChan <- StreamChunk{Content: "", Done: true, Error: apiErr}
 			return
 		}
 
