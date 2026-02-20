@@ -27,7 +27,7 @@ echo "=== 2. Chat stream (POST /auth/chat/stream) ==="
 STREAM_RESP=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/auth/chat/stream" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"model":"gemini-pro","messages":[{"role":"user","content":"Say hello in one word."}]}')
+  -d '{"model":"gemini-2.5-pro","messages":[{"role":"user","content":"Say hello in one word."}]}')
 HTTP_CODE=$(echo "$STREAM_RESP" | tail -n 1)
 HTTP_BODY=$(echo "$STREAM_RESP" | sed '$d')
 echo "HTTP status: $HTTP_CODE"

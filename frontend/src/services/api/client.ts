@@ -8,7 +8,14 @@ const getBaseURL = () => {
   if (import.meta.env.DEV) {
     return 'http://localhost:8084'
   }
-  return typeof window !== 'undefined' ? window.location.origin : 'https://app.uniroute.co'
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname
+    if (host === 'uniroute.co' || host === 'www.uniroute.co') {
+      return 'https://app.uniroute.co'
+    }
+    return window.location.origin
+  }
+  return 'https://app.uniroute.co'
 }
 
 export const apiClient: AxiosInstance = axios.create({
