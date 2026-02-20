@@ -930,9 +930,8 @@ const handleSend = async () => {
           }
 
           if (chunk.done && typeof assistantMessage.content === 'string' && assistantMessage.content.trim() === '') {
-            assistantMessage.content = 'No response from the model. Check your API key and model name, or try again.'
-            messages.value[assistantMessageIndex] = { ...assistantMessage }
-            scrollToBottomAfterUpdate()
+            const err = chunk.error || 'No content from model. Try again or use a shorter conversation.'
+            throw new Error(err)
           }
 
           if (chunk.error) {

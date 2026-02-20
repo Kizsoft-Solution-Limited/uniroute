@@ -458,11 +458,16 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 		}
 
 		if !isDone {
+			errMsg := ""
+			if previousText == "" {
+				errMsg = "No content in response from model"
+			}
 			chunkChan <- StreamChunk{
 				ID:      responseID,
 				Content: previousText,
 				Done:    true,
 				Usage:   finalUsage,
+				Error:   errMsg,
 			}
 		}
 	}()
