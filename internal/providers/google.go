@@ -23,7 +23,7 @@ type GoogleProvider struct {
 
 func NewGoogleProvider(apiKey, baseURL string, logger zerolog.Logger) *GoogleProvider {
 	if baseURL == "" {
-		baseURL = "https://generativelanguage.googleapis.com/v1"
+		baseURL = "https://generativelanguage.googleapis.com/v1beta"
 	}
 	return &GoogleProvider{
 		apiKey:  apiKey,
