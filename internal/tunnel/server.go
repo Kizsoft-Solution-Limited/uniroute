@@ -244,10 +244,14 @@ func (ts *TunnelServer) Start() error {
 
 	ts.logger.Info().Int("port", ts.port).Msg("Tunnel server starting")
 	if ts.repository != nil {
-		if err := ts.repository.SetAllTunnelsInactive(context.Background()); err != nil {
-			ts.logger.Warn().Err(err).Msg("Failed to mark tunnels inactive on startup (in-memory state is still empty)")
-		} else {
-			ts.logger.Info().Msg("Marked all tunnels inactive on startup (no active WebSockets until clients reconnect)")
+		// Only mark all tunnels inactive when this is the only tunnel server instance (e.g. single Coolify container).
+		// Set TUNNEL_MARK_ALL_INACTIVE_ON_START=true for single-instance; leave false if you run multiple tunnel servers sharing the same DB.
+		if getEnv("TUNNEL_MARK_ALL_INACTIVE_ON_START", "false") == "true" {
+			if err := ts.repository.SetAllTunnelsInactive(context.Background()); err != nil {
+				ts.logger.Warn().Err(err).Msg("Failed to mark tunnels inactive on startup (in-memory state is still empty)")
+			} else {
+				ts.logger.Info().Msg("Marked all tunnels inactive on startup (no active WebSockets until clients reconnect)")
+			}
 		}
 		go ts.monitorInactiveTunnels()
 	}
