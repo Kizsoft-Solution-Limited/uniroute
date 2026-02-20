@@ -200,6 +200,14 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 	errChan := make(chan error, 1)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				select {
+				case errChan <- fmt.Errorf("stream panic: %v", r):
+				default:
+				}
+			}
+		}()
 		defer close(chunkChan)
 		defer close(errChan)
 

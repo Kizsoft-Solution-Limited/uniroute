@@ -382,7 +382,7 @@ func (r *Router) RouteStream(ctx context.Context, req providers.ChatRequest, use
 				return
 			}
 			if lastErr == nil {
-				return
+				lastErr = fmt.Errorf("stream ended with no response from %s", provider.Name())
 			}
 		}
 		if lastErr != nil {

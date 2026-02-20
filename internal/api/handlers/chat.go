@@ -305,6 +305,19 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 		case chunk, ok := <-chunkChan:
 			if !ok {
 				latency := time.Since(startTime)
+				if fullContent.Len() == 0 {
+					errorChunk := providers.StreamChunk{
+						ID:      responseID,
+						Content: "",
+						Done:    true,
+						Error:   "Stream ended with no response. Check your API key, model name, and network.",
+					}
+					errorJSON, _ := json.Marshal(errorChunk)
+					fmt.Fprintf(w, "data: %s\n\n", errorJSON)
+					if flusher, ok := c.Writer.(http.Flusher); ok {
+						flusher.Flush()
+					}
+				}
 
 				if h.requestRepo != nil {
 					go func() {
