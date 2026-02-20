@@ -853,29 +853,21 @@ const handleSend = async () => {
 
   if (attachedImages.value.length > 0 || attachedAudios.value.length > 0) {
     const parts: ContentPart[] = []
-    if (textToSend) {
-      parts.push({
-        type: 'text',
-        text: textToSend
-      })
-    }
     for (const image of attachedImages.value) {
       parts.push({
         type: 'image_url',
-        image_url: {
-          url: image.dataUrl // base64 data URL
-        }
+        image_url: { url: image.dataUrl }
       })
     }
     for (const audio of attachedAudios.value) {
       parts.push({
         type: 'audio_url',
-        audio_url: {
-          url: audio.dataUrl // base64 data URL
-        }
+        audio_url: { url: audio.dataUrl }
       })
     }
-    
+    if (textToSend) {
+      parts.push({ type: 'text', text: textToSend })
+    }
     messageContent = parts
   }
 

@@ -93,7 +93,6 @@ func (p *VLLMProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse
 			} `json:"error"`
 		}
 		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error.Message != "" {
-			// Models without a chat template (e.g. facebook/opt-125m) return 400; fall back to completions
 			if resp.StatusCode == http.StatusBadRequest && strings.Contains(errResp.Error.Message, "chat template") {
 				return p.chatViaCompletions(ctx, req)
 			}
@@ -160,7 +159,6 @@ func (p *VLLMProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse
 	}, nil
 }
 
-// chatViaCompletions uses /completions for models that have no chat template (e.g. facebook/opt-125m).
 func (p *VLLMProvider) chatViaCompletions(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	prompt := buildPromptFromMessages(req.Messages)
 	body := map[string]interface{}{
@@ -297,7 +295,6 @@ func (p *VLLMProvider) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-// ChatStream streams chat responses from vLLM (SSE, OpenAI-compatible)
 func (p *VLLMProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, <-chan error) {
 	chunkChan := make(chan StreamChunk, 10)
 	errChan := make(chan error, 1)

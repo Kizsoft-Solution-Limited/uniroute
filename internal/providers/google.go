@@ -122,13 +122,11 @@ func (p *GoogleProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	// Extract content from first candidate
 	content := ""
 	if len(googleResp.Candidates) > 0 && len(googleResp.Candidates[0].Content.Parts) > 0 {
 		content = googleResp.Candidates[0].Content.Parts[0].Text
 	}
 
-	// Convert to UniRoute format
 	return &ChatResponse{
 		ID:    fmt.Sprintf("chat-%d", time.Now().Unix()),
 		Model: req.Model,
@@ -148,13 +146,11 @@ func (p *GoogleProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 	}, nil
 }
 
-// HealthCheck verifies Google API is accessible
 func (p *GoogleProvider) HealthCheck(ctx context.Context) error {
 	if p.apiKey == "" {
 		return fmt.Errorf("Google API key not configured")
 	}
 
-	// Simple health check: list models
 	url := fmt.Sprintf("%s/models?key=%s", p.baseURL, p.apiKey)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -208,10 +204,12 @@ func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 					if strings.HasPrefix(imageURL, "data:image/") {
 						urlParts := strings.SplitN(imageURL, ",", 2)
 						if len(urlParts) == 2 {
+							b64 := strings.ReplaceAll(strings.TrimSpace(urlParts[1]), "\n", "")
+							b64 = strings.ReplaceAll(b64, "\r", "")
 							parts = append(parts, map[string]interface{}{
 								"inline_data": map[string]interface{}{
 									"mime_type": extractMediaType(imageURL),
-									"data":      urlParts[1],
+									"data":      b64,
 								},
 							})
 						}
@@ -228,10 +226,12 @@ func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 					if strings.HasPrefix(audioURL, "data:audio/") {
 						urlParts := strings.SplitN(audioURL, ",", 2)
 						if len(urlParts) == 2 {
+							b64 := strings.ReplaceAll(strings.TrimSpace(urlParts[1]), "\n", "")
+							b64 = strings.ReplaceAll(b64, "\r", "")
 							parts = append(parts, map[string]interface{}{
 								"inline_data": map[string]interface{}{
 									"mime_type": extractMediaType(audioURL),
-									"data":      urlParts[1],
+									"data":      b64,
 								},
 							})
 						}
@@ -239,7 +239,6 @@ func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 				}
 			}
 		default:
-			// Fallback: try to convert to string
 			parts = append(parts, map[string]interface{}{
 				"text": fmt.Sprintf("%v", content),
 			})
@@ -257,7 +256,6 @@ func convertMessagesToGoogle(messages []Message) []map[string]interface{} {
 	return result
 }
 
-// ChatStream streams chat responses from Google Gemini
 func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, <-chan error) {
 	chunkChan := make(chan StreamChunk, 10)
 	errChan := make(chan error, 1)
@@ -302,7 +300,6 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 			return
 		}
 
-		// Use streamGenerateContent endpoint with alt=sse parameter
 		url := fmt.Sprintf("%s/models/%s:streamGenerateContent?key=%s&alt=sse", p.baseURL, req.Model, p.apiKey)
 		httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
 		if err != nil {
@@ -352,7 +349,6 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 				continue
 			}
 
-			// SSE format: "data: {...}"
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}
@@ -474,5 +470,5 @@ func extractMediaType(dataURL string) string {
 			return strings.TrimPrefix(parts[0], "data:")
 		}
 	}
-	return "image/png" // Default
+	return "image/png"
 }

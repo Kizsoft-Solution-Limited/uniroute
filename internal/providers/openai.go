@@ -48,7 +48,6 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		return nil, fmt.Errorf("OpenAI API key not configured")
 	}
 
-	// Convert to OpenAI format
 	openAIReq := map[string]interface{}{
 		"model":    req.Model,
 		"messages": convertMessagesToOpenAI(req.Messages),
@@ -113,7 +112,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		Choices []struct {
 			Message struct {
 				Role    string      `json:"role"`
-				Content interface{} `json:"content"` // Can be string or array
+				Content interface{} `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
 		Usage struct {
@@ -134,7 +133,6 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		case string:
 			contentStr = c
 		case []interface{}:
-			// Extract text from multimodal response
 			for _, part := range c {
 				if partMap, ok := part.(map[string]interface{}); ok {
 					if partType, _ := partMap["type"].(string); partType == "text" {
@@ -152,7 +150,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		choices = append(choices, Choice{
 			Message: Message{
 				Role:    choice.Message.Role,
-				Content: contentStr, // Responses are always text
+				Content: contentStr,
 			},
 		})
 	}
@@ -169,13 +167,11 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 	}, nil
 }
 
-// HealthCheck verifies OpenAI API is accessible
 func (p *OpenAIProvider) HealthCheck(ctx context.Context) error {
 	if p.apiKey == "" {
 		return fmt.Errorf("OpenAI API key not configured")
 	}
 
-	// Simple health check: list models
 	url := fmt.Sprintf("%s/models", p.baseURL)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -197,7 +193,6 @@ func (p *OpenAIProvider) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-// ChatStream streams chat responses from OpenAI
 func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, <-chan error) {
 	chunkChan := make(chan StreamChunk, 10)
 	errChan := make(chan error, 1)
@@ -219,7 +214,6 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 			return
 		}
 
-		// Convert to OpenAI format with stream=true
 		openAIReq := map[string]interface{}{
 			"model":    req.Model,
 			"messages": convertMessagesToOpenAI(req.Messages),
@@ -292,7 +286,6 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 				continue
 			}
 
-			// SSE format: "data: {...}"
 			if !strings.HasPrefix(line, "data: ") {
 				continue
 			}
@@ -410,7 +403,6 @@ func convertMessagesToOpenAI(messages []Message) []interface{} {
 					})
 				}
 			}
-			// Some backends (e.g. vLLM) expect at least one text part when image/audio are present
 			if len(contentArray) > 0 && !hasText {
 				contentArray = append([]interface{}{map[string]interface{}{
 					"type": "text",
@@ -421,7 +413,6 @@ func convertMessagesToOpenAI(messages []Message) []interface{} {
 		case []interface{}:
 			messageMap["content"] = content
 		default:
-			// Fallback: try to convert to string
 			messageMap["content"] = fmt.Sprintf("%v", content)
 		}
 

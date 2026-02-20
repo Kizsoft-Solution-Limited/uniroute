@@ -55,9 +55,13 @@ func convertToOllamaMessages(messages []Message) []map[string]interface{} {
 				} else if part.Type == "image_url" && part.ImageURL != nil {
 					u := part.ImageURL.URL
 					if strings.HasPrefix(strings.ToLower(u), "data:image/") {
-						parts := strings.SplitN(u, ",", 2)
-						if len(parts) == 2 {
-							images = append(images, parts[1])
+						urlParts := strings.SplitN(u, ",", 2)
+						if len(urlParts) == 2 {
+							b64 := strings.ReplaceAll(strings.TrimSpace(urlParts[1]), "\n", "")
+							b64 = strings.ReplaceAll(b64, "\r", "")
+							if b64 != "" {
+								images = append(images, b64)
+							}
 						}
 					}
 				} else if part.Type == "audio_url" {
@@ -160,14 +164,13 @@ func (p *LocalProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespons
 			},
 		},
 		Usage: Usage{
-			PromptTokens:     0, // Ollama doesn't always return this
+			PromptTokens:     0,
 			CompletionTokens: 0,
 			TotalTokens:      0,
 		},
 	}, nil
 }
 
-// HealthCheck verifies the local LLM server is available
 func (p *LocalProvider) HealthCheck(ctx context.Context) error {
 	url := fmt.Sprintf("%s/api/tags", p.baseURL)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -188,7 +191,6 @@ func (p *LocalProvider) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-// ChatStream streams chat responses from Ollama
 func (p *LocalProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, <-chan error) {
 	chunkChan := make(chan StreamChunk, 10)
 	errChan := make(chan error, 1)
@@ -270,16 +272,12 @@ func (p *LocalProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan
 				continue
 			}
 
-			// Extract incremental content (delta)
-			// Ollama sends the full content in each message, so we need to calculate the delta
 			currentContent := ollamaResp.Message.Content
 			if currentContent != "" && currentContent != previousContent {
-				// Calculate delta: new content since last message
 				var delta string
 				if strings.HasPrefix(currentContent, previousContent) {
 					delta = currentContent[len(previousContent):]
 				} else {
-					// Content changed completely (shouldn't happen, but handle it)
 					delta = currentContent
 				}
 
@@ -303,7 +301,6 @@ func (p *LocalProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan
 					}
 				}
 
-				// Send final chunk
 				chunkChan <- StreamChunk{
 					ID:      responseID,
 					Content: "",
@@ -317,6 +314,13 @@ func (p *LocalProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan
 		if err := scanner.Err(); err != nil {
 			errChan <- fmt.Errorf("failed to read stream: %w", err)
 			return
+		}
+
+		chunkChan <- StreamChunk{
+			ID:      responseID,
+			Content: "",
+			Done:    true,
+			Usage:   finalUsage,
 		}
 	}()
 

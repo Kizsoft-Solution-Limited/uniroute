@@ -48,11 +48,10 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRes
 		return nil, fmt.Errorf("Anthropic API key not configured")
 	}
 
-	// Convert to Anthropic format
 	anthropicReq := map[string]interface{}{
 		"model":      req.Model,
 		"messages":   convertMessagesToAnthropic(req.Messages),
-		"max_tokens": 4096, // Anthropic requires max_tokens
+		"max_tokens": 4096,
 	}
 
 	if req.Temperature > 0 {
@@ -135,7 +134,6 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRes
 		}
 	}
 
-	// Convert to UniRoute format
 	return &ChatResponse{
 		ID:    anthropicResp.ID,
 		Model: anthropicResp.Model,
@@ -155,14 +153,11 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRes
 	}, nil
 }
 
-// HealthCheck verifies Anthropic API is accessible
 func (p *AnthropicProvider) HealthCheck(ctx context.Context) error {
 	if p.apiKey == "" {
 		return fmt.Errorf("Anthropic API key not configured")
 	}
 
-	// Simple health check: try a minimal request
-	// Anthropic doesn't have a simple health endpoint, so we'll just check API key validity
 	url := fmt.Sprintf("%s/messages", p.baseURL)
 	reqBody := map[string]interface{}{
 		"model":      "claude-3-haiku-20240307",
@@ -202,7 +197,6 @@ func (p *AnthropicProvider) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-// ChatStream streams chat responses from Anthropic
 func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, <-chan error) {
 	chunkChan := make(chan StreamChunk, 10)
 	errChan := make(chan error, 1)
@@ -216,7 +210,6 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 			return
 		}
 
-		// Convert to Anthropic format with stream=true
 		anthropicReq := map[string]interface{}{
 			"model":      req.Model,
 			"messages":   convertMessagesToAnthropic(req.Messages),
@@ -292,9 +285,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 				continue
 			}
 
-			// SSE format: "event: <type>" and "data: {...}"
 			if strings.HasPrefix(line, "event: ") {
-				// Skip event type line, read data on next line
 				continue
 			}
 
@@ -409,15 +400,16 @@ func convertMessagesToAnthropic(messages []Message) []map[string]interface{} {
 				} else if part.Type == "image_url" && part.ImageURL != nil {
 					imageURL := part.ImageURL.URL
 					if strings.HasPrefix(imageURL, "data:image/") {
-						// Data URL format: data:image/png;base64,<data>
-						parts := strings.SplitN(imageURL, ",", 2)
-						if len(parts) == 2 {
+						urlParts := strings.SplitN(imageURL, ",", 2)
+						if len(urlParts) == 2 {
+							b64 := strings.ReplaceAll(strings.TrimSpace(urlParts[1]), "\n", "")
+							b64 = strings.ReplaceAll(b64, "\r", "")
 							contentArray = append(contentArray, map[string]interface{}{
 								"type": "image",
 								"source": map[string]interface{}{
 									"type":       "base64",
 									"media_type": extractMediaType(imageURL),
-									"data":       parts[1],
+									"data":       b64,
 								},
 							})
 						}
@@ -425,14 +417,16 @@ func convertMessagesToAnthropic(messages []Message) []map[string]interface{} {
 				} else if part.Type == "audio_url" && part.AudioURL != nil {
 					audioURL := part.AudioURL.URL
 					if strings.HasPrefix(audioURL, "data:audio/") {
-						parts := strings.SplitN(audioURL, ",", 2)
-						if len(parts) == 2 {
+						urlParts := strings.SplitN(audioURL, ",", 2)
+						if len(urlParts) == 2 {
+							b64 := strings.ReplaceAll(strings.TrimSpace(urlParts[1]), "\n", "")
+							b64 = strings.ReplaceAll(b64, "\r", "")
 							contentArray = append(contentArray, map[string]interface{}{
 								"type": "audio",
 								"source": map[string]interface{}{
 									"type":       "base64",
 									"media_type": extractMediaType(audioURL),
-									"data":       parts[1],
+									"data":       b64,
 								},
 							})
 						}
@@ -441,7 +435,6 @@ func convertMessagesToAnthropic(messages []Message) []map[string]interface{} {
 			}
 			messageMap["content"] = contentArray
 		default:
-			// Fallback: try to convert to string
 			messageMap["content"] = fmt.Sprintf("%v", content)
 		}
 
@@ -450,4 +443,3 @@ func convertMessagesToAnthropic(messages []Message) []map[string]interface{} {
 	return result
 }
 
-// extractMediaType is defined in google.go and shared across the package
