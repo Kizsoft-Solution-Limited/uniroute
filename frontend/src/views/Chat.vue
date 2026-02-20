@@ -156,6 +156,17 @@
             Controls randomness (0.0 = deterministic, 2.0 = very creative)
           </p>
         </div>
+        <div v-if="isSearchCapableModel" class="flex items-center gap-2">
+          <input
+            id="web-search-toggle"
+            v-model="webSearch"
+            type="checkbox"
+            class="rounded border-gray-300 dark:border-gray-600"
+          />
+          <label for="web-search-toggle" class="text-sm text-gray-700 dark:text-gray-300">
+            Search the web – use real-time info when helpful
+          </label>
+        </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Max Tokens: {{ maxTokens }}
@@ -655,6 +666,7 @@ watch(selectedModel, (model) => {
 }, { immediate: false })
 const temperature = ref(0.7)
 const maxTokens = ref(1000)
+const webSearch = ref(true)
 const showSettings = ref(false)
 const messagesContainer = ref<HTMLElement | null>(null)
 const lastMessageEl = ref<HTMLElement | null>(null)
@@ -672,6 +684,10 @@ const speakResponsesEnabled = ref(false)
 const imageErrors = ref(new Set<number>())
 const showMobileConversations = ref(false)
 
+const isSearchCapableModel = computed(() => {
+  const m = selectedModel.value
+  return /^gemini-/i.test(m) || /^gpt-|^o\d/i.test(m) || /^claude-/i.test(m)
+})
 const hasContentToSend = computed(() => {
   return !!(
     (inputMessage.value && inputMessage.value.trim()) ||
@@ -905,7 +921,9 @@ const handleSend = async () => {
       temperature: temperature.value,
       max_tokens: maxTokens.value
     }
-
+    if (webSearch.value) {
+      chatRequestData.web_search = true
+    }
     if (currentConversationId.value) {
       chatRequestData.conversation_id = currentConversationId.value
     }

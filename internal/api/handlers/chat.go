@@ -58,11 +58,13 @@ type ChatRequestWithConversation struct {
 }
 
 type chatStreamRequest struct {
-	ConversationID *string               `json:"conversation_id,omitempty"`
-	Model          string                `json:"model"`
-	Messages       []providers.Message   `json:"messages"`
-	Temperature    float64               `json:"temperature,omitempty"`
-	MaxTokens      int                   `json:"max_tokens,omitempty"`
+	ConversationID        *string               `json:"conversation_id,omitempty"`
+	Model                 string                `json:"model"`
+	Messages              []providers.Message   `json:"messages"`
+	Temperature           float64               `json:"temperature,omitempty"`
+	MaxTokens             int                   `json:"max_tokens,omitempty"`
+	GoogleSearchGrounding bool                  `json:"google_search_grounding,omitempty"`
+	WebSearch             bool                  `json:"web_search,omitempty"`
 }
 
 func (h *ChatHandler) HandleChat(c *gin.Context) {
@@ -245,10 +247,12 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 	}
 
 	req := providers.ChatRequest{
-		Model:       streamReq.Model,
-		Messages:    streamReq.Messages,
-		Temperature: streamReq.Temperature,
-		MaxTokens:   streamReq.MaxTokens,
+		Model:                 streamReq.Model,
+		Messages:              streamReq.Messages,
+		Temperature:           streamReq.Temperature,
+		MaxTokens:             streamReq.MaxTokens,
+		GoogleSearchGrounding: streamReq.GoogleSearchGrounding || streamReq.WebSearch,
+		WebSearch:             streamReq.WebSearch,
 	}
 	reqWithConv := ChatRequestWithConversation{
 		ChatRequest:    req,

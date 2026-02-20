@@ -48,16 +48,17 @@ func (p *GoogleProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 		return nil, fmt.Errorf("Google API key not configured")
 	}
 
-	// Convert to Google Gemini format
 	googleReq := map[string]interface{}{
 		"contents": convertMessagesToGoogle(req.Messages),
 	}
-
 	if req.Temperature > 0 {
 		googleReq["temperature"] = req.Temperature
 	}
 	if req.MaxTokens > 0 {
 		googleReq["maxOutputTokens"] = req.MaxTokens
+	}
+	if req.GoogleSearchGrounding {
+		googleReq["tools"] = []map[string]interface{}{{"google_search": map[string]interface{}{}}}
 	}
 
 	reqBody, err := json.Marshal(googleReq)
@@ -290,6 +291,9 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 		}
 		if len(genConfig) > 0 {
 			googleReq["generationConfig"] = genConfig
+		}
+		if req.GoogleSearchGrounding {
+			googleReq["tools"] = []map[string]interface{}{{"google_search": map[string]interface{}{}}}
 		}
 
 		reqBody, err := json.Marshal(googleReq)

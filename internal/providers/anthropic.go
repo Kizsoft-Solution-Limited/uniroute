@@ -61,6 +61,11 @@ func (p *AnthropicProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRes
 	if req.MaxTokens > 0 {
 		anthropicReq["max_tokens"] = req.MaxTokens
 	}
+	if req.WebSearch {
+		anthropicReq["tools"] = []map[string]string{
+			{"type": "web_search_20250305", "name": "web_search"},
+		}
+	}
 
 	reqBody, err := json.Marshal(anthropicReq)
 	if err != nil {
@@ -224,6 +229,11 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 		}
 		if req.MaxTokens > 0 {
 			anthropicReq["max_tokens"] = req.MaxTokens
+		}
+		if req.WebSearch {
+			anthropicReq["tools"] = []map[string]string{
+				{"type": "web_search_20250305", "name": "web_search"},
+			}
 		}
 
 		reqBody, err := json.Marshal(anthropicReq)

@@ -60,6 +60,9 @@ func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatRespon
 	if req.MaxTokens > 0 {
 		openAIReq["max_tokens"] = req.MaxTokens
 	}
+	if req.WebSearch {
+		openAIReq["tools"] = []map[string]string{{"type": "web_search"}}
+	}
 
 	reqBody, err := json.Marshal(openAIReq)
 	if err != nil {
@@ -228,6 +231,9 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 		}
 		if req.MaxTokens > 0 {
 			openAIReq["max_tokens"] = req.MaxTokens
+		}
+		if req.WebSearch {
+			openAIReq["tools"] = []map[string]string{{"type": "web_search"}}
 		}
 
 		reqBody, err := json.Marshal(openAIReq)
