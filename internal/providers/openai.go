@@ -279,26 +279,25 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 		var responseID string
 		var fullContent strings.Builder
 		var finalUsage *Usage
+		var dataBuf strings.Builder
 
-		for scanner.Scan() {
-			line := scanner.Text()
-			if line == "" {
-				continue
+		flushData := func() bool {
+			if dataBuf.Len() == 0 {
+				return false
 			}
-
-			if !strings.HasPrefix(line, "data: ") {
-				continue
-			}
-
-			data := strings.TrimPrefix(line, "data: ")
-			if data == "[DONE]" {
-				chunkChan <- StreamChunk{
-					ID:      responseID,
-					Content: "",
-					Done:    true,
-					Usage:   finalUsage,
+			data := strings.TrimSpace(dataBuf.String())
+			dataBuf.Reset()
+			if data == "" || data == "[DONE]" {
+				if data == "[DONE]" {
+					chunkChan <- StreamChunk{
+						ID:      responseID,
+						Content: "",
+						Done:    true,
+						Usage:   finalUsage,
+					}
+					return true
 				}
-				return
+				return false
 			}
 
 			var streamResp struct {
@@ -320,7 +319,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 
 			if err := json.Unmarshal([]byte(data), &streamResp); err != nil {
 				p.logger.Debug().Err(err).Str("data", data).Msg("Failed to parse stream chunk")
-				continue
+				return false
 			}
 
 			if responseID == "" && streamResp.ID != "" {
@@ -346,7 +345,27 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 					}
 				}
 			}
+			return false
 		}
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "data: ") {
+				if dataBuf.Len() > 0 {
+					dataBuf.WriteByte('\n')
+				}
+				dataBuf.WriteString(strings.TrimPrefix(line, "data: "))
+				continue
+			}
+			if line == "" {
+				if flushData() {
+					return
+				}
+				continue
+			}
+			dataBuf.Reset()
+		}
+		flushData()
 
 		if err := scanner.Err(); err != nil {
 			chunkChan <- StreamChunk{Content: "", Done: true, Error: fmt.Sprintf("failed to read stream: %v", err)}

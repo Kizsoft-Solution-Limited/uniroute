@@ -278,22 +278,17 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 		var responseID string
 		var fullContent strings.Builder
 		var finalUsage *Usage
+		var dataBuf strings.Builder
 
-		for scanner.Scan() {
-			line := scanner.Text()
-			if line == "" {
-				continue
+		flushData := func() (fatal bool) {
+			if dataBuf.Len() == 0 {
+				return false
 			}
-
-			if strings.HasPrefix(line, "event: ") {
-				continue
+			data := strings.TrimSpace(dataBuf.String())
+			dataBuf.Reset()
+			if data == "" {
+				return false
 			}
-
-			if !strings.HasPrefix(line, "data: ") {
-				continue
-			}
-
-			data := strings.TrimPrefix(line, "data: ")
 
 			var event struct {
 				Type    string `json:"type"`
@@ -317,7 +312,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 			}
 
 			if err := json.Unmarshal([]byte(data), &event); err != nil {
-				continue
+				return false
 			}
 
 			switch event.Type {
@@ -352,13 +347,36 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest) (<-
 					Done:    true,
 					Usage:   finalUsage,
 				}
-				return
+				return true
 
 			case "error":
 				errChan <- fmt.Errorf("Anthropic streaming error: %s", data)
-				return
+				return true
 			}
+			return false
 		}
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "event: ") {
+				continue
+			}
+			if strings.HasPrefix(line, "data: ") {
+				if dataBuf.Len() > 0 {
+					dataBuf.WriteByte('\n')
+				}
+				dataBuf.WriteString(strings.TrimPrefix(line, "data: "))
+				continue
+			}
+			if line == "" {
+				if flushData() {
+					return
+				}
+				continue
+			}
+			dataBuf.Reset()
+		}
+		flushData()
 
 		if err := scanner.Err(); err != nil {
 			errChan <- fmt.Errorf("failed to read stream: %w", err)

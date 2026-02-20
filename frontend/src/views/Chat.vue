@@ -764,8 +764,8 @@ const staticModelGroups = [
     { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' }
   ]},
   { label: 'Google (Gemini)', options: [
-    { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Preview)' },
-    { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Preview)' },
+    { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro Preview' },
+    { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
     { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
     { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
     { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },

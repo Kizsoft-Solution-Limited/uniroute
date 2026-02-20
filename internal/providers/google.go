@@ -335,21 +335,16 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 		var previousText string
 		var finalUsage *Usage
 		var isDone bool
+		var dataBuf strings.Builder
 
-		for scanner.Scan() {
-			line := scanner.Text()
-			if line == "" {
-				continue
+		flushData := func() (fatal bool) {
+			if dataBuf.Len() == 0 {
+				return false
 			}
-
-			if !strings.HasPrefix(line, "data: ") {
-				continue
-			}
-
-			data := strings.TrimPrefix(line, "data: ")
-			data = strings.TrimSpace(data)
+			data := strings.TrimSpace(dataBuf.String())
+			dataBuf.Reset()
 			if data == "" || data == "[DONE]" {
-				continue
+				return false
 			}
 
 			var geminiResp struct {
@@ -378,9 +373,9 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 				}
 				if json.Unmarshal([]byte(data), &apiErr) == nil && apiErr.Error.Message != "" {
 					errChan <- fmt.Errorf("Google API: %s", apiErr.Error.Message)
-					return
+					return true
 				}
-				continue
+				return false
 			}
 
 			var checkErr struct {
@@ -391,7 +386,7 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 			_ = json.Unmarshal([]byte(data), &checkErr)
 			if checkErr.Error.Message != "" {
 				errChan <- fmt.Errorf("Google API: %s", checkErr.Error.Message)
-				return
+				return true
 			}
 
 			if len(geminiResp.Candidates) > 0 {
@@ -433,6 +428,28 @@ func (p *GoogleProvider) ChatStream(ctx context.Context, req ChatRequest) (<-cha
 					TotalTokens:      geminiResp.UsageMetadata.TotalTokenCount,
 				}
 			}
+			return false
+		}
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "data: ") {
+				if dataBuf.Len() > 0 {
+					dataBuf.WriteByte('\n')
+				}
+				dataBuf.WriteString(strings.TrimPrefix(line, "data: "))
+				continue
+			}
+			if line == "" {
+				if flushData() {
+					return
+				}
+				continue
+			}
+			dataBuf.Reset()
+		}
+		if flushData() {
+			return
 		}
 
 		if err := scanner.Err(); err != nil {
