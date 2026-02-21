@@ -122,7 +122,10 @@ sudo mv uniroute /usr/local/bin/
 export UNIROUTE_API_URL=${BASE_URL:-http://localhost:8084}
 
 # Set tunnel server URL (default: auto-detects local mode or uses tunnel.uniroute.co)
-export UNIROUTE_TUNNEL_URL=localhost:8080
+	export UNIROUTE_TUNNEL_URL=localhost:8080
+
+# Optional: override default hosted URL (used when no UNIROUTE_API_URL or saved config)
+	# export UNIROUTE_HOSTED_URL=https://app.uniroute.co
 
 # Enable local development mode
 export UNIROUTE_ENV=local

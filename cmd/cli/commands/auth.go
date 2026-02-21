@@ -41,7 +41,7 @@ Login Methods:
   • API Key: Longer session, no expiration (recommended for automation)
 
 Switch between hosted and local server:
-  --live    Use hosted UniRoute (https://app.uniroute.co) — default for new installs
+  --live    Use hosted UniRoute (default for new installs; override with UNIROUTE_HOSTED_URL)
   --local   Use local server (http://localhost:8084)
   --server  Use a custom URL (overrides --live/--local and UNIROUTE_API_URL)
 
@@ -80,9 +80,16 @@ var (
 )
 
 const (
-	hostedServerURL = "https://app.uniroute.co"
-	localServerURL  = "http://localhost:8084"
+	defaultHostedURL = "https://app.uniroute.co"
+	localServerURL   = "http://localhost:8084"
 )
+
+func getHostedDefaultURL() string {
+	if u := os.Getenv("UNIROUTE_HOSTED_URL"); u != "" {
+		return normalizeServerURL(u)
+	}
+	return defaultHostedURL
+}
 
 func normalizeServerURL(u string) string {
 	u = strings.TrimSpace(u)
@@ -211,7 +218,7 @@ func loginWithAPIKey(apiKey, serverURL string) error {
 	resp, err := client.Do(req)
 	if err != nil {
 		if strings.Contains(serverURL, "localhost") || strings.Contains(serverURL, "127.0.0.1") {
-			return fmt.Errorf("failed to connect to server: %w\n\n   The CLI is using %s. To use the hosted UniRoute instead, run:\n   uniroute auth login --server https://app.uniroute.co -k YOUR_API_KEY\n   Or set: export UNIROUTE_API_URL=https://app.uniroute.co", err, serverURL)
+			return fmt.Errorf("failed to connect to server: %w\n\n   The CLI is using %s. To use the hosted UniRoute instead, run:\n   uniroute auth login --live\n   Or set: export UNIROUTE_API_URL=%s", err, serverURL, getHostedDefaultURL())
 		}
 		return fmt.Errorf("failed to connect to server: %w", err)
 	}
@@ -304,7 +311,7 @@ func getServerURL() string {
 	if isLocalModeExplicit() && isLocalMode() {
 		return localServerURL
 	}
-	return hostedServerURL
+	return getHostedDefaultURL()
 }
 
 func resolveLoginServerURL() string {
@@ -315,7 +322,7 @@ func resolveLoginServerURL() string {
 		return localServerURL
 	}
 	if authLive {
-		return hostedServerURL
+		return getHostedDefaultURL()
 	}
 	return getServerURL()
 }
@@ -512,7 +519,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 	resp, err := client.Do(req)
 	if err != nil {
 		if strings.Contains(serverURL, "localhost") || strings.Contains(serverURL, "127.0.0.1") {
-			return fmt.Errorf("failed to connect to server: %w\n\n   The CLI is using %s. To use the hosted UniRoute instead, run:\n   uniroute auth login --live\n   Or: uniroute auth login --server %s", err, serverURL, hostedServerURL)
+			return fmt.Errorf("failed to connect to server: %w\n\n   The CLI is using %s. To use the hosted UniRoute instead, run:\n   uniroute auth login --live\n   Or: uniroute auth login --server %s", err, serverURL, getHostedDefaultURL())
 		}
 		return fmt.Errorf("failed to connect to server: %w", err)
 	}
@@ -559,8 +566,8 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		fmt.Printf("   Session: No expiration (persistent)\n")
 	}
 
-	if os.Getenv("UNIROUTE_API_URL") == "" && serverURL == "https://app.uniroute.co" {
-		fmt.Printf("   💡 Tip: Set UNIROUTE_API_URL env var to avoid hardcoded defaults\n")
+	if os.Getenv("UNIROUTE_API_URL") == "" && serverURL == getHostedDefaultURL() {
+		fmt.Printf("   💡 Tip: Set UNIROUTE_API_URL to override the default server\n")
 	}
 	
 	fmt.Printf("   Run 'uniroute auth logout' to log out\n")

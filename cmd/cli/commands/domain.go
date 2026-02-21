@@ -75,7 +75,7 @@ Examples:
 			fmt.Println(color.Yellow("⚠️  Warning: Could not add domain to management system (it may already exist)"))
 		} else {
 			fmt.Println(color.Green("✓") + " Domain added to your account")
-			fmt.Println(color.Gray("   View and manage it: https://app.uniroute.co/dashboard/domains"))
+			fmt.Println(color.Gray("   View and manage it: " + getHostedDefaultURL() + "/dashboard/domains"))
 		}
 
 		if assignToTunnel {
@@ -109,7 +109,7 @@ Examples:
 		fmt.Printf("   %s → tunnel.uniroute.co\n", color.Cyan(domain))
 		fmt.Println()
 		fmt.Println(color.Bold("2. Verify DNS configuration:"))
-		fmt.Println(color.Gray("   Go to: https://app.uniroute.co/dashboard/domains"))
+		fmt.Println(color.Gray("   Go to: " + getHostedDefaultURL() + "/dashboard/domains"))
 		fmt.Println(color.Gray("   Find your domain and click 'Verify DNS' button"))
 		fmt.Println()
 		fmt.Println(color.Bold("3. Once verified, your domain is ready to use!"))
