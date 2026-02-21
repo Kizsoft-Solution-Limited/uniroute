@@ -566,10 +566,6 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		fmt.Printf("   Session: No expiration (persistent)\n")
 	}
 
-	if os.Getenv("UNIROUTE_API_URL") == "" && serverURL == getHostedDefaultURL() {
-		fmt.Printf("   💡 Tip: Set UNIROUTE_API_URL to override the default server\n")
-	}
-	
 	fmt.Printf("   Run 'uniroute auth logout' to log out\n")
 
 	return nil
