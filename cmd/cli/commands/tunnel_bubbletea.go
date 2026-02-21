@@ -916,6 +916,10 @@ func runTunnelWithBubbleTea(client *tunnel.TunnelClient, info *tunnel.TunnelInfo
 				p.Send(requestEventMsg(event))
 			case status := <-statusChangeChan:
 				if !model.terminated {
+					if status == "token_expired" {
+						p.Send(connectionStatusMsg(status))
+						p.Send(sessionStatusMsg(status))
+					}
 					if model.client.ShouldExit() {
 						continue
 					}
