@@ -9,7 +9,7 @@ import (
 
 var (
 	version = "1.0.0"
-	rootAll bool // Flag for --all at root level
+	rootAll bool
 	rootCmd = &cobra.Command{
 		Use:   "uniroute",
 		Short: "UniRoute - Unified gateway for every AI model",
@@ -20,12 +20,9 @@ One unified gateway for every AI model. Route, secure, and manage traffic
 to any LLM—cloud or local—with one unified platform.`,
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// If --all flag is set, start all tunnels
 			if rootAll {
 				return runAllTunnels(cmd, args)
 			}
-			
-			// In local mode, show helpful message about auto-starting services
 			if isLocalMode() {
 				fmt.Println("🚀 UniRoute CLI - Local Development Mode")
 				fmt.Println()
@@ -40,8 +37,6 @@ to any LLM—cloud or local—with one unified platform.`,
 				fmt.Println("Run 'uniroute --help' for all commands")
 				return nil
 			}
-			
-			// Otherwise show help
 			return cmd.Help()
 		},
 	}
@@ -52,25 +47,23 @@ func Execute() error {
 }
 
 func init() {
-	// Add --all flag to root command
 	rootCmd.Flags().BoolVar(&rootAll, "all", false, "Start all configured tunnels")
-	
 	rootCmd.AddCommand(authCmd)
 	rootCmd.AddCommand(projectsCmd)
 	rootCmd.AddCommand(devCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(tunnelCmd)
-	rootCmd.AddCommand(httpCmd)  // Shortcut: uniroute http [port]
-	rootCmd.AddCommand(tcpCmd)   // Shortcut: uniroute tcp [port]
-	rootCmd.AddCommand(tlsCmd)   // Shortcut: uniroute tls [port]
-	rootCmd.AddCommand(udpCmd)   // Shortcut: uniroute udp [port]
-	rootCmd.AddCommand(resumeCmd) // Shortcut: uniroute resume [subdomain]
-	rootCmd.AddCommand(listCmd)   // Shortcut: uniroute list
+	rootCmd.AddCommand(httpCmd)
+	rootCmd.AddCommand(tcpCmd)
+	rootCmd.AddCommand(tlsCmd)
+	rootCmd.AddCommand(udpCmd)
+	rootCmd.AddCommand(resumeCmd)
+	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(keysCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(logsCmd)
 	rootCmd.AddCommand(upgradeCmd)
-	rootCmd.AddCommand(domainCmd) // Shortcut: uniroute domain [domain]
+	rootCmd.AddCommand(domainCmd)
 }
 
 func SetVersion(v string) {

@@ -11,7 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/Kizsoft-Solution-Limited/uniroute/m
 ## Authentication
 
 ```bash
-# Login
+# Login (default: hosted; use --live for hosted, --local for local server)
 uniroute auth login
 
 # Logout
@@ -20,6 +20,8 @@ uniroute auth logout
 # Check status
 uniroute auth status
 ```
+
+When you don't pass `--server`, `--local`, or `--live`, the CLI uses `UNIROUTE_API_URL` (if set), then saved server from last login, then hosted (https://app.uniroute.co).
 
 ## Tunnels
 

@@ -59,6 +59,7 @@ API keys provide longer sessions without expiration, making them ideal for autom
 uniroute auth login --api-key ur_xxxxxxxxxxxxx
 # or using short flag
 uniroute auth login -k ur_xxxxxxxxxxxxx
+# use --live for hosted, --local for local server (default when unspecified: env → saved → hosted)
 ```
 
 **Benefits of API Key Login:**

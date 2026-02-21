@@ -34,8 +34,6 @@ func init() {
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
-	// For now, we'll just check if the server is running
-	// In a full implementation, this would connect to a log streaming endpoint
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
@@ -59,7 +57,6 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	fmt.Println("  - Systemd: journalctl -u uniroute -f")
 	fmt.Println("  - Direct: Check the terminal where you ran 'uniroute start'")
 
-	// Try to read any available response
 	body, _ := io.ReadAll(resp.Body)
 	if len(body) > 0 {
 		fmt.Printf("\nServer health: %s\n", string(body))

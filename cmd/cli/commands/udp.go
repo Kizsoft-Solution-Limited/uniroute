@@ -23,22 +23,14 @@ Examples:
   uniroute udp 53 --host dns --new  # Create new tunnel with specific subdomain - flag syntax`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Set protocol to udp
 		tunnelProtocol = "udp"
-		
-		// Set port (required for UDP)
 		if len(args) == 0 {
 			return fmt.Errorf("port is required for UDP tunnel")
 		}
 		tunnelPort = args[0]
-		
-		// Set host if provided as second positional argument (shortcut syntax)
-		// Only use if --host flag is not set (flag takes precedence)
 		if len(args) > 1 && tunnelHost == "" {
 			tunnelHost = args[1]
 		}
-		
-		// Call the tunnel command handler
 		return runBuiltInTunnel(cmd, args)
 	},
 }

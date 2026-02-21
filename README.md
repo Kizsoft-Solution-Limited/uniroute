@@ -74,6 +74,13 @@ uniroute auth login
 uniroute auth login --email user@example.com
 ```
 
+## Choosing the server (hosted vs local)
+When you don't pass `--server`, `--local`, or `--live`, the CLI picks the server in this order: **`UNIROUTE_API_URL`** env var → **saved server** from your last login → **hosted** (https://app.uniroute.co). New installs default to hosted.
+
+Switch explicitly:
+- **Hosted:** `uniroute auth login --live` (or `uniroute auth login --server https://app.uniroute.co`)
+- **Local:** `uniroute auth login --local` (or `uniroute auth login --server http://localhost:8084`)
+
 ## API Key Login (Recommended for Automation)
 API keys provide longer sessions without expiration, making them ideal for automation and CI/CD:
 ```bash
@@ -81,6 +88,10 @@ API keys provide longer sessions without expiration, making them ideal for autom
 uniroute auth login --api-key ur_xxxxxxxxxxxxx
 # or using short flag
 uniroute auth login -k ur_xxxxxxxxxxxxx
+# use hosted explicitly
+uniroute auth login -k ur_xxx --live
+# use local server
+uniroute auth login -k ur_xxx --local
 ```
 
 **Benefits of API Key Login:**
@@ -106,7 +117,7 @@ sudo mv uniroute /usr/local/bin/
 **CLI Environment Variables** (Recommended for local development):
 
 ```bash
-# Set API server URL (default: auto-detects local mode or uses https://app.uniroute.co)
+# Set API server URL (when you don't use --server/--local/--live: env overrides saved config, then default is hosted)
 # Use BASE_URL from .env or set explicitly:
 export UNIROUTE_API_URL=${BASE_URL:-http://localhost:8084}
 

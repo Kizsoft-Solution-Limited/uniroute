@@ -6,18 +6,42 @@ UniRoute supports multiple authentication methods for both the CLI and API.
 
 UniRoute CLI supports two login methods: **Email/Password** and **API Key**. Both methods authenticate you with the UniRoute service and allow you to create and manage tunnels.
 
+### Choosing hosted vs local server
+
+When you don't pass `--server`, `--local`, or `--live`, the server is chosen in this order:
+
+1. **`UNIROUTE_API_URL`** environment variable (if set)
+2. **Saved server** from your last successful login
+3. **Hosted** (https://app.uniroute.co) — default for new installs
+
+To switch explicitly:
+
+| Goal        | Command |
+|------------|---------|
+| Use hosted | `uniroute auth login --live` |
+| Use local  | `uniroute auth login --local` (http://localhost:8084) |
+| Custom URL | `uniroute auth login --server <url>` |
+
+`--server` overrides `--live` and `--local`. Your choice is saved after a successful login.
+
 ### Email/Password Login
 
 Standard login with session expiration:
 
 ```bash
-# Login to managed service
+# Login (uses env/saved config or default hosted)
 uniroute auth login
 
 # Login with email flag
 uniroute auth login --email user@example.com
 
-# Login to self-hosted instance
+# Use hosted explicitly
+uniroute auth login --live
+
+# Use local server
+uniroute auth login --local
+
+# Custom server URL
 uniroute auth login --server http://localhost:8084
 ```
 
@@ -40,7 +64,9 @@ uniroute auth login --api-key ur_xxxxxxxxxxxxx
 # Or using short flag
 uniroute auth login -k ur_xxxxxxxxxxxxx
 
-# Login to self-hosted instance with API key
+# Use local server with API key
+uniroute auth login --api-key ur_xxxxxxxxxxxxx --local
+# Or custom URL
 uniroute auth login --api-key ur_xxxxxxxxxxxxx --server http://localhost:8084
 ```
 

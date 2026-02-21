@@ -17,12 +17,17 @@ uniroute --version
 ### 2. Authenticate
 
 ```bash
-# Login to your account
+# Login (default: hosted UniRoute for new installs)
 uniroute auth login
 
-# Or use the managed service
-uniroute auth login --server https://app.uniroute.co
+# Use hosted explicitly
+uniroute auth login --live
+
+# Use local server (e.g. self-hosted)
+uniroute auth login --local
 ```
+
+When you don't pass `--server`, `--local`, or `--live`, the CLI uses `UNIROUTE_API_URL` (if set), then your last saved server, then the hosted server.
 
 ### 3. Create Your First Tunnel
 

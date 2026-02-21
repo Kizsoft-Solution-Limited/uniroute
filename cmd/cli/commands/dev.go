@@ -16,17 +16,17 @@ import (
 )
 
 type devProject struct {
-	Name    string   // "Node (Vite)", "Laravel", etc.
-	Command string   // executable
-	Args    []string // arguments
-	Port    string   // port for tunnel
+	Name    string
+	Command string
+	Args    []string
+	Port    string
 }
 
 var (
-	devPort      string // override port
-	devDir       string // run from directory (default: cwd)
-	devNoTunnel  bool   // start dev server only, no tunnel
-	devAttach    bool   // tunnel only: use your own dev server, we just add the public URL
+	devPort     string
+	devDir      string
+	devNoTunnel bool
+	devAttach   bool
 )
 
 var devCmd = &cobra.Command{

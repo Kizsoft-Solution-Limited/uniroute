@@ -99,7 +99,7 @@ func init() {
 
 	defaultTunnelServer := getTunnelServerURL()
 	tunnelCmd.Flags().StringVarP(&tunnelServerURL, "server", "s", defaultTunnelServer, "Tunnel server URL (default: auto-detected based on environment)")
-	tunnelCmd.Flags().MarkHidden("server") // Hide from help output
+	tunnelCmd.Flags().MarkHidden("server")
 	
 	tunnelCmd.Flags().StringVar(&resumeSubdomain, "resume", "", "Resume a specific subdomain (or use saved one if not specified)")
 	tunnelCmd.Flags().BoolVar(&clearSaved, "clear", false, "Clear saved tunnel state")
@@ -441,19 +441,19 @@ func createExampleConfig(log zerolog.Logger) error {
 				Name:      "mysql",
 				Protocol:  "tcp",
 				LocalAddr: "localhost:3306",
-				Enabled:   false, // Disabled by default
+				Enabled:   false,
 			},
 			{
 				Name:      "postgres",
 				Protocol:  "tls",
 				LocalAddr: "localhost:5432",
-				Enabled:   false, // Disabled by default
+				Enabled:   false,
 			},
 			{
 				Name:      "dns",
 				Protocol:  "udp",
 				LocalAddr: "localhost:53",
-				Enabled:   false, // Disabled by default
+				Enabled:   false,
 			},
 		},
 	}
@@ -639,31 +639,7 @@ func showTunnelUsage() {
 }
 
 func setCustomDomain(tunnelID, domain, token string) error {
-	var apiURL string
-	if envURL := os.Getenv("UNIROUTE_API_URL"); envURL != "" {
-		apiURL = envURL
-	} else {
-		configPath := filepath.Join(tunnel.GetConfigDir(), "auth.json")
-		if data, err := os.ReadFile(configPath); err == nil {
-			var authConfig struct {
-				ServerURL string `json:"server_url"`
-			}
-			if err := json.Unmarshal(data, &authConfig); err == nil && authConfig.ServerURL != "" {
-				apiURL = authConfig.ServerURL
-			}
-		}
-		if apiURL == "" {
-			apiURL = "https://app.uniroute.co"
-		}
-	}
-	if apiURL == "" {
-		apiURL = "https://app.uniroute.co"
-	}
-
-	if !strings.HasPrefix(apiURL, "http://") && !strings.HasPrefix(apiURL, "https://") {
-		apiURL = "https://" + apiURL
-	}
-
+	apiURL := getServerURL()
 	reqBody := map[string]string{"domain": domain}
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {

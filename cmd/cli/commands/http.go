@@ -21,25 +21,14 @@ Examples:
   uniroute http 8080 --host myapp --new # Create new tunnel with specific subdomain - flag syntax`,
 	Args: cobra.MaximumNArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Set protocol to http
 		tunnelProtocol = "http"
-		
-		// Set port if provided (first argument)
 		if len(args) > 0 {
 			tunnelPort = args[0]
 		}
-		
-		// Set host if provided as second positional argument (shortcut syntax)
-		// Only use if --host flag is not set (flag takes precedence)
 		if len(args) > 1 && tunnelHost == "" {
 			tunnelHost = args[1]
 		}
-		
-		// Reset tunnel server URL to force auto-detection
-		// This ensures local mode is detected even if tunnel command was initialized earlier
 		tunnelServerURL = ""
-		
-		// Call the tunnel command handler
 		return runBuiltInTunnel(cmd, args)
 	},
 }

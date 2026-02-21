@@ -60,7 +60,7 @@ cd examples/tunnel-example
    - Or via web UI: Dashboard → API Keys
 
 3. **Environment Variables**
-   - `UNIROUTE_API_URL`: API server URL (default: auto-detected)
+   - `UNIROUTE_API_URL`: API server URL (when you don't use `--server`/`--local`/`--live`: env → saved config → default hosted)
    - `UNIROUTE_API_KEY`: Your API key
 
 ## Quick Start

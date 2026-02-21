@@ -80,13 +80,11 @@ func init() {
 }
 
 func runKeysCreate(cmd *cobra.Command, args []string) error {
-	// Use public server by default
 	serverURL := keysURL
 	if serverURL == "" {
 		serverURL = getServerURL()
 	}
 
-	// Get auth token (from login or JWT flag)
 	token := keysJWTToken
 	if token == "" {
 		token = getAuthToken()
@@ -99,7 +97,6 @@ func runKeysCreate(cmd *cobra.Command, args []string) error {
 		Timeout: 10 * time.Second,
 	}
 
-	// Build request body
 	body := map[string]interface{}{}
 	if keysName != "" {
 		body["name"] = keysName
@@ -110,7 +107,6 @@ func runKeysCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Create request
 	req, err := http.NewRequest("POST", fmt.Sprintf("%s/admin/api-keys", serverURL), strings.NewReader(string(jsonBody)))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -119,7 +115,6 @@ func runKeysCreate(cmd *cobra.Command, args []string) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 
-	// Send request
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to connect to server: %w", err)
@@ -137,7 +132,6 @@ func runKeysCreate(cmd *cobra.Command, args []string) error {
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		// Not JSON, print raw
 		fmt.Println("API Key created:")
 		fmt.Println(string(respBody))
 		return nil
@@ -159,13 +153,11 @@ func runKeysCreate(cmd *cobra.Command, args []string) error {
 }
 
 func runKeysList(cmd *cobra.Command, args []string) error {
-	// Use public server by default
 	serverURL := keysURL
 	if serverURL == "" {
 		serverURL = getServerURL()
 	}
 
-	// Get auth token
 	token := keysJWTToken
 	if token == "" {
 		token = getAuthToken()
@@ -178,7 +170,6 @@ func runKeysList(cmd *cobra.Command, args []string) error {
 		Timeout: 10 * time.Second,
 	}
 
-	// Create request
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/admin/api-keys", serverURL), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -186,7 +177,6 @@ func runKeysList(cmd *cobra.Command, args []string) error {
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 
-	// Send request
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to connect to server: %w", err)
@@ -268,13 +258,11 @@ func runKeysList(cmd *cobra.Command, args []string) error {
 func runKeysRevoke(cmd *cobra.Command, args []string) error {
 	keyID := args[0]
 
-	// Use public server by default
 	serverURL := keysURL
 	if serverURL == "" {
 		serverURL = getServerURL()
 	}
 
-	// Get auth token
 	token := keysJWTToken
 	if token == "" {
 		token = getAuthToken()
@@ -287,7 +275,6 @@ func runKeysRevoke(cmd *cobra.Command, args []string) error {
 		Timeout: 10 * time.Second,
 	}
 
-	// Create request
 	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/admin/api-keys/%s", serverURL, keyID), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -295,7 +282,6 @@ func runKeysRevoke(cmd *cobra.Command, args []string) error {
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 
-	// Send request
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to connect to server: %w", err)

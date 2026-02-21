@@ -28,7 +28,6 @@ func init() {
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
-	// Use public server by default
 	serverURL := statusURL
 	if serverURL == "" {
 		serverURL = getServerURL()
@@ -38,10 +37,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		Timeout: 5 * time.Second,
 	}
 
-	// Check health endpoint
 	healthURL := fmt.Sprintf("%s/health", serverURL)
 	resp, err := client.Get(healthURL)
-		if err != nil {
+	if err != nil {
 		fmt.Printf("❌ Server is not responding at %s\n", serverURL)
 		fmt.Printf("   Error: %v\n", err)
 		return fmt.Errorf("server unreachable")
@@ -60,7 +58,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	var health map[string]interface{}
 	if err := json.Unmarshal(body, &health); err != nil {
-		// Not JSON, just print raw
 		fmt.Printf("✅ Server is running at %s\n", serverURL)
 		fmt.Printf("   Response: %s\n", string(body))
 		return nil
@@ -69,7 +66,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Printf("✅ Server is running at %s\n", serverURL)
 	fmt.Printf("   Status: %v\n", health["status"])
 
-	// Try to get providers
 	providersURL := fmt.Sprintf("%s/v1/providers", serverURL)
 	providersResp, err := client.Get(providersURL)
 	if err == nil && providersResp.StatusCode == http.StatusOK {

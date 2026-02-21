@@ -56,7 +56,6 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	fmt.Println(color.Cyan("Checking for updates..."))
 	fmt.Println()
 	
-	// Default to GitHub releases API; override with UNIROUTE_VERSION_URL
 	versionURL := os.Getenv("UNIROUTE_VERSION_URL")
 	if versionURL == "" {
 		versionURL = "https://api.github.com/repos/Kizsoft-Solution-Limited/uniroute/releases/latest"
@@ -144,8 +143,7 @@ func runUpgrade(cmd *cobra.Command, args []string) error {
 	if upgradeCmd != nil {
 		fmt.Printf("   %s\n", color.Bold(strings.Join(upgradeCmd, " ")))
 		fmt.Println()
-		
-		// --yes skips prompt (used when called from tunnel UI)
+
 		shouldRun := upgradeAutoYes
 		if !shouldRun {
 			fmt.Print("Run the command above? (y/n): ")

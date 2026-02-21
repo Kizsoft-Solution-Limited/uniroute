@@ -15,7 +15,6 @@ Shows:
   • Local Configuration Tunnels: Tunnels defined in ~/.uniroute/tunnels.json
   • Server Tunnels: Your active subdomain tunnels on the server (requires authentication)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Set list flag and call list function
 		return listAllTunnels()
 	},
 }

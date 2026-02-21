@@ -450,7 +450,7 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		status := string(msg)
-		m.lastStatus = m.connectionStatus // track for clear-on-change in View
+		m.lastStatus = m.connectionStatus
 		if m.internetOnline {
 			isReconnecting := m.client.IsReconnecting()
 			isConnected := m.client.IsConnected()

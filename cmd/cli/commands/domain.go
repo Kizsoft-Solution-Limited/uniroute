@@ -41,7 +41,6 @@ Examples:
 		tunnelID, _ := cmd.Flags().GetString("tunnel-id")
 		subdomain, _ := cmd.Flags().GetString("subdomain")
 		
-		// Only use second arg as subdomain if --subdomain flag is not set (flag takes precedence)
 		if len(args) > 1 && subdomain == "" {
 			subdomain = args[1]
 		}
@@ -72,7 +71,6 @@ Examples:
 			}
 		}
 
-		// Same as adding domain in dashboard - both use /auth/domains endpoint
 		if err := createDomainIfNotExists(domain, token); err != nil {
 			fmt.Println(color.Yellow("⚠️  Warning: Could not add domain to management system (it may already exist)"))
 		} else {
@@ -80,7 +78,6 @@ Examples:
 			fmt.Println(color.Gray("   View and manage it: https://app.uniroute.co/dashboard/domains"))
 		}
 
-		// If tunnel specified, assign domain to tunnel
 		if assignToTunnel {
 			if err := setCustomDomain(tunnelID, domain, token); err != nil {
 				return fmt.Errorf("failed to assign domain to tunnel: %w", err)
@@ -127,7 +124,6 @@ func init() {
 	domainCmd.Flags().String("tunnel-id", "", "Tunnel ID to set domain for")
 	domainCmd.Flags().String("subdomain", "", "Subdomain to set domain for")
 	
-	// Add subcommands
 	domainCmd.AddCommand(domainListCmd)
 	domainCmd.AddCommand(domainShowCmd)
 	domainCmd.AddCommand(domainVerifyCmd)
@@ -483,7 +479,7 @@ func verifyDomain(domainID, token string) (VerifyResult, error) {
 	var result VerifyResult
 
 	apiURL := getAPIURL()
-	client := &http.Client{Timeout: 30 * time.Second} // Longer timeout for DNS checks
+	client := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequest("POST", fmt.Sprintf("%s/auth/domains/%s/verify", apiURL, domainID), nil)
 	if err != nil {
 		return result, fmt.Errorf("failed to create request: %w", err)
@@ -530,31 +526,7 @@ func removeDomain(domainID, token string) error {
 }
 
 func getAPIURL() string {
-	var apiURL string
-	if envURL := os.Getenv("UNIROUTE_API_URL"); envURL != "" {
-		apiURL = envURL
-	} else {
-		configPath := filepath.Join(tunnel.GetConfigDir(), "auth.json")
-		if _, err := os.Stat(configPath); err == nil {
-			if data, err := os.ReadFile(configPath); err == nil {
-				var authConfig struct {
-					ServerURL string `json:"server_url"`
-				}
-				if err := json.Unmarshal(data, &authConfig); err == nil && authConfig.ServerURL != "" {
-					apiURL = authConfig.ServerURL
-				}
-			}
-		}
-		if apiURL == "" {
-			apiURL = "https://app.uniroute.co"
-		}
-	}
-
-	if !strings.HasPrefix(apiURL, "http://") && !strings.HasPrefix(apiURL, "https://") {
-		apiURL = "https://" + apiURL
-	}
-
-	return apiURL
+	return getServerURL()
 }
 
 type DomainAssignment struct {
@@ -587,7 +559,7 @@ func saveDomainAssignment(domain, subdomain, tunnelID string) error {
 				Domain:    domain,
 				Subdomain: subdomain,
 				TunnelID:  tunnelID,
-				CreatedAt: a.CreatedAt, // Preserve original creation time
+				CreatedAt: a.CreatedAt,
 				LastUsed:  time.Now(),
 			}
 			found = true
@@ -623,7 +595,7 @@ func loadDomainAssignments() ([]DomainAssignment, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []DomainAssignment{}, nil // No saved assignments
+			return []DomainAssignment{}, nil
 		}
 		return nil, fmt.Errorf("failed to read domain assignments: %w", err)
 	}
@@ -656,7 +628,7 @@ func removeDomainAssignment(domain string) {
 	
 	data, err := json.MarshalIndent(filtered, "", "  ")
 	if err != nil {
-		return // Silently fail
+		return
 	}
 	
 	os.WriteFile(getDomainStatePath(), data, 0600)
@@ -726,9 +698,8 @@ func createDomainIfNotExists(domain, token string) error {
 	}
 	defer resp.Body.Close()
 
-	// 409 Conflict means domain already exists, which is fine
 	if resp.StatusCode == http.StatusConflict {
-		return nil // Domain already exists, that's okay
+		return nil
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
