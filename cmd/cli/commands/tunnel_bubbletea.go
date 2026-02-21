@@ -451,7 +451,10 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		status := string(msg)
 		m.lastStatus = m.connectionStatus
-		if m.internetOnline {
+		if status == "token_expired" {
+			m.connectionStatus = color.Red("Token expired")
+			m.sessionStatus = fmt.Sprintf("%s %s", color.Red("●"), color.Red("token expired"))
+		} else if m.internetOnline {
 			isReconnecting := m.client.IsReconnecting()
 			isConnected := m.client.IsConnected()
 			if status == "online" {
@@ -482,7 +485,9 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		status := string(msg)
-		if m.internetOnline {
+		if status == "token_expired" {
+			m.sessionStatus = fmt.Sprintf("%s %s", color.Red("●"), color.Red("token expired"))
+		} else if m.internetOnline {
 			if !m.reconnectTime.IsZero() && time.Since(m.reconnectTime) < 2*time.Second {
 				m.sessionStatus = fmt.Sprintf("%s %s", color.Yellow("●"), color.Yellow("reconnecting"))
 			} else {

@@ -8,6 +8,18 @@ Complete reference for the UniRoute command-line interface.
 curl -fsSL https://raw.githubusercontent.com/Kizsoft-Solution-Limited/uniroute/main/scripts/install.sh | bash
 ```
 
+## Uninstall
+
+Remove the CLI and config in one of two ways:
+
+```bash
+# Option 1: Using the CLI (removes config and, if possible, the binary)
+uniroute uninstall
+
+# Option 2: Using the install script (removes /usr/local/bin/uniroute and ~/.uniroute)
+curl -fsSL https://raw.githubusercontent.com/Kizsoft-Solution-Limited/uniroute/main/scripts/install.sh | bash -s uninstall
+```
+
 ## Authentication
 
 ```bash

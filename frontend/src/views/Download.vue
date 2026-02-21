@@ -176,14 +176,22 @@
               <!-- macOS/Linux -->
               <div v-if="detectedPlatform && detectedPlatform.os !== 'Windows'" class="min-w-0">
                 <h3 class="text-base sm:text-lg font-semibold text-white mb-2 sm:mb-3">macOS / Linux</h3>
+                <p class="text-sm text-slate-400 mb-3">
+                  On Mac and Linux, the downloaded file is not runnable until you make it executable with <code class="bg-slate-800/60 px-1 rounded">chmod +x</code>. Use the actual filename (e.g. <code class="bg-slate-800/60 px-1 rounded">uniroute-darwin-arm64</code>, <code class="bg-slate-800/60 px-1 rounded">uniroute-darwin-amd64</code>) or rename it to <code class="bg-slate-800/60 px-1 rounded">uniroute</code> first.
+                </p>
                 <div class="bg-slate-950/60 rounded-lg p-3 sm:p-4 font-mono text-xs sm:text-sm text-slate-300 space-y-2 overflow-x-auto max-w-full" style="-webkit-overflow-scrolling: touch;">
                   <div>
-                    <span class="text-slate-500"># Make executable</span><br>
-                    <span class="text-green-400">chmod +x uniroute</span>
+                    <span class="text-slate-500"># If the file is in your Downloads folder:</span><br>
+                    <span class="text-green-400">cd ~/Downloads</span>
+                  </div>
+                  <div>
+                    <span class="text-slate-500"># Make executable (required after download)</span><br>
+                    <span class="text-green-400">chmod +x uniroute-darwin-amd64</span>
+                    <span class="text-slate-500 text-xs block mt-0.5">(or uniroute-darwin-arm64 / uniroute-linux-amd64)</span>
                   </div>
                   <div>
                     <span class="text-slate-500"># Move to PATH (optional)</span><br>
-                    <span class="text-green-400">sudo mv uniroute /usr/local/bin/</span>
+                    <span class="text-green-400">sudo mv uniroute-darwin-amd64 /usr/local/bin/uniroute</span>
                   </div>
                   <div>
                     <span class="text-slate-500"># Verify installation</span><br>

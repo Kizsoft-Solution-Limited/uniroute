@@ -44,6 +44,7 @@ type TunnelClient struct {
 	isConnected           bool
 	isReconnecting        bool // True when attempting to reconnect
 	shouldExit            bool // True when tunnel was disconnected from dashboard - should exit instead of reconnect
+	authInvalid           bool // True when server rejected token (expired or invalid)
 	token                 string
 	requestQueue          []*HTTPRequest // Queue for requests during disconnection
 	queueMu               sync.Mutex
@@ -63,6 +64,8 @@ type TunnelClient struct {
 	requestHandlerMu      sync.RWMutex                  // Mutex for request handler
 	statusChangeHandler   ConnectionStatusChangeHandler // Callback for connection status changes
 	statusChangeHandlerMu sync.RWMutex                  // Mutex for status change handler
+	onAuthInvalid         func()                        // Optional: called when server rejects token (so CLI can clear saved auth)
+	onAuthInvalidMu       sync.RWMutex                  // Mutex for onAuthInvalid
 	writeMu               sync.Mutex                    // Mutex to serialize WebSocket writes (WebSocket is not thread-safe for concurrent writes)
 	lastNotifiedStatus    string                        // Last status that was notified to prevent duplicate notifications
 }
@@ -140,6 +143,14 @@ func (tc *TunnelClient) SetConnectionStatusChangeHandler(handler ConnectionStatu
 	tc.statusChangeHandlerMu.Lock()
 	defer tc.statusChangeHandlerMu.Unlock()
 	tc.statusChangeHandler = handler
+}
+
+// SetOnAuthInvalid sets a callback invoked when the server rejects the token (invalid or expired).
+// The CLI uses this to clear saved auth so the user is logged out.
+func (tc *TunnelClient) SetOnAuthInvalid(fn func()) {
+	tc.onAuthInvalidMu.Lock()
+	defer tc.onAuthInvalidMu.Unlock()
+	tc.onAuthInvalid = fn
 }
 
 func (tc *TunnelClient) notifyStatusChange() {
@@ -300,17 +311,25 @@ func (tc *TunnelClient) Connect() error {
 			errorMessage = errorMsg
 		}
 		
-		if strings.Contains(strings.ToLower(errorMsg), "token") || 
+		if strings.Contains(strings.ToLower(errorMsg), "token") ||
 		   strings.Contains(strings.ToLower(errorMsg), "authentication") ||
 		   strings.Contains(strings.ToLower(errorMsg), "expired") ||
 		   strings.Contains(strings.ToLower(errorMsg), "invalid") {
 			tc.mu.Lock()
 			tc.token = ""
+			tc.authInvalid = true
+			tc.shouldExit = true
+			tc.isReconnecting = false
 			tc.mu.Unlock()
 
-			tc.logger.Info().
-				Str("error", errorMsg).
-				Msg("Authentication failed - token cleared. Please run 'uniroute auth login' to authenticate again")
+			tc.onAuthInvalidMu.RLock()
+			fn := tc.onAuthInvalid
+			tc.onAuthInvalidMu.RUnlock()
+			if fn != nil {
+				fn()
+			}
+
+			tc.notifyStatusChange()
 		}
 		
 		return fmt.Errorf("%s: %s", errorMsg, errorMessage)
@@ -1163,20 +1182,22 @@ func (tc *TunnelClient) ShouldExit() bool {
 
 func (tc *TunnelClient) GetConnectionStatus() string {
 	tc.mu.RLock()
+	authInvalid := tc.authInvalid
 	isConnected := tc.isConnected
 	isReconnecting := tc.isReconnecting
 	wsConn := tc.wsConn
 	tc.mu.RUnlock()
 
-	// If we have a WebSocket connection and are marked as connected, we're online
-	// This prevents false "reconnecting" status when connection is actually stable
+	if authInvalid {
+		return "token_expired"
+	}
 	if isConnected && wsConn != nil {
 		return "online"
-	} else if isReconnecting {
-		return "reconnecting"
-	} else {
-		return "offline"
 	}
+	if isReconnecting {
+		return "reconnecting"
+	}
+	return "offline"
 }
 
 func (tc *TunnelClient) GetLatency() int64 {

@@ -106,11 +106,30 @@ uniroute projects list
 
 **Option 2: Manual Download**
 
+On Mac (and Linux), a downloaded binary is not executable until you run `chmod +x`. Then move it into your PATH.
+
+**If the file is in your Downloads folder** (e.g. `uniroute-darwin-amd64` or `uniroute-darwin-arm64`):
+
 ```bash
-# Download for your platform (see CLI_INSTALLATION.md for all platforms)
-# macOS (Apple Silicon):
+cd ~/Downloads
+chmod +x uniroute-darwin-amd64   # or uniroute-darwin-arm64 for Apple Silicon
+sudo mv uniroute-darwin-amd64 /usr/local/bin/uniroute
+uniroute --version
+```
+
+**Or download via curl:**
+
+```bash
+# macOS (Apple Silicon / M1/M2/M3):
 curl -L https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest/download/uniroute-darwin-arm64 -o uniroute
+
+# macOS (Intel):
+# curl -L https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest/download/uniroute-darwin-amd64 -o uniroute
+
+# Make it executable (required after download)
 chmod +x uniroute
+
+# Move to a directory in your PATH (e.g. /usr/local/bin)
 sudo mv uniroute /usr/local/bin/
 ```
 

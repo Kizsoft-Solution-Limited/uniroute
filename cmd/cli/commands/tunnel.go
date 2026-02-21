@@ -257,6 +257,7 @@ func startTunnelFromConfig(tc tunnel.TunnelConfig) error {
 		color.Cyan(localURL))
 
 	client := tunnel.NewTunnelClientWithOptions(serverURL, localURL, tc.Protocol, tc.Host, log)
+	client.SetOnAuthInvalid(clearExpiredToken)
 
 	if err := client.Connect(); err != nil {
 		errStr := err.Error()
@@ -265,7 +266,6 @@ func startTunnelFromConfig(tc tunnel.TunnelConfig) error {
 		   strings.Contains(strings.ToLower(errStr), "expired") ||
 		   strings.Contains(strings.ToLower(errStr), "invalid") {
 			clearExpiredToken()
-			log.Warn().Msg("Authentication failed - token cleared. Please run 'uniroute auth login' to authenticate again")
 			return fmt.Errorf("authentication failed: %w\n\nPlease run 'uniroute auth login' to authenticate again", err)
 		}
 		return fmt.Errorf("failed to connect: %w", err)
@@ -319,6 +319,7 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 	}
 
 	client := tunnel.NewTunnelClientWithOptions(tunnelServerURL, localURL, tunnelProtocol, tunnelHost, log)
+	client.SetOnAuthInvalid(clearExpiredToken)
 
 	token := getAuthToken()
 	if token != "" {
@@ -362,7 +363,6 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 		   strings.Contains(strings.ToLower(errStr), "expired") ||
 		   strings.Contains(strings.ToLower(errStr), "invalid") {
 			clearExpiredToken()
-			log.Warn().Msg("Authentication failed - token cleared. Please run 'uniroute auth login' to authenticate again")
 			return fmt.Errorf("authentication failed: %w\n\nPlease run 'uniroute auth login' to authenticate again", err)
 		}
 		return fmt.Errorf("failed to connect to tunnel server: %w", err)

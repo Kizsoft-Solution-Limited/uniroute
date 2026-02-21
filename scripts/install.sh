@@ -1,17 +1,41 @@
 #!/bin/bash
 
 # UniRoute One-Line Installation Script
-# Usage: curl -fsSL https://raw.githubusercontent.com/Kizsoft-Solution-Limited/uniroute/main/scripts/install.sh | bash
-# Or: bash <(curl -fsSL https://raw.githubusercontent.com/Kizsoft-Solution-Limited/uniroute/main/scripts/install.sh)
+# Install: curl -fsSL https://raw.githubusercontent.com/Kizsoft-Solution-Limited/uniroute/main/scripts/install.sh | bash
+# Uninstall: curl -fsSL https://raw.githubusercontent.com/Kizsoft-Solution-Limited/uniroute/main/scripts/install.sh | bash -s uninstall
 
 set -e
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+if [ "${1:-}" = "uninstall" ]; then
+  echo -e "${BLUE}UniRoute CLI Uninstall${NC}"
+  echo ""
+  INSTALL_PATH="/usr/local/bin/uniroute"
+  if [ -f "$INSTALL_PATH" ]; then
+    if [ -w "$(dirname "$INSTALL_PATH")" ]; then
+      rm -f "$INSTALL_PATH"
+      echo -e "${GREEN}Removed: ${INSTALL_PATH}${NC}"
+    else
+      sudo rm -f "$INSTALL_PATH"
+      echo -e "${GREEN}Removed: ${INSTALL_PATH}${NC}"
+    fi
+  else
+    echo -e "${YELLOW}Binary not found at ${INSTALL_PATH}${NC}"
+  fi
+  CONFIG_DIR="${UNIROUTE_CONFIG_DIR:-$HOME/.uniroute}"
+  if [ -d "$CONFIG_DIR" ]; then
+    rm -rf "$CONFIG_DIR"
+    echo -e "${GREEN}Removed config: ${CONFIG_DIR}${NC}"
+  fi
+  echo ""
+  echo -e "${GREEN}Uninstall complete.${NC}"
+  exit 0
+fi
 
 echo -e "${BLUE}UniRoute CLI Installation${NC}"
 echo ""
