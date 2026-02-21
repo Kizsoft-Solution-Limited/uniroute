@@ -96,7 +96,6 @@ func init() {
 	authLoginCmd.Flags().StringVarP(&authServer, "server", "s", "", "UniRoute server URL (overrides UNIROUTE_API_URL env var)")
 }
 
-// AuthConfig stores authentication information
 type AuthConfig struct {
 	Token     string `json:"token"`
 	Email     string `json:"email"`
@@ -121,7 +120,7 @@ func loadAuthConfig() (*AuthConfig, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil // No config file, not logged in
+			return nil, nil
 		}
 		return nil, err
 	}
@@ -148,7 +147,6 @@ func saveAuthConfig(config *AuthConfig) error {
 	return os.WriteFile(configPath, data, 0600)
 }
 
-// The token persists across CLI sessions, computer restarts, etc.
 func getAuthToken() string {
 	config, err := loadAuthConfig()
 	if err != nil || config == nil {
@@ -158,7 +156,6 @@ func getAuthToken() string {
 	if config.ExpiresAt != "" {
 		expiresAt, err := time.Parse(time.RFC3339, config.ExpiresAt)
 		if err == nil && time.Now().After(expiresAt) {
-			// Token expired, clear it
 			_ = runAuthLogout(nil, nil)
 			return ""
 		}
@@ -171,19 +168,15 @@ func isAuthenticated() bool {
 	return getAuthToken() != ""
 }
 
-// clearExpiredToken clears the auth config if token appears to be expired
-// This is called when API returns 401 Unauthorized
 func clearExpiredToken() {
 	configPath, err := getConfigPath()
 	if err != nil {
 		return
 	}
-	_ = os.Remove(configPath) // Ignore errors
+	_ = os.Remove(configPath)
 }
 
-// loginWithAPIKey authenticates using an API key (longer session, no expiration)
 func loginWithAPIKey(apiKey, serverURL string) error {
-	// Determine server URL
 	if serverURL == "" {
 		serverURL = getServerURL()
 	}
@@ -202,6 +195,9 @@ func loginWithAPIKey(apiKey, serverURL string) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if strings.Contains(serverURL, "localhost") || strings.Contains(serverURL, "127.0.0.1") {
+			return fmt.Errorf("failed to connect to server: %w\n\n   The CLI is using %s. To use the hosted UniRoute instead, run:\n   uniroute auth login --server https://app.uniroute.co -k YOUR_API_KEY\n   Or set: export UNIROUTE_API_URL=https://app.uniroute.co", err, serverURL)
+		}
 		return fmt.Errorf("failed to connect to server: %w", err)
 	}
 	defer resp.Body.Close()
@@ -261,7 +257,6 @@ func loginWithAPIKey(apiKey, serverURL string) error {
 		Token:     apiKey,
 		Email:     email,
 		ServerURL: serverURL,
-		// No ExpiresAt - API keys don't expire
 	}
 
 	if err := saveAuthConfig(config); err != nil {
@@ -269,7 +264,6 @@ func loginWithAPIKey(apiKey, serverURL string) error {
 	}
 
 	fmt.Println("✅ Successfully logged in with API key!")
-	// Show masked API key (first 8 chars and last 4 chars)
 	if len(apiKey) > 12 {
 		fmt.Printf("   API Key: %s...%s\n", apiKey[:8], apiKey[len(apiKey)-4:])
 	} else {
@@ -284,26 +278,31 @@ func loginWithAPIKey(apiKey, serverURL string) error {
 	return nil
 }
 
-// Priority: 1. Environment variable (UNIROUTE_API_URL), 2. Saved auth config, 3. Auto-detect local mode, 4. Default
 func getServerURL() string {
-	// Priority 1: Environment variable (highest priority)
 	if envURL := os.Getenv("UNIROUTE_API_URL"); envURL != "" {
 		return envURL
 	}
-	
-	// Priority 2: Saved auth config
+
 	config, err := loadAuthConfig()
 	if err == nil && config != nil && config.ServerURL != "" {
 		return config.ServerURL
 	}
-	
-	// Priority 3: Auto-detect local mode
-	if isLocalMode() {
+
+	if isLocalModeExplicit() && isLocalMode() {
 		return "http://localhost:8084"
 	}
-	
-	// Priority 4: Default (only used if nothing else is configured)
+
 	return "https://app.uniroute.co"
+}
+
+func isLocalModeExplicit() bool {
+	if env := os.Getenv("UNIROUTE_ENV"); env == "local" || env == "development" || env == "dev" {
+		return true
+	}
+	if u := os.Getenv("UNIROUTE_API_URL"); u != "" && (strings.Contains(u, "localhost") || strings.Contains(u, "127.0.0.1")) {
+		return true
+	}
+	return false
 }
 
 func isLocalMode() bool {
@@ -345,9 +344,7 @@ func isLocalMode() bool {
 	return false
 }
 
-// Priority: 1. Environment variable (UNIROUTE_TUNNEL_URL), 2. Auto-detect local mode, 3. Default
 func getTunnelServerURL() string {
-	// Priority 1: Environment variable (highest priority)
 	if envURL := os.Getenv("UNIROUTE_TUNNEL_URL"); envURL != "" {
 		return envURL
 	}
@@ -367,9 +364,6 @@ func getTunnelServerURL() string {
 }
 
 func runAuthLogin(cmd *cobra.Command, args []string) error {
-	// Support API key login (longer session, no expiration)
-	// If API key is provided, always allow login (even if already logged in)
-	// This allows users to switch from JWT to API key or vice versa
 	if authAPIKey != "" {
 		return loginWithAPIKey(authAPIKey, authServer)
 	}
@@ -377,13 +371,11 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 	if isAuthenticated() {
 		config, err := loadAuthConfig()
 		if err == nil && config != nil {
-			// Verify token is still valid by checking expiration
 			tokenValid := true
 			if config.ExpiresAt != "" {
 				expiresAt, err := time.Parse(time.RFC3339, config.ExpiresAt)
 				if err == nil && time.Now().After(expiresAt) {
 					tokenValid = false
-					// Clear expired token
 					_ = runAuthLogout(nil, nil)
 				}
 			}
@@ -430,12 +422,11 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 
 	if authPassword == "" {
 		fmt.Print("Password: ")
-		// Read password without echoing to terminal (cross-platform)
 		passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
 		if err != nil {
 			return fmt.Errorf("failed to read password: %w", err)
 		}
-		fmt.Println() // Print newline after password input
+		fmt.Println()
 		authPassword = string(passwordBytes)
 		if authPassword == "" {
 			return fmt.Errorf("password is required")
@@ -456,10 +447,8 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Determine server URL: flag > env var > saved config > auto-detect > default
 	serverURL := authServer
 	if serverURL == "" {
-		// No flag provided, use getServerURL() which checks env var, config, and auto-detects
 		serverURL = getServerURL()
 	}
 	
@@ -473,6 +462,9 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if strings.Contains(serverURL, "localhost") || strings.Contains(serverURL, "127.0.0.1") {
+			return fmt.Errorf("failed to connect to server: %w\n\n   The CLI is using %s. To use the hosted UniRoute instead, run:\n   uniroute auth login --server https://app.uniroute.co\n   Or set: export UNIROUTE_API_URL=https://app.uniroute.co", err, serverURL)
+		}
 		return fmt.Errorf("failed to connect to server: %w", err)
 	}
 	defer resp.Body.Close()
@@ -517,8 +509,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Printf("   Session: No expiration (persistent)\n")
 	}
-	
-	// Show helpful message about environment variables if using default
+
 	if os.Getenv("UNIROUTE_API_URL") == "" && serverURL == "https://app.uniroute.co" {
 		fmt.Printf("   💡 Tip: Set UNIROUTE_API_URL env var to avoid hardcoded defaults\n")
 	}
