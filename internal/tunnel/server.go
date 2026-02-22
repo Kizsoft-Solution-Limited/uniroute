@@ -105,7 +105,7 @@ func NewTunnelServer(port int, logger zerolog.Logger, allowedOrigins []string) *
 
 	originPatterns := defaultOrigins
 	if len(allowedOrigins) > 0 {
-		originPatterns = allowedOrigins
+		originPatterns = append(originPatterns, allowedOrigins...)
 	}
 
 	websiteURL := getEnv("WEBSITE_URL", getEnv("BASE_URL", "https://uniroute.co"))
