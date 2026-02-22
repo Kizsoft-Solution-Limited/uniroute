@@ -73,6 +73,46 @@ func (h *AnalyticsHandler) GetUsageStats(c *gin.Context) {
 	})
 }
 
+func (h *AnalyticsHandler) GetUsageStatsAdmin(c *gin.Context) {
+	startTime := time.Now().AddDate(0, 0, -30)
+	endTime := time.Now()
+
+	if startStr := c.Query("start_time"); startStr != "" {
+		if parsed, err := time.Parse(time.RFC3339, startStr); err == nil {
+			startTime = parsed
+		}
+	}
+
+	if endStr := c.Query("end_time"); endStr != "" {
+		if parsed, err := time.Parse(time.RFC3339, endStr); err == nil {
+			endTime = parsed
+		}
+	}
+
+	stats, err := h.requestRepo.GetUsageStats(c.Request.Context(), nil, startTime, endTime)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to get usage stats (admin)")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "failed to get usage statistics",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"period": gin.H{
+			"start": startTime.Format(time.RFC3339),
+			"end":   endTime.Format(time.RFC3339),
+		},
+		"total_requests":     stats.TotalRequests,
+		"total_tokens":       stats.TotalTokens,
+		"total_cost":        stats.TotalCost,
+		"average_latency_ms": stats.AverageLatencyMs,
+		"requests_by_provider": stats.RequestsByProvider,
+		"requests_by_model":   stats.RequestsByModel,
+		"cost_by_provider":   stats.CostByProvider,
+	})
+}
+
 func (h *AnalyticsHandler) GetRequests(c *gin.Context) {
 	userIDStr, exists := c.Get("user_id")
 	var userID *uuid.UUID

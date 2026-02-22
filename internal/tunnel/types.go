@@ -89,12 +89,13 @@ type Tunnel struct {
 	CustomDomain string
 	LocalURL     string
 	PublicURL    string
-	Protocol     string // http, tcp, tls, udp
+	Protocol     string
 	Status       string
 	Region       string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	LastActive   time.Time
+	ActiveSince  time.Time
 	RequestCount int64
 }
 

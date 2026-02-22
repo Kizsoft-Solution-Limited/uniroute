@@ -44,7 +44,7 @@
               <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Public URL</th>
               <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
               <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Protocol</th>
-              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">User ID</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">User</th>
               <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Created</th>
               <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
             </tr>
@@ -75,7 +75,7 @@
                 </span>
               </td>
               <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{{ t.protocol || 'http' }}</td>
-              <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 font-mono text-xs truncate max-w-[120px]" :title="t.user_id || ''">{{ t.user_id || '-' }}</td>
+              <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 truncate max-w-[160px]" :title="(t.user_display || t.user_id) || ''">{{ t.user_display || t.user_id || '-' }}</td>
               <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                 {{ formatDate(t.created_at) }}
               </td>

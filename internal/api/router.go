@@ -269,6 +269,11 @@ func SetupRouter(
 		admin.Use(middleware.JWTAuthMiddleware(jwtService))
 		admin.Use(middleware.AdminMiddleware())
 
+		if requestRepo != nil {
+			adminAnalyticsHandler := handlers.NewAnalyticsHandler(requestRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+			admin.GET("/analytics/usage", adminAnalyticsHandler.GetUsageStatsAdmin)
+		}
+
 		if settingsRepo != nil {
 			admin.POST("/routing/strategy", routingHandler.SetRoutingStrategy)
 			admin.GET("/routing/strategy", routingHandler.GetRoutingStrategy)
@@ -285,7 +290,10 @@ func SetupRouter(
 		if postgresClient != nil {
 			tunnelRepo := tunnel.NewTunnelRepository(postgresClient.Pool(), zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 			tunnelHandler := handlers.NewTunnelHandler(tunnelRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+			adminUserRepoForTunnels := storage.NewUserRepository(postgresClient, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+			tunnelHandler.SetUserRepository(adminUserRepoForTunnels)
 			admin.GET("/tunnels/stats", tunnelHandler.GetTunnelStats)
+			admin.GET("/tunnels/counts", tunnelHandler.HandleAdminTunnelCounts)
 			admin.GET("/tunnels", tunnelHandler.HandleAdminListTunnels)
 			admin.DELETE("/tunnels/:id", tunnelHandler.HandleAdminDeleteTunnel)
 			admin.POST("/tunnels/delete", tunnelHandler.HandleAdminDeleteTunnels)

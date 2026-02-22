@@ -1,21 +1,19 @@
 #!/bin/bash
 
-# Migration runner script for UniRoute
-# Checks which migrations have been applied and runs missing ones
-
 set -e
 
-# Colors for output
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+cd "$REPO_ROOT"
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 echo -e "${BLUE}UniRoute Migration Runner${NC}"
 echo ""
 
-# Load environment variables (set -a/source handles values with spaces)
 if [ -f .env ]; then
     set -a
     source .env
@@ -210,6 +208,14 @@ if check_migration "017" "SELECT 1 FROM information_schema.columns WHERE table_n
 else
     echo -e "${YELLOW}017_add_tunnel_protocol.sql (pending)${NC}"
     MIGRATIONS_TO_RUN+=("migrations/017_add_tunnel_protocol.sql")
+fi
+
+# Migration 018: Tunnel active_since column
+if check_migration "018" "SELECT 1 FROM information_schema.columns WHERE table_name = 'tunnels' AND column_name = 'active_since' AND table_schema = 'public';"; then
+    echo -e "${GREEN}018_tunnel_active_since.sql (already applied)${NC}"
+else
+    echo -e "${YELLOW}018_tunnel_active_since.sql (pending)${NC}"
+    MIGRATIONS_TO_RUN+=("migrations/018_tunnel_active_since.sql")
 fi
 
 echo ""

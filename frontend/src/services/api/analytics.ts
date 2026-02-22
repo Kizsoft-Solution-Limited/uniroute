@@ -71,6 +71,14 @@ export const analyticsApi = {
     return response.data
   },
 
+  async getUsageStatsAdmin(startTime?: string, endTime?: string): Promise<UsageStats> {
+    const params: Record<string, string> = {}
+    if (startTime) params.start_time = startTime
+    if (endTime) params.end_time = endTime
+    const response = await apiClient.get<UsageStats>('/admin/analytics/usage', { params })
+    return response.data
+  },
+
   /**
    * Get request history
    * Uses /auth/analytics/requests for frontend (JWT auth) or /v1/analytics/requests for API keys

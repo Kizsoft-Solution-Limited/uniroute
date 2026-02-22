@@ -117,7 +117,7 @@ func runTunnel(cmd *cobra.Command, args []string) error {
 		return createExampleConfig(log)
 	}
 
-	if listSaved {
+	if listSaved || (len(args) > 0 && args[0] == "list") {
 		return listAllTunnels()
 	}
 
@@ -133,7 +133,24 @@ func runTunnel(cmd *cobra.Command, args []string) error {
 		return runAllTunnels(cmd, args)
 	}
 
+	if len(args) == 0 && !resumeSubdomainChanged(cmd) && !tunnelPortChanged(cmd) && !tunnelHostChanged(cmd) && !forceNew {
+		return cmd.Help()
+	}
+
 	return runBuiltInTunnel(cmd, args)
+}
+
+func resumeSubdomainChanged(cmd *cobra.Command) bool {
+	f := cmd.Flags().Lookup("resume")
+	return f != nil && f.Changed
+}
+func tunnelPortChanged(cmd *cobra.Command) bool {
+	f := cmd.Flags().Lookup("port")
+	return f != nil && f.Changed
+}
+func tunnelHostChanged(cmd *cobra.Command) bool {
+	f := cmd.Flags().Lookup("host")
+	return f != nil && f.Changed
 }
 
 func runAllTunnels(cmd *cobra.Command, args []string) error {
@@ -330,30 +347,18 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 	if forceNew {
 		client.ClearResumeInfo()
 		client.SetForceNew(true)
-		log.Info().Msg("--new flag set: forcing new tunnel creation (not resuming or auto-finding)")
 	}
 
 	if resumeSubdomain != "" {
 		persistence := tunnel.NewTunnelPersistence(log)
-		if state, err := persistence.Load(); err == nil && state != nil {
-			if state.Subdomain == resumeSubdomain {
-				client.SetResumeInfo(resumeSubdomain, state.TunnelID)
-				log.Info().
-					Str("subdomain", resumeSubdomain).
-					Str("tunnel_id", state.TunnelID).
-					Msg("Resuming tunnel with saved tunnel ID")
-			} else {
-				client.SetResumeInfo(resumeSubdomain, "")
-				log.Info().
-					Str("subdomain", resumeSubdomain).
-					Msg("Resuming tunnel by subdomain")
-			}
-		} else {
-			client.SetResumeInfo(resumeSubdomain, "")
-			log.Info().
-				Str("subdomain", resumeSubdomain).
-				Msg("Resuming tunnel by subdomain (no saved state)")
+		tunnelID := ""
+		if state, err := persistence.Load(); err == nil && state != nil && state.Subdomain == resumeSubdomain {
+			tunnelID = state.TunnelID
 		}
+		if tunnelID == "" && token != "" {
+			tunnelID = lookupTunnelIDBySubdomain(resumeSubdomain, token)
+		}
+		client.SetResumeInfo(resumeSubdomain, tunnelID)
 	}
 
 	if err := client.Connect(); err != nil {
@@ -364,6 +369,9 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 		   strings.Contains(strings.ToLower(errStr), "invalid") {
 			clearExpiredToken()
 			return fmt.Errorf("authentication failed: %w\n\nPlease run 'uniroute auth login' to authenticate again", err)
+		}
+		if strings.Contains(errStr, "tunnel_already_active") || strings.Contains(errStr, "already connected by another client") {
+			return err
 		}
 		return fmt.Errorf("failed to connect to tunnel server: %w", err)
 	}
@@ -376,8 +384,6 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 	if customDomain != "" {
 		if err := setCustomDomain(info.ID, customDomain, token); err != nil {
 			log.Warn().Err(err).Str("domain", customDomain).Msg("Failed to set custom domain (tunnel will still work with subdomain)")
-		} else {
-			log.Info().Str("domain", customDomain).Msg("Custom domain set successfully")
 		}
 	}
 

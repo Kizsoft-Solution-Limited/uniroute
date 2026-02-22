@@ -18,7 +18,3 @@ Shows:
 		return listAllTunnels()
 	},
 }
-
-func init() {
-	rootCmd.AddCommand(listCmd)
-}

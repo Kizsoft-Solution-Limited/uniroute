@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/tunnel"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -14,6 +15,7 @@ import (
 
 type TunnelHandler struct {
 	repository    *tunnel.TunnelRepository
+	userRepo      *storage.UserRepository
 	domainManager *tunnel.DomainManager
 	logger        zerolog.Logger
 }
@@ -23,6 +25,10 @@ func NewTunnelHandler(repository *tunnel.TunnelRepository, logger zerolog.Logger
 		repository: repository,
 		logger:     logger,
 	}
+}
+
+func (h *TunnelHandler) SetUserRepository(repo *storage.UserRepository) {
+	h.userRepo = repo
 }
 
 func (h *TunnelHandler) SetDomainManager(manager *tunnel.DomainManager) {
@@ -165,6 +171,9 @@ func (h *TunnelHandler) GetTunnel(c *gin.Context) {
 	}
 	if !t.LastActive.IsZero() {
 		response["last_active"] = t.LastActive.Format(time.RFC3339)
+	}
+	if !t.ActiveSince.IsZero() {
+		response["active_since"] = t.ActiveSince.Format(time.RFC3339)
 	}
 	if t.CustomDomain != "" {
 		response["custom_domain"] = t.CustomDomain
@@ -503,6 +512,25 @@ func (h *TunnelHandler) GetTunnelStats(c *gin.Context) {
 	})
 }
 
+func (h *TunnelHandler) HandleAdminTunnelCounts(c *gin.Context) {
+	total, err := h.repository.CountAllTunnels(c.Request.Context())
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to count tunnels (admin)")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to count tunnels"})
+		return
+	}
+	active, err := h.repository.CountActiveTunnels(c.Request.Context())
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to count active tunnels (admin)")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to count active tunnels"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"total":  total,
+		"active": active,
+	})
+}
+
 func (h *TunnelHandler) HandleAdminListTunnels(c *gin.Context) {
 	limit := 50
 	offset := 0
@@ -531,6 +559,32 @@ func (h *TunnelHandler) HandleAdminListTunnels(c *gin.Context) {
 		return
 	}
 
+	userDisplayByID := make(map[string]string)
+	if h.userRepo != nil {
+		seen := make(map[string]bool)
+		for _, t := range tunnels {
+			if t.UserID == "" || seen[t.UserID] {
+				continue
+			}
+			seen[t.UserID] = true
+			uid, err := uuid.Parse(t.UserID)
+			if err != nil {
+				continue
+			}
+			u, err := h.userRepo.GetUserByID(c.Request.Context(), uid)
+			if err != nil || u == nil {
+				continue
+			}
+			display := strings.TrimSpace(u.Name)
+			if display == "" {
+				display = u.Email
+			}
+			if display != "" {
+				userDisplayByID[t.UserID] = display
+			}
+		}
+	}
+
 	tunnelList := make([]map[string]interface{}, len(tunnels))
 	for i, t := range tunnels {
 		tunnelList[i] = map[string]interface{}{
@@ -542,6 +596,11 @@ func (h *TunnelHandler) HandleAdminListTunnels(c *gin.Context) {
 			"status":        t.Status,
 			"request_count": t.RequestCount,
 			"created_at":    t.CreatedAt.Format(time.RFC3339),
+		}
+		if h.userRepo != nil && t.UserID != "" {
+			if display := userDisplayByID[t.UserID]; display != "" {
+				tunnelList[i]["user_display"] = display
+			}
 		}
 		if !t.LastActive.IsZero() {
 			tunnelList[i]["last_active"] = t.LastActive.Format(time.RFC3339)

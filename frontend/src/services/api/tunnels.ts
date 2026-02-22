@@ -9,9 +9,11 @@ export interface Tunnel {
   request_count: number
   created_at: string
   last_active?: string | null
+  active_since?: string | null
   custom_domain?: string | null
-  protocol?: string // http, tcp, tls, udp
+  protocol?: string
   user_id?: string | null
+  user_display?: string | null
 }
 
 export interface ListTunnelsResponse {
@@ -72,6 +74,11 @@ export const tunnelsApi = {
     const response = await apiClient.post<{ message: string; domain: string }>(endpoint, {
       domain
     })
+    return response.data
+  },
+
+  async getCountsAdmin(): Promise<{ total: number; active: number }> {
+    const response = await apiClient.get<{ total: number; active: number }>('/admin/tunnels/counts')
     return response.data
   },
 

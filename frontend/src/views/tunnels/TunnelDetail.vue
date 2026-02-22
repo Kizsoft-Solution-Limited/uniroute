@@ -121,7 +121,7 @@
             <div>
               <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Uptime</label>
               <p class="text-lg font-semibold text-gray-900 dark:text-white mt-1">
-                {{ calculateUptime(tunnel.createdAt) }}
+                {{ uptimeDisplay }}
               </p>
             </div>
           </div>
@@ -162,7 +162,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Card from '@/components/ui/Card.vue'
 import { ArrowLeft, Copy } from 'lucide-vue-next'
@@ -186,6 +186,7 @@ const tunnel = ref<{
   requestCount: number
   createdAt: string
   lastActive?: string
+  activeSince?: string
 } | null>(null)
 
 onMounted(() => {
@@ -211,7 +212,8 @@ const loadTunnel = async () => {
       status: t.status as 'active' | 'inactive',
       requestCount: t.request_count || 0,
       createdAt: t.created_at,
-      lastActive: t.last_active || undefined
+      lastActive: t.last_active || undefined,
+      activeSince: t.active_since || undefined
     }
   } catch (error: any) {
     console.error('Failed to load tunnel:', error)
@@ -266,17 +268,24 @@ const formatDate = (date: string) => {
   })
 }
 
-const calculateUptime = (createdAt: string) => {
+const formatDuration = (since: string) => {
   const now = new Date()
-  const created = new Date(createdAt)
-  const diff = now.getTime() - created.getTime()
+  const start = new Date(since)
+  const diff = now.getTime() - start.getTime()
   const days = Math.floor(diff / (1000 * 60 * 60 * 24))
   const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-
   if (days > 0) return `${days}d ${hours}h ${minutes}m`
   if (hours > 0) return `${hours}h ${minutes}m`
   return `${minutes}m`
 }
+
+const uptimeDisplay = computed(() => {
+  const t = tunnel.value
+  if (!t) return '—'
+  if (t.status === 'active' && t.activeSince) return formatDuration(t.activeSince)
+  if (t.status === 'inactive') return '—'
+  return formatDuration(t.createdAt)
+})
 </script>
 

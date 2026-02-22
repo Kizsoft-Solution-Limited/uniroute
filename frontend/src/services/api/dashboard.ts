@@ -3,6 +3,39 @@ import { analyticsApi } from './analytics'
 import { apiKeysApi } from './apikeys'
 import { tunnelsApi } from './tunnels'
 
+export async function getAdminOverviewStats(): Promise<{
+  total_requests: number
+  request_growth: number
+  active_tunnels: number
+  total_tunnels: number
+}> {
+  const now = new Date()
+  const currentStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const currentEnd = now.toISOString()
+  const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
+  const prevEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString()
+
+  const [currentStats, previousStats, counts] = await Promise.all([
+    analyticsApi.getUsageStatsAdmin(currentStart, currentEnd),
+    analyticsApi.getUsageStatsAdmin(prevStart, prevEnd),
+    tunnelsApi.getCountsAdmin()
+  ])
+
+  const requestGrowth =
+    previousStats.total_requests > 0
+      ? Math.round(
+          ((currentStats.total_requests - previousStats.total_requests) / previousStats.total_requests) * 100
+        )
+      : 0
+
+  return {
+    total_requests: currentStats.total_requests,
+    request_growth: requestGrowth,
+    active_tunnels: counts.active,
+    total_tunnels: counts.total
+  }
+}
+
 export interface DashboardStats {
   total_requests: number
   request_growth: number // Percentage change from previous period

@@ -57,6 +57,4 @@ func init() {
 	resumeCmd.Flags().StringVar(&tunnelProtocol, "protocol", "http", "Tunnel protocol: http, tcp, or tls")
 	resumeCmd.Flags().StringVar(&tunnelHost, "host", "", "Request specific host/subdomain")
 	resumeCmd.Flags().StringVarP(&tunnelServerURL, "server", "s", "tunnel.uniroute.co", "Tunnel server URL")
-	
-	rootCmd.AddCommand(resumeCmd)
 }

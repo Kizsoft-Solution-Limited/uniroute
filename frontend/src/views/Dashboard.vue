@@ -262,7 +262,7 @@ import {
   Heart,
   Globe
 } from 'lucide-vue-next'
-import { dashboardApi } from '@/services/api/dashboard'
+import { dashboardApi, getAdminOverviewStats } from '@/services/api/dashboard'
 import { tunnelsApi } from '@/services/api/tunnels'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
@@ -351,25 +351,30 @@ watch(isAdmin, (newVal) => {
 })
 
 const loadTunnelChart = async () => {
+  const requestedHours = chartHours.value
   tunnelChartLoading.value = true
   try {
     let interval: number | undefined
-    if (chartHours.value >= 168) {
+    if (requestedHours >= 168) {
       interval = 24
-    } else if (chartHours.value === 6) {
+    } else if (requestedHours === 6) {
       interval = 0.5
     } else {
       interval = 1.0
     }
-    const stats = await tunnelsApi.getStats(chartHours.value, interval, true)
+    const stats = await tunnelsApi.getStats(requestedHours, interval, true)
+    if (chartHours.value !== requestedHours) return
     tunnelChartData.value = stats.data || []
   } catch (error: any) {
+    if (chartHours.value !== requestedHours) return
     if (import.meta.env.DEV) {
       console.error('Failed to load tunnel chart data:', error?.response?.data || error?.message || error)
     }
     tunnelChartData.value = []
   } finally {
-    tunnelChartLoading.value = false
+    if (chartHours.value === requestedHours) {
+      tunnelChartLoading.value = false
+    }
   }
 }
 
@@ -377,15 +382,28 @@ const loadDashboardData = async () => {
   loading.value = true
   try {
     const data = await dashboardApi.getOverview()
-    
-    stats.value = {
-      totalRequests: data.total_requests,
-      requestGrowth: data.request_growth,
-      activeTunnels: data.active_tunnels,
-      totalTunnels: data.total_tunnels,
-      apiKeys: data.api_keys,
-      activeApiKeys: data.active_api_keys,
-      totalCost: data.total_cost
+
+    if (isAdmin.value) {
+      const adminStats = await getAdminOverviewStats()
+      stats.value = {
+        totalRequests: adminStats.total_requests,
+        requestGrowth: adminStats.request_growth,
+        activeTunnels: adminStats.active_tunnels,
+        totalTunnels: adminStats.total_tunnels,
+        apiKeys: data.api_keys,
+        activeApiKeys: data.active_api_keys,
+        totalCost: data.total_cost
+      }
+    } else {
+      stats.value = {
+        totalRequests: data.total_requests,
+        requestGrowth: data.request_growth,
+        activeTunnels: data.active_tunnels,
+        totalTunnels: data.total_tunnels,
+        apiKeys: data.api_keys,
+        activeApiKeys: data.active_api_keys,
+        totalCost: data.total_cost
+      }
     }
 
     recentActivity.value = data.recent_activity.map(activity => ({

@@ -723,9 +723,12 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 										Str("subdomain", dbTunnel.Subdomain).
 										Str("custom_domain", dbTunnel.CustomDomain).
 										Str("protocol", dbTunnel.Protocol).
-										Msg("Tunnel from database is already connected - cannot resume, will create new tunnel")
-									dbTunnel = nil
-									isResume = false
+										Msg("Tunnel from database is already connected - rejecting resume")
+									ws.WriteJSON(map[string]interface{}{
+										"error":   "tunnel_already_active",
+										"message": fmt.Sprintf("Tunnel %s is already connected by another client. Stop the other session or use --new to create a new tunnel.", dbTunnel.Subdomain),
+									})
+									return
 								} else {
 									subdomain = dbTunnel.Subdomain
 									tunnelID = dbTunnel.ID
