@@ -15,7 +15,9 @@ RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /root/
 COPY --from=builder /app/tunnel-server .
 
-# Main WebSocket/HTTP port (e.g. 8080 or 8081). TCP/UDP tunnels use 20000-30000 - publish that range in Docker/Coolify.
+# Main WebSocket/HTTP port (e.g. 8080 or 8081).
+# TCP/UDP tunnels: publish a port range in Docker/Coolify. Default 20000-30000 (10000 ports).
+# For faster deploys use 20000-20100: set TUNNEL_TCP_PORT_RANGE=101 and publish 20000-20100.
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD sh -c 'wget --quiet --tries=1 --spider "http://localhost:${PORT:-8080}/health" || exit 1'

@@ -7,9 +7,10 @@ services:
       dockerfile: Dockerfile.tunnel
     ports:
       - "8081:8080"   # Main WebSocket/HTTP (map host 8081 -> container 8080, or set PORT=8081 in env)
-      - "20000-30000:20000-30000"  # TCP/UDP tunnel ports (required for uniroute tcp/udp/tls)
+      - "20000-20100:20000-20100"  # TCP/UDP tunnel ports (101 ports; set TUNNEL_TCP_PORT_RANGE=101)
     environment:
       - PORT=8080
+      - TUNNEL_TCP_PORT_RANGE=101
       # Optional: TUNNEL_TCP_PORT_BASE=20000 (default)
       # Set TUNNEL_BASE_DOMAIN, DATABASE_URL, JWT_SECRET, etc. as needed
     restart: unless-stopped

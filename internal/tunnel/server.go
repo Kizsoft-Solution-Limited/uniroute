@@ -39,7 +39,8 @@ type TunnelServer struct {
 	udpListenersMu  sync.RWMutex
 	httpServer      *http.Server
 	port            int
-	tcpPortBase     int // Base port for TCP tunnel allocation (default: 20000)
+	tcpPortBase     int // Base port for TCP/UDP tunnel allocation (default: 20000)
+	tcpPortRange    int // Number of ports in the range (default: 10000). Use 101 for 20000-20100 to speed up Docker.
 	logger          zerolog.Logger
 	subdomainPrefix string
 	requestTracker  *RequestTracker
@@ -136,6 +137,7 @@ func NewTunnelServer(port int, logger zerolog.Logger, allowedOrigins []string) *
 		udpListeners:    make(map[int]net.PacketConn),
 		portMap:         make(map[int]*TunnelConnection),
 		tcpPortBase:     getEnvAsInt("TUNNEL_TCP_PORT_BASE", 20000),
+		tcpPortRange:    getEnvAsInt("TUNNEL_TCP_PORT_RANGE", 10000),
 		nextTCPPort:     getEnvAsInt("TUNNEL_TCP_PORT_BASE", 20000),
 		port:            port,
 		logger:          logger,
@@ -3747,13 +3749,17 @@ func (ts *TunnelServer) allocateTCPPort(tunnel *TunnelConnection) int {
 	ts.portMapMu.Lock()
 	defer ts.portMapMu.Unlock()
 
-	maxPort := ts.tcpPortBase + 10000
+	portRange := ts.tcpPortRange
+	if portRange < 1 {
+		portRange = 10000
+	}
+	maxPort := ts.tcpPortBase + portRange
 	startPort := ts.nextTCPPort
 
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < portRange; i++ {
 		port := (startPort + i) % maxPort
 		if port < ts.tcpPortBase {
-			port = ts.tcpPortBase + (port % 10000)
+			port = ts.tcpPortBase + (port % portRange)
 		}
 
 		if _, exists := ts.portMap[port]; !exists {
@@ -3977,13 +3983,17 @@ func (ts *TunnelServer) allocateUDPPort(tunnel *TunnelConnection) int {
 	ts.portMapMu.Lock()
 	defer ts.portMapMu.Unlock()
 
-	maxPort := ts.tcpPortBase + 10000
+	portRange := ts.tcpPortRange
+	if portRange < 1 {
+		portRange = 10000
+	}
+	maxPort := ts.tcpPortBase + portRange
 	startPort := ts.nextTCPPort
 
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < portRange; i++ {
 		port := (startPort + i) % maxPort
 		if port < ts.tcpPortBase {
-			port = ts.tcpPortBase + (port % 10000)
+			port = ts.tcpPortBase + (port % portRange)
 		}
 
 		if _, exists := ts.portMap[port]; !exists {
