@@ -1286,6 +1286,27 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 				Str("old_tunnel_id", existingTunnel.ID).
 				Msg("Replaced existing tunnel with new tunnel for subdomain")
 		}
+
+		if protocol == ProtocolTCP || protocol == ProtocolTLS {
+			tcpPort := ts.allocateTCPPort(tunnel)
+			if tcpPort > 0 {
+				ts.logger.Info().
+					Str("tunnel_id", tunnelID).
+					Str("protocol", protocol).
+					Int("tcp_port", tcpPort).
+					Msg("Allocated new TCP port for tunnel")
+			}
+		}
+		if protocol == ProtocolUDP {
+			udpPort := ts.allocateUDPPort(tunnel)
+			if udpPort > 0 {
+				ts.logger.Info().
+					Str("tunnel_id", tunnelID).
+					Str("protocol", protocol).
+					Int("udp_port", udpPort).
+					Msg("Allocated new UDP port for tunnel")
+			}
+		}
 	}
 
 	if tunnel == nil {
