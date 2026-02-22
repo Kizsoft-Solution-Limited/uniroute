@@ -6,7 +6,7 @@
       <p class="text-slate-400 mt-2">Loading dashboard...</p>
     </div>
 
-    <!-- Stats Cards -->
+    <!-- Stats Cards (always show current user's stats) -->
     <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       <Card class="hover:shadow-lg transition-all transform hover:-translate-y-1 animate-fade-in">
         <div class="flex items-center justify-between">
@@ -67,6 +67,41 @@
           </div>
           <div class="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center">
             <DollarSign class="w-8 h-8 text-yellow-400" />
+          </div>
+        </div>
+      </Card>
+    </div>
+
+    <!-- Admin: All Users Overview (separate cards) -->
+    <div v-if="isAdmin && adminOverview" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <Card class="hover:shadow-lg transition-all border-slate-600/80">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-slate-400">All Users · Total Requests</p>
+            <p class="text-3xl font-bold text-white mt-2">{{ adminOverview.total_requests.toLocaleString() }}</p>
+            <p v-if="adminOverview.request_growth !== 0" class="text-sm mt-2" :class="adminOverview.request_growth > 0 ? 'text-green-400' : 'text-red-400'">
+              <span class="inline-flex items-center">
+                <TrendingUp class="w-4 h-4 mr-1" />
+                {{ adminOverview.request_growth > 0 ? '+' : '' }}{{ adminOverview.request_growth }}% this month
+              </span>
+            </p>
+          </div>
+          <div class="w-16 h-16 bg-slate-500/20 rounded-full flex items-center justify-center">
+            <BarChart3 class="w-8 h-8 text-slate-400" />
+          </div>
+        </div>
+      </Card>
+      <Card class="hover:shadow-lg transition-all border-slate-600/80">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium text-slate-400">All Users · Active Tunnels</p>
+            <p class="text-3xl font-bold text-white mt-2">{{ adminOverview.active_tunnels }}</p>
+            <p class="text-sm text-slate-400 mt-2">
+              {{ adminOverview.total_tunnels }} total
+            </p>
+          </div>
+          <div class="w-16 h-16 bg-slate-500/20 rounded-full flex items-center justify-center">
+            <Network class="w-8 h-8 text-slate-400" />
           </div>
         </div>
       </Card>
@@ -303,6 +338,13 @@ const providerUsage = ref<ProviderUsage[]>([])
 const tunnelChartData = ref<Array<{ time: string; active_tunnels: number; total_tunnels: number }>>([])
 const tunnelChartLoading = ref(false)
 
+const adminOverview = ref<{
+  total_requests: number
+  request_growth: number
+  active_tunnels: number
+  total_tunnels: number
+} | null>(null)
+
 const getStoredChartHours = (): number => {
   const stored = localStorage.getItem('uniroute_chart_hours')
   if (stored) {
@@ -345,8 +387,10 @@ onUnmounted(() => {
 watch(isAdmin, (newVal) => {
   if (newVal) {
     loadTunnelChart()
+    getAdminOverviewStats().then((s) => { adminOverview.value = s })
   } else {
     tunnelChartData.value = []
+    adminOverview.value = null
   }
 })
 
@@ -383,27 +427,20 @@ const loadDashboardData = async () => {
   try {
     const data = await dashboardApi.getOverview()
 
+    stats.value = {
+      totalRequests: data.total_requests,
+      requestGrowth: data.request_growth,
+      activeTunnels: data.active_tunnels,
+      totalTunnels: data.total_tunnels,
+      apiKeys: data.api_keys,
+      activeApiKeys: data.active_api_keys,
+      totalCost: data.total_cost
+    }
+
     if (isAdmin.value) {
-      const adminStats = await getAdminOverviewStats()
-      stats.value = {
-        totalRequests: adminStats.total_requests,
-        requestGrowth: adminStats.request_growth,
-        activeTunnels: adminStats.active_tunnels,
-        totalTunnels: adminStats.total_tunnels,
-        apiKeys: data.api_keys,
-        activeApiKeys: data.active_api_keys,
-        totalCost: data.total_cost
-      }
+      adminOverview.value = await getAdminOverviewStats()
     } else {
-      stats.value = {
-        totalRequests: data.total_requests,
-        requestGrowth: data.request_growth,
-        activeTunnels: data.active_tunnels,
-        totalTunnels: data.total_tunnels,
-        apiKeys: data.api_keys,
-        activeApiKeys: data.active_api_keys,
-        totalCost: data.total_cost
-      }
+      adminOverview.value = null
     }
 
     recentActivity.value = data.recent_activity.map(activity => ({

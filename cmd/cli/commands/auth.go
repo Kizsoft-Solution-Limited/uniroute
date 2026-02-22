@@ -19,7 +19,7 @@ import (
 var authCmd = &cobra.Command{
 	Use:   "auth",
 	Short: "Authenticate with UniRoute",
-	Long: `Authenticate with the UniRoute server to manage your projects, API keys, and tunnels.
+	Long: `Authenticate with the UniRoute server to manage your API keys and tunnels.
 
 Your login session persists across CLI restarts, computer reboots, and system shutdowns.
 You only need to log in once, and you'll stay logged in until you explicitly log out

@@ -107,7 +107,7 @@ func runKeysCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", fmt.Sprintf("%s/admin/api-keys", serverURL), strings.NewReader(string(jsonBody)))
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/auth/api-keys", serverURL), strings.NewReader(string(jsonBody)))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -170,7 +170,7 @@ func runKeysList(cmd *cobra.Command, args []string) error {
 		Timeout: 10 * time.Second,
 	}
 
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/admin/api-keys", serverURL), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/auth/api-keys", serverURL), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -275,7 +275,7 @@ func runKeysRevoke(cmd *cobra.Command, args []string) error {
 		Timeout: 10 * time.Second,
 	}
 
-	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/admin/api-keys/%s", serverURL, keyID), nil)
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/auth/api-keys/%s", serverURL, keyID), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

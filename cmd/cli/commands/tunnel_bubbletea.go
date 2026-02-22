@@ -263,6 +263,7 @@ type requestEventMsg tunnel.RequestEvent
 type statsUpdateMsg *tunnel.ConnectionStats
 type versionUpdateMsg *versioncheck.VersionInfo
 type updateProgressMsg string
+type versionCheckTickMsg struct{}
 type terminateMsg struct{}
 
 func regionDisplay(info *tunnel.TunnelInfo) string {
@@ -386,6 +387,7 @@ func (m *tunnelModel) Init() tea.Cmd {
 		m.checkInternet(),
 		m.updateStatus(),
 		m.checkForUpdates(),
+		m.scheduleVersionCheck(),
 	)
 }
 
@@ -539,6 +541,11 @@ func (m *tunnelModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				color.Gray(fmt.Sprintf("%.2f", stats.P90)))
 		}
 		return m, nil
+	case versionCheckTickMsg:
+		if m.terminated {
+			return m, nil
+		}
+		return m, tea.Batch(m.checkForUpdates(), m.scheduleVersionCheck())
 	case versionUpdateMsg:
 		m.updateInfoMu.Lock()
 		m.updateInfo = msg
@@ -696,6 +703,14 @@ func (m *tunnelModel) updateStatus() tea.Cmd {
 			func() tea.Msg { return statsUpdateMsg(stats) },
 			func() tea.Msg { return connectionStatusMsg(status) },
 		)()
+	})
+}
+
+const versionCheckInterval = 30 * time.Minute
+
+func (m *tunnelModel) scheduleVersionCheck() tea.Cmd {
+	return tea.Tick(versionCheckInterval, func(time.Time) tea.Msg {
+		return versionCheckTickMsg{}
 	})
 }
 

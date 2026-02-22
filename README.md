@@ -101,7 +101,7 @@ uniroute auth login -k ur_xxx --local
 - ✅ Same authentication as email/password
 
 # Start using UniRoute!
-uniroute projects list
+uniroute tunnel --list
 ```
 
 **Option 2: Manual Download**

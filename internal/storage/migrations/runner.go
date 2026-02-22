@@ -17,7 +17,6 @@ var sqlFS embed.FS
 
 const schemaMigrationsTable = `CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY);`
 
-// For running SQL migrations from an fs.FS (e.g. embed.FS).
 type Runner struct {
 	pool   *pgxpool.Pool
 	log    zerolog.Logger
@@ -25,12 +24,10 @@ type Runner struct {
 	sqlDir string
 }
 
-// sqlFS is typically an embed.FS; sqlDir is the directory inside it (e.g. "sql").
 func NewRunner(pool *pgxpool.Pool, log zerolog.Logger, sqlFS fs.FS, sqlDir string) *Runner {
 	return &Runner{pool: pool, log: log, sqlFS: sqlFS, sqlDir: sqlDir}
 }
 
-// Runs embedded SQL migrations (sql/*.sql) in order. Call after connecting to Postgres.
 func RunMigrations(ctx context.Context, pool *pgxpool.Pool, log zerolog.Logger) error {
 	r := NewRunner(pool, log, sqlFS, "sql")
 	return r.Run(ctx)
@@ -103,7 +100,3 @@ func (r *Runner) isApplied(ctx context.Context, version string) (bool, error) {
 	}
 	return count > 0, nil
 }
-
-// Ensure we use pgxpool; pgx's Exec/QueryRow use context. We need to use the pool's connection.
-// pgxpool.Pool has Exec(ctx, sql, args...), QueryRow(ctx, sql, args...) - no need for database/sql.
-// But we used tx.Exec - pgx Tx has Exec(ctx, sql, args...). So we're good. But I used database/sql in the import by mistake - we don't need it. Let me remove the unused import.

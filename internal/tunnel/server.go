@@ -575,15 +575,20 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			existingTunnel.mu.RLock()
 			existingProtocol := existingTunnel.Protocol
 			existingWSConn := existingTunnel.WSConn
+			existingSubdomain := existingTunnel.Subdomain
 			existingTunnel.mu.RUnlock()
-			
+
 			if existingWSConn != nil {
 				ts.logger.Info().
 					Str("tunnel_id", existingTunnel.ID).
-					Str("subdomain", existingTunnel.Subdomain).
+					Str("subdomain", existingSubdomain).
 					Str("protocol", existingProtocol).
-					Msg("Tunnel is already connected - cannot resume, will check database for other tunnels or create new")
-				existingTunnel = nil
+					Msg("Tunnel is already connected - rejecting resume")
+				ws.WriteJSON(map[string]interface{}{
+					"error":   "tunnel_already_active",
+					"message": fmt.Sprintf("Tunnel %s is already connected by another client. Stop the other session or use --new to create a new tunnel.", existingSubdomain),
+				})
+				return
 			} else {
 				subdomain = existingTunnel.Subdomain
 				tunnelID = existingTunnel.ID
@@ -1316,7 +1321,7 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.portMapMu.RLock()
 		var tcpPort int
 		for port, t := range ts.portMap {
-			if t.ID == tunnelID {
+			if t == tunnel || t.ID == tunnelID || t.Subdomain == subdomain {
 				tcpPort = port
 				break
 			}
@@ -1335,9 +1340,9 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 				Str("tunnel_id", tunnelID).
 				Str("subdomain", subdomain).
 				Str("protocol", tunnelProtocol).
-				Msg("TCP port not found in portMap - using fallback URL")
+				Msg("TCP port not found in portMap - TCP port allocation may have failed")
 			localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
-			publicURL = fmt.Sprintf("%s.%s:%d", subdomain, localhostDomain, ts.port)
+			publicURL = fmt.Sprintf("%s.%s:<tcp_port>", subdomain, localhostDomain)
 		}
 	} else if tunnelProtocol == ProtocolUDP {
 		ts.portMapMu.RLock()
@@ -1659,7 +1664,6 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		Bool("is_resume", isResume).
 		Msg("Tunnel connected and ready")
 
-	// Final verification after a brief moment to ensure tunnel stayed registered
 	go func() {
 		time.Sleep(200 * time.Millisecond)
 		ts.tunnelsMu.RLock()
@@ -1855,7 +1859,6 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 				}
 			}
 		case MsgTypeHTTPError:
-			// Fail pending HTTP request with error
 			if msg.Error != nil {
 				err := fmt.Errorf("%s: %s", msg.Error.Error, msg.Error.Message)
 				ts.logger.Info().
@@ -1879,8 +1882,6 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 				}
 			}
 		case MsgTypeTCPData, MsgTypeTLSData:
-			// Forward TCP/TLS data to pending connection
-			// Empty data with RequestID indicates new connection request
 			if msg.RequestID != "" {
 				ts.forwardTCPData(tunnel, msg.RequestID, msg.Data)
 			}
@@ -1945,7 +1946,6 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		Str("extracted_subdomain", subdomain).
 		Msg("Extracted subdomain from host header")
 
-	// First, try to find tunnel by subdomain (existing behavior)
 	if subdomain != "" {
 		ts.tunnelsMu.RLock()
 		tunnel, exists = ts.tunnels[subdomain]
@@ -1956,7 +1956,6 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 	if !exists && ts.repository != nil {
 		dbTunnel, err := ts.repository.GetTunnelByCustomDomain(context.Background(), hostname)
 		if err == nil && dbTunnel != nil {
-			// Found tunnel by custom domain - verify it's an HTTP tunnel (custom domains only work with HTTP)
 			if dbTunnel.Protocol != "" && dbTunnel.Protocol != ProtocolHTTP {
 				ts.logger.Warn().
 					Str("custom_domain", hostname).
@@ -1993,7 +1992,6 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 	}
 
 	if subdomain == "" && !exists {
-		// No subdomain and no custom domain match, return info page or 404
 		ts.logger.Debug().Str("host", host).Msg("No subdomain or custom domain found, showing root page")
 		ts.handleRootRequest(w, r)
 		return
@@ -2105,8 +2103,6 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 						Str("tunnel_id", tunnel.ID).
 						Str("subdomain", lookupSubdomain).
 						Msg("Tunnel handler still not ready after wait - proceeding anyway (handler should be ready soon)")
-					// Continue anyway - handler should be ready very soon
-					// The request will be queued in the request tracker and handled when response arrives
 				} else {
 					ts.logger.Debug().
 						Str("tunnel_id", tunnel.ID).
@@ -3407,7 +3403,6 @@ func (ts *TunnelServer) removeTunnel(subdomain string) {
 			for port, t := range ts.portMap {
 				if t.ID == tunnelID {
 					delete(ts.portMap, port)
-					// Close UDP listener
 					ts.udpListenersMu.Lock()
 					if listener, exists := ts.udpListeners[port]; exists {
 						listener.Close()
@@ -3470,7 +3465,6 @@ func (ts *TunnelServer) monitorInactiveTunnels() {
 		}
 		ts.tunnelsMu.RUnlock()
 
-		// Check each tunnel's status in database
 		for _, tunnel := range activeTunnels {
 			tunnel.mu.RLock()
 			tunnelID := tunnel.ID
@@ -3482,7 +3476,6 @@ func (ts *TunnelServer) monitorInactiveTunnels() {
 				continue
 			}
 
-			// Check database status
 			tunnelUUID, parseErr := uuid.Parse(tunnelID)
 			if parseErr != nil {
 				continue
@@ -3490,24 +3483,18 @@ func (ts *TunnelServer) monitorInactiveTunnels() {
 
 			dbTunnel, err := ts.repository.GetTunnelByID(context.Background(), tunnelUUID)
 			if err != nil {
-				continue // Skip if can't check
+				continue
 			}
 
-			// If tunnel is marked inactive in database, close it immediately
 			if dbTunnel != nil && dbTunnel.Status == "inactive" {
 				ts.logger.Info().
 					Str("tunnel_id", tunnelID).
 					Str("subdomain", subdomain).
 					Msg("Tunnel marked inactive in database - closing connection immediately")
 
-				// Close WebSocket connection forcefully to stop handler goroutine
 				if wsConn != nil {
-					// Send close frame with specific code to indicate tunnel was disconnected from dashboard
-					// Close code 1008 (Policy Violation) indicates the tunnel was intentionally disconnected
-					// This allows the client to detect it and exit instead of reconnecting
 					closeMsg := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "Tunnel disconnected from dashboard")
 					wsConn.SetWriteDeadline(time.Now().Add(1 * time.Second))
-					// Try to send close message, but don't fail if it doesn't work
 					if err := wsConn.WriteMessage(websocket.CloseMessage, closeMsg); err != nil {
 						ts.logger.Debug().
 							Err(err).
@@ -3515,40 +3502,24 @@ func (ts *TunnelServer) monitorInactiveTunnels() {
 							Str("subdomain", subdomain).
 							Msg("Failed to send close message, closing connection anyway")
 					}
-					
-					// Small delay to ensure close message is sent before closing
 					time.Sleep(50 * time.Millisecond)
-					
-					// Close the connection - this will cause ReadJSON to fail in handler
 					wsConn.Close()
-					
-					// Set connection to nil to signal handler goroutine to exit
-					// This ensures the handler loop detects the nil connection and exits
 					tunnel.mu.Lock()
 					tunnel.WSConn = nil
 					tunnel.mu.Unlock()
-					
 					ts.logger.Debug().
 						Str("tunnel_id", tunnelID).
 						Str("subdomain", subdomain).
 						Msg("WebSocket connection closed with policy violation code - handler should exit")
-					
-					// Give handler a moment to detect the closed connection and exit
-					// The handler checks for nil connection at the start of each loop iteration
 					time.Sleep(100 * time.Millisecond)
 				} else {
-					// WebSocket already nil, but tunnel still in memory - remove it
 					ts.logger.Debug().
 						Str("tunnel_id", tunnelID).
 						Str("subdomain", subdomain).
 						Msg("WebSocket already nil, removing tunnel from memory")
 				}
 
-				// Remove from memory (this also releases ports)
-				// Note: removeTunnel will try to update DB status, but it's already inactive
-				// so we skip the DB update to avoid unnecessary work
 				ts.tunnelsMu.Lock()
-				// Double-check tunnel is still the same (not re-registered)
 				if ts.tunnels[subdomain] == tunnel {
 					delete(ts.tunnels, subdomain)
 					ts.logger.Debug().
@@ -3562,8 +3533,7 @@ func (ts *TunnelServer) monitorInactiveTunnels() {
 						Msg("Tunnel was re-registered - skipping removal")
 				}
 				ts.tunnelsMu.Unlock()
-				
-				// Release ports if needed
+
 				tunnel.mu.RLock()
 				protocol := tunnel.Protocol
 				tunnel.mu.RUnlock()
@@ -3624,13 +3594,10 @@ func (ts *TunnelServer) ListTunnels() []*TunnelConnection {
 	return tunnels
 }
 
-// Helper functions
 func generateID() string {
-	// Generate a proper UUID for tunnel IDs (database expects UUID format)
 	return uuid.New().String()
 }
 
-// forwardTCPData forwards TCP/TLS data to the appropriate connection
 func (ts *TunnelServer) forwardTCPData(tunnel *TunnelConnection, connectionID string, data []byte) {
 	ts.tcpConnMu.RLock()
 	tcpConn, exists := ts.tcpConnections[connectionID]
@@ -3644,7 +3611,6 @@ func (ts *TunnelServer) forwardTCPData(tunnel *TunnelConnection, connectionID st
 		return
 	}
 
-	// Write data to the TCP connection
 	tcpConn.mu.Lock()
 	_, err := tcpConn.Conn.Write(data)
 	tcpConn.mu.Unlock()
@@ -3654,7 +3620,6 @@ func (ts *TunnelServer) forwardTCPData(tunnel *TunnelConnection, connectionID st
 			Err(err).
 			Str("connection_id", connectionID).
 			Msg("Failed to write TCP data")
-		// Close connection and remove from map
 		ts.closeTCPConnection(connectionID)
 	}
 }
@@ -3666,7 +3631,6 @@ func (ts *TunnelServer) handleTCPError(tunnel *TunnelConnection, connectionID st
 		Str("message", err.Message).
 		Msg("TCP connection error from tunnel")
 
-	// Close the TCP connection
 	ts.closeTCPConnection(connectionID)
 }
 
@@ -3686,7 +3650,6 @@ func (ts *TunnelServer) closeTCPConnection(connectionID string) {
 	}
 }
 
-// forwardUDPData forwards UDP data to the appropriate remote address
 func (ts *TunnelServer) forwardUDPData(tunnel *TunnelConnection, connectionID string, data []byte) {
 	ts.udpConnMu.RLock()
 	udpConn, exists := ts.udpConnections[connectionID]
@@ -3734,7 +3697,6 @@ func (ts *TunnelServer) forwardUDPData(tunnel *TunnelConnection, connectionID st
 		return
 	}
 
-	// Write data to the remote address
 	udpConn.mu.RLock()
 	addr := udpConn.Addr
 	udpConn.mu.RUnlock()
@@ -3757,17 +3719,14 @@ func (ts *TunnelServer) handleUDPError(tunnel *TunnelConnection, connectionID st
 		Str("message", err.Message).
 		Msg("UDP connection error from tunnel")
 
-	// Close the UDP connection
 	ts.closeUDPConnection(connectionID)
 }
 
-// allocateTCPPort allocates a TCP port for a tunnel and starts listening on it
 func (ts *TunnelServer) allocateTCPPort(tunnel *TunnelConnection) int {
 	ts.portMapMu.Lock()
 	defer ts.portMapMu.Unlock()
 
-	// Find next available port
-	maxPort := ts.tcpPortBase + 10000 // Allow up to 10000 TCP tunnels
+	maxPort := ts.tcpPortBase + 10000
 	startPort := ts.nextTCPPort
 
 	for i := 0; i < 10000; i++ {
@@ -3776,18 +3735,12 @@ func (ts *TunnelServer) allocateTCPPort(tunnel *TunnelConnection) int {
 			port = ts.tcpPortBase + (port % 10000)
 		}
 
-		// Check if port is already allocated
 		if _, exists := ts.portMap[port]; !exists {
-			// Try to listen on this port to ensure it's available
 			testListener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 			if err == nil {
 				testListener.Close()
-
-				// Allocate port
 				ts.portMap[port] = tunnel
 				ts.nextTCPPort = port + 1
-
-				// Start listener for this port in background
 				go ts.startPortListener(port, tunnel)
 
 				return port
@@ -3816,11 +3769,9 @@ func (ts *TunnelServer) startPortListener(port int, tunnel *TunnelConnection) {
 		Str("protocol", tunnel.Protocol).
 		Msg("TCP listener started for tunnel port")
 
-	// Accept connections on this port
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			// Check if tunnel still exists
 			ts.portMapMu.RLock()
 			_, exists := ts.portMap[port]
 			ts.portMapMu.RUnlock()
@@ -3839,8 +3790,6 @@ func (ts *TunnelServer) startPortListener(port int, tunnel *TunnelConnection) {
 				Msg("Failed to accept TCP connection")
 			continue
 		}
-
-		// Handle connection
 		go ts.handleTCPConnection(tunnel, conn)
 	}
 }
@@ -3851,7 +3800,6 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 	subdomain := tunnel.Subdomain
 	tunnel.mu.RUnlock()
 
-	// Check database status - if tunnel was disconnected from dashboard, reject connection
 	if ts.repository != nil && tunnelID != "" {
 		tunnelUUID, parseErr := uuid.Parse(tunnelID)
 		if parseErr == nil {
@@ -3863,26 +3811,20 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 					Str("subdomain", subdomain).
 					Str("status", dbTunnel.Status).
 					Msg("TCP tunnel is inactive in database (disconnected from dashboard) - rejecting connection")
-				
-				// Close WebSocket connection
+
 				tunnel.mu.RLock()
 				wsConn := tunnel.WSConn
 				tunnel.mu.RUnlock()
 				if wsConn != nil {
 					wsConn.Close()
 				}
-				
-				// Remove from memory
 				ts.removeTunnel(subdomain)
-				
-				// Close TCP connection
 				conn.Close()
 				return
 			}
 		}
 	}
 
-	// Check rate limit
 	if ts.rateLimiter != nil {
 		allowed, err := ts.rateLimiter.CheckRateLimit(context.Background(), tunnelID)
 		if err != nil {
@@ -3903,7 +3845,6 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 
 	connectionID := generateID()
 
-	// Store connection
 	ts.tcpConnMu.Lock()
 	ts.tcpConnections[connectionID] = &TCPConnection{
 		ID:        connectionID,
@@ -3913,7 +3854,6 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 	}
 	ts.tcpConnMu.Unlock()
 
-	// Determine message type based on protocol
 	tunnel.mu.RLock()
 	protocol := tunnel.Protocol
 	wsConn := tunnel.WSConn
@@ -3924,7 +3864,6 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 		msgType = MsgTypeTLSData
 	}
 
-	// Send connection request to tunnel client (empty data = new connection)
 	msg := TunnelMessage{
 		Type:      msgType,
 		RequestID: connectionID,
@@ -3960,7 +3899,6 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 		Str("protocol", protocol).
 		Msg("TCP connection established, forwarding to tunnel client")
 
-	// Read data from TCP connection and forward to tunnel
 	go func() {
 		defer ts.closeTCPConnection(connectionID)
 		buffer := make([]byte, 4096)
@@ -3973,7 +3911,6 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 						Str("connection_id", connectionID).
 						Msg("TCP connection read error")
 				}
-				// Send close message to tunnel
 				errorType := MsgTypeTCPError
 				if protocol == ProtocolTLS {
 					errorType = MsgTypeTLSError
@@ -3994,7 +3931,6 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 			}
 
 			if n > 0 {
-				// Forward data to tunnel
 				dataMsg := TunnelMessage{
 					Type:      msgType,
 					RequestID: connectionID,
@@ -4016,13 +3952,11 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 	}()
 }
 
-// allocateUDPPort allocates a UDP port for a tunnel and starts listening on it
 func (ts *TunnelServer) allocateUDPPort(tunnel *TunnelConnection) int {
 	ts.portMapMu.Lock()
 	defer ts.portMapMu.Unlock()
 
-	// Find next available port
-	maxPort := ts.tcpPortBase + 10000 // Allow up to 10000 UDP tunnels
+	maxPort := ts.tcpPortBase + 10000
 	startPort := ts.nextTCPPort
 
 	for i := 0; i < 10000; i++ {
@@ -4031,20 +3965,13 @@ func (ts *TunnelServer) allocateUDPPort(tunnel *TunnelConnection) int {
 			port = ts.tcpPortBase + (port % 10000)
 		}
 
-		// Check if port is already allocated
 		if _, exists := ts.portMap[port]; !exists {
-			// Try to listen on this port to ensure it's available
 			testConn, err := net.ListenPacket("udp", fmt.Sprintf(":%d", port))
 			if err == nil {
 				testConn.Close()
-
-				// Allocate port
 				ts.portMap[port] = tunnel
 				ts.nextTCPPort = port + 1
-
-				// Start listener for this port in background
 				go ts.startUDPListener(port, tunnel)
-
 				return port
 			}
 		}
@@ -4065,7 +3992,6 @@ func (ts *TunnelServer) startUDPListener(port int, tunnel *TunnelConnection) {
 		return
 	}
 
-	// Store listener
 	ts.udpListenersMu.Lock()
 	ts.udpListeners[port] = conn
 	ts.udpListenersMu.Unlock()
@@ -4076,12 +4002,10 @@ func (ts *TunnelServer) startUDPListener(port int, tunnel *TunnelConnection) {
 		Str("protocol", tunnel.Protocol).
 		Msg("UDP listener started for tunnel port")
 
-	// Handle UDP packets
 	buffer := make([]byte, 4096)
 	for {
 		n, addr, err := conn.ReadFrom(buffer)
 		if err != nil {
-			// Check if tunnel still exists
 			ts.portMapMu.RLock()
 			_, exists := ts.portMap[port]
 			ts.portMapMu.RUnlock()
@@ -4103,8 +4027,6 @@ func (ts *TunnelServer) startUDPListener(port int, tunnel *TunnelConnection) {
 				Msg("Failed to read UDP packet")
 			continue
 		}
-
-		// Handle UDP packet
 		go ts.handleUDPPacket(tunnel, port, addr, buffer[:n])
 	}
 }
@@ -4114,19 +4036,16 @@ func (ts *TunnelServer) handleUDPPacket(tunnel *TunnelConnection, port int, addr
 	tunnelID := tunnel.ID
 	tunnel.mu.RUnlock()
 
-	// Check database status - if tunnel was disconnected from dashboard, reject packet
 	if ts.repository != nil && tunnelID != "" {
 		tunnelUUID, parseErr := uuid.Parse(tunnelID)
 		if parseErr == nil {
 			dbTunnel, err := ts.repository.GetTunnelByID(context.Background(), tunnelUUID)
 			if err == nil && dbTunnel != nil && dbTunnel.Status == "inactive" {
-				// Tunnel was disconnected from dashboard - close connection and remove from memory
 				ts.logger.Info().
 					Str("tunnel_id", tunnelID).
 					Str("status", dbTunnel.Status).
 					Msg("UDP tunnel is inactive in database (disconnected from dashboard) - rejecting packet")
-				
-				// Close WebSocket connection
+
 				tunnel.mu.RLock()
 				wsConn := tunnel.WSConn
 				subdomain := tunnel.Subdomain
@@ -4134,17 +4053,12 @@ func (ts *TunnelServer) handleUDPPacket(tunnel *TunnelConnection, port int, addr
 				if wsConn != nil {
 					wsConn.Close()
 				}
-				
-				// Remove from memory
 				ts.removeTunnel(subdomain)
-				
-				// Reject UDP packet (don't forward)
 				return
 			}
 		}
 	}
 
-	// Check rate limit
 	if ts.rateLimiter != nil {
 		allowed, err := ts.rateLimiter.CheckRateLimit(context.Background(), tunnelID)
 		if err != nil {
@@ -4162,10 +4076,8 @@ func (ts *TunnelServer) handleUDPPacket(tunnel *TunnelConnection, port int, addr
 		ts.rateLimiter.RecordRequest(context.Background(), tunnelID)
 	}
 
-	// Generate connection ID based on remote address (UDP is connectionless)
 	connectionID := fmt.Sprintf("%s-%d", addr.String(), time.Now().UnixNano())
 
-	// Store connection info (UDP is stateless, but we track for metrics)
 	ts.udpConnMu.Lock()
 	ts.udpConnections[connectionID] = &UDPConnection{
 		ID:        connectionID,
@@ -4187,7 +4099,6 @@ func (ts *TunnelServer) handleUDPPacket(tunnel *TunnelConnection, port int, addr
 		return
 	}
 
-	// Send UDP data to tunnel client
 	msg := TunnelMessage{
 		Type:      MsgTypeUDPData,
 		RequestID: connectionID,
@@ -4229,13 +4140,11 @@ func (ts *TunnelServer) closeUDPConnection(connectionID string) {
 }
 
 func extractSubdomain(host string) string {
-	// Remove port if present
 	hostname, _, err := net.SplitHostPort(host)
 	if err != nil {
 		hostname = host
 	}
 
-	// Split by dots
 	parts := strings.Split(hostname, ".")
 	if len(parts) < 2 {
 		return ""
@@ -4244,7 +4153,6 @@ func extractSubdomain(host string) string {
 	localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
 	if parts[1] == localhostDomain {
 		subdomain := parts[0]
-		// Validate subdomain format (alphanumeric and hyphens only, max 63 chars)
 		if len(subdomain) > 63 {
 			return ""
 		}
@@ -4255,9 +4163,7 @@ func extractSubdomain(host string) string {
 		return subdomain
 	}
 
-	// For domain format like "abc123.{baseDomain}"
 	subdomain := parts[0]
-	// Validate subdomain format (alphanumeric and hyphens only, max 63 chars)
 	if len(subdomain) > 63 {
 		return ""
 	}
@@ -4331,17 +4237,13 @@ func validateLocalURL(url string) error {
 		}
 	}
 
-	// Validate URL format (must start with http://, https://, or be host:port)
 	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
-		// Valid HTTP(S) URL
 		return nil
 	}
 
-	// Validate host:port format
 	if strings.Contains(url, ":") {
 		parts := strings.Split(url, ":")
 		if len(parts) == 2 {
-			// Basic validation - should be host:port
 			return nil
 		}
 	}
@@ -4363,12 +4265,10 @@ func validateSubdomain(subdomain string) error {
 		return fmt.Errorf("subdomain too long (max 63 characters)")
 	}
 
-	// Reserved for system use (app.uniroute.co, api., www., etc.)
 	if reservedSubdomains[strings.ToLower(subdomain)] {
 		return fmt.Errorf("subdomain is reserved for system use")
 	}
 
-	// Must be alphanumeric and hyphens only, cannot start or end with hyphen
 	matched, _ := regexp.MatchString("^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$", subdomain)
 	if !matched {
 		return fmt.Errorf("subdomain must contain only alphanumeric characters and hyphens, and cannot start or end with hyphen")
@@ -4376,5 +4276,3 @@ func validateSubdomain(subdomain string) error {
 
 	return nil
 }
-
-// Types are defined in types.go

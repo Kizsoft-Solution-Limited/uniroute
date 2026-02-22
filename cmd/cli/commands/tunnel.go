@@ -525,13 +525,13 @@ func listServerTunnels() {
 		return
 	}
 
-	serverURL := getTunnelServerURL()
-	if serverURL == "" {
-		serverURL = "tunnel.uniroute.co"
+	apiURL := getServerURL()
+	if apiURL == "" {
+		apiURL = "https://api.uniroute.co"
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/tunnels", serverURL), nil)
+	req, err := http.NewRequest("GET", apiURL+"/auth/tunnels", nil)
 	if err != nil {
 		fmt.Println(color.Gray("🌐 Server Tunnels: Unable to fetch (server unreachable)"))
 		fmt.Println()
@@ -557,6 +557,7 @@ func listServerTunnels() {
 		Tunnels []struct {
 			ID        string `json:"id"`
 			Subdomain string `json:"subdomain"`
+			PublicURL string `json:"public_url"`
 			Protocol  string `json:"protocol"`
 			Status    string `json:"status"`
 		} `json:"tunnels"`
@@ -569,7 +570,7 @@ func listServerTunnels() {
 	}
 
 	if len(result.Tunnels) == 0 {
-		fmt.Println(color.Gray("🌐 Server Tunnels: No active tunnels on server"))
+		fmt.Println(color.Gray("🌐 Server Tunnels: No tunnels (create one with 'uniroute tunnel')"))
 		fmt.Println()
 		return
 	}
@@ -584,15 +585,31 @@ func listServerTunnels() {
 		color.Bold("Status"))
 	fmt.Println()
 
+	tunnelHost := getTunnelServerURL()
+	if tunnelHost == "" {
+		tunnelHost = "tunnel.uniroute.co"
+	}
+	scheme := "https"
+	if strings.HasPrefix(tunnelHost, "localhost") {
+		scheme = "http"
+	}
+
 	for _, t := range result.Tunnels {
-		publicURL := fmt.Sprintf("http://%s.localhost:8055", t.Subdomain)
+		publicURL := t.PublicURL
+		if publicURL == "" {
+			publicURL = scheme + "://" + t.Subdomain + "." + tunnelHost
+		}
+		protocol := t.Protocol
+		if protocol == "" {
+			protocol = "http"
+		}
 		status := color.Green("Active")
 		if t.Status != "active" {
 			status = color.Gray(t.Status)
 		}
 		fmt.Printf("  %-20s %-10s %-30s %s\n",
 			t.Subdomain,
-			t.Protocol,
+			protocol,
 			publicURL,
 			status)
 	}

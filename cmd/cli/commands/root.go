@@ -49,7 +49,6 @@ func Execute() error {
 func init() {
 	rootCmd.Flags().BoolVar(&rootAll, "all", false, "Start all configured tunnels")
 	rootCmd.AddCommand(authCmd)
-	rootCmd.AddCommand(projectsCmd)
 	rootCmd.AddCommand(devCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(tunnelCmd)
