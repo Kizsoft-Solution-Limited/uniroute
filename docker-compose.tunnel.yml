@@ -1,0 +1,15 @@
+# Tunnel server - publish main port and TCP/UDP tunnel port range for TCP/TLS/UDP tunnels.
+# Use this with Coolify or: docker-compose -f docker-compose.tunnel.yml up -d
+services:
+  tunnel:
+    build:
+      context: .
+      dockerfile: Dockerfile.tunnel
+    ports:
+      - "8081:8080"   # Main WebSocket/HTTP (map host 8081 -> container 8080, or set PORT=8081 in env)
+      - "20000-30000:20000-30000"  # TCP/UDP tunnel ports (required for uniroute tcp/udp/tls)
+    environment:
+      - PORT=8080
+      # Optional: TUNNEL_TCP_PORT_BASE=20000 (default)
+      # Set TUNNEL_BASE_DOMAIN, DATABASE_URL, JWT_SECRET, etc. as needed
+    restart: unless-stopped
