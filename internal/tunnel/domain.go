@@ -76,16 +76,25 @@ func (dm *DomainManager) ValidateCNAME(ctx context.Context, domain, target strin
 	return dm.dnsValidator.ValidateCNAMERecord(ctx, domain, target)
 }
 
+func (dm *DomainManager) GetPublicHost(subdomain string) string {
+	if dm.baseDomain != "" {
+		return fmt.Sprintf("%s.%s", subdomain, dm.baseDomain)
+	}
+	localhostDomain := os.Getenv("TUNNEL_LOCALHOST_DOMAIN")
+	if localhostDomain == "" {
+		localhostDomain = "localhost"
+	}
+	return fmt.Sprintf("%s.%s", subdomain, localhostDomain)
+}
+
 func (dm *DomainManager) GetPublicURL(subdomain string, port int, useHTTPS bool) string {
 	scheme := "http"
 	if useHTTPS {
 		scheme = "https"
 	}
-	
 	if dm.baseDomain != "" {
 		return fmt.Sprintf("%s://%s.%s", scheme, subdomain, dm.baseDomain)
 	}
-	
 	localhostDomain := os.Getenv("TUNNEL_LOCALHOST_DOMAIN")
 	if localhostDomain == "" {
 		localhostDomain = "localhost"

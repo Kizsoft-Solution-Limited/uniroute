@@ -1329,8 +1329,8 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.portMapMu.RUnlock()
 
 		if tcpPort > 0 {
-			if ts.domainManager != nil && ts.domainManager.baseDomain != "" {
-				publicURL = fmt.Sprintf("%s:%d", ts.domainManager.GetPublicURL(subdomain, ts.port, false), tcpPort)
+			if ts.domainManager != nil {
+				publicURL = fmt.Sprintf("%s:%d", ts.domainManager.GetPublicHost(subdomain), tcpPort)
 			} else {
 				localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
 				publicURL = fmt.Sprintf("%s.%s:%d", subdomain, localhostDomain, tcpPort)
@@ -1356,8 +1356,8 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.portMapMu.RUnlock()
 
 		if udpPort > 0 {
-			if ts.domainManager != nil && ts.domainManager.baseDomain != "" {
-				publicURL = fmt.Sprintf("%s:%d", ts.domainManager.GetPublicURL(subdomain, ts.port, false), udpPort)
+			if ts.domainManager != nil {
+				publicURL = fmt.Sprintf("%s:%d", ts.domainManager.GetPublicHost(subdomain), udpPort)
 			} else {
 				localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
 				publicURL = fmt.Sprintf("%s.%s:%d", subdomain, localhostDomain, udpPort)
@@ -4181,11 +4181,6 @@ func (ts *TunnelServer) getPublicURLForTunnel(tunnel *TunnelConnection) string {
 	tunnel.mu.RUnlock()
 
 	localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
-	if ts.domainManager != nil && ts.domainManager.baseDomain != "" {
-		useHTTPS := ts.domainManager.baseDomain != ""
-		return ts.domainManager.GetPublicURL(subdomain, ts.port, useHTTPS)
-	}
-
 	if protocol == ProtocolTCP || protocol == ProtocolTLS {
 		ts.portMapMu.RLock()
 		var tcpPort int
@@ -4197,6 +4192,9 @@ func (ts *TunnelServer) getPublicURLForTunnel(tunnel *TunnelConnection) string {
 		}
 		ts.portMapMu.RUnlock()
 		if tcpPort > 0 {
+			if ts.domainManager != nil {
+				return fmt.Sprintf("%s:%d", ts.domainManager.GetPublicHost(subdomain), tcpPort)
+			}
 			return fmt.Sprintf("%s.%s:%d", subdomain, localhostDomain, tcpPort)
 		}
 	}
@@ -4212,10 +4210,17 @@ func (ts *TunnelServer) getPublicURLForTunnel(tunnel *TunnelConnection) string {
 		}
 		ts.portMapMu.RUnlock()
 		if udpPort > 0 {
+			if ts.domainManager != nil {
+				return fmt.Sprintf("%s:%d", ts.domainManager.GetPublicHost(subdomain), udpPort)
+			}
 			return fmt.Sprintf("%s.%s:%d", subdomain, localhostDomain, udpPort)
 		}
 	}
 
+	if ts.domainManager != nil && ts.domainManager.baseDomain != "" {
+		useHTTPS := true
+		return ts.domainManager.GetPublicURL(subdomain, ts.port, useHTTPS)
+	}
 	return fmt.Sprintf("http://%s.%s:%d", subdomain, localhostDomain, ts.port)
 }
 
