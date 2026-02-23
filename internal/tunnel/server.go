@@ -1980,7 +1980,42 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		Str("extracted_subdomain", subdomain).
 		Msg("Extracted subdomain from host header")
 
-	if subdomain != "" {
+	// When the host looks like a custom domain (e.g. thecityforbes.com), try custom domain
+	// lookup first so we don't treat "thecityforbes" as a subdomain and then 404.
+	if ts.repository != nil && !isTunnelSubdomainHost(hostname, ts.baseDomain) {
+		tryHosts := []string{hostname}
+		if strings.HasPrefix(strings.ToLower(hostname), "www.") {
+			tryHosts = append(tryHosts, hostname[4:])
+		}
+		for _, tryHost := range tryHosts {
+			if tryHost == "" {
+				continue
+			}
+			dbTunnel, err := ts.repository.GetTunnelByCustomDomain(context.Background(), tryHost)
+			if err == nil && dbTunnel != nil && (dbTunnel.Protocol == "" || dbTunnel.Protocol == ProtocolHTTP) {
+				lookupSubdomain = dbTunnel.Subdomain
+				ts.tunnelsMu.RLock()
+				tunnel, exists = ts.tunnels[lookupSubdomain]
+				ts.tunnelsMu.RUnlock()
+				if exists && tunnel != nil {
+					tunnel.mu.RLock()
+					tp := tunnel.Protocol
+					tunnel.mu.RUnlock()
+					if tp != ProtocolHTTP {
+						tunnel, exists = nil, false
+					}
+				}
+				ts.logger.Info().
+					Str("custom_domain", hostname).
+					Str("tunnel_subdomain", lookupSubdomain).
+					Bool("tunnel_active", exists).
+					Msg("Resolved custom domain (tried first)")
+				break
+			}
+		}
+	}
+
+	if subdomain != "" && !exists {
 		ts.tunnelsMu.RLock()
 		tunnel, exists = ts.tunnels[subdomain]
 		ts.tunnelsMu.RUnlock()
@@ -1988,39 +2023,47 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 	}
 
 	if !exists && ts.repository != nil {
-		dbTunnel, err := ts.repository.GetTunnelByCustomDomain(context.Background(), hostname)
-		if err == nil && dbTunnel != nil {
-			if dbTunnel.Protocol != "" && dbTunnel.Protocol != ProtocolHTTP {
-				ts.logger.Warn().
-					Str("custom_domain", hostname).
-					Str("tunnel_protocol", dbTunnel.Protocol).
-					Msg("Custom domain found but tunnel is not HTTP - custom domains only work with HTTP tunnels")
-			} else {
-				lookupSubdomain = dbTunnel.Subdomain
-				ts.tunnelsMu.RLock()
-				tunnel, exists = ts.tunnels[lookupSubdomain]
-				ts.tunnelsMu.RUnlock()
+		// Try custom domain lookup (hostname as-is, then without "www." so www.thecityforbes.com finds thecityforbes.com)
+		tryHosts := []string{hostname}
+		if strings.HasPrefix(strings.ToLower(hostname), "www.") {
+			tryHosts = append(tryHosts, hostname[4:])
+		}
+		for _, tryHost := range tryHosts {
+			dbTunnel, err := ts.repository.GetTunnelByCustomDomain(context.Background(), tryHost)
+			if err == nil && dbTunnel != nil {
+				if dbTunnel.Protocol != "" && dbTunnel.Protocol != ProtocolHTTP {
+					ts.logger.Warn().
+						Str("custom_domain", hostname).
+						Str("tunnel_protocol", dbTunnel.Protocol).
+						Msg("Custom domain found but tunnel is not HTTP - custom domains only work with HTTP tunnels")
+				} else {
+					lookupSubdomain = dbTunnel.Subdomain
+					ts.tunnelsMu.RLock()
+					tunnel, exists = ts.tunnels[lookupSubdomain]
+					ts.tunnelsMu.RUnlock()
 
-				if exists && tunnel != nil {
-					tunnel.mu.RLock()
-					tunnelProtocol := tunnel.Protocol
-					tunnel.mu.RUnlock()
-					if tunnelProtocol != ProtocolHTTP {
-						ts.logger.Warn().
-							Str("custom_domain", hostname).
-							Str("tunnel_subdomain", lookupSubdomain).
-							Str("tunnel_protocol", tunnelProtocol).
-							Msg("Tunnel found by custom domain but protocol mismatch - custom domains only work with HTTP")
-						tunnel = nil
-						exists = false
+					if exists && tunnel != nil {
+						tunnel.mu.RLock()
+						tunnelProtocol := tunnel.Protocol
+						tunnel.mu.RUnlock()
+						if tunnelProtocol != ProtocolHTTP {
+							ts.logger.Warn().
+								Str("custom_domain", hostname).
+								Str("tunnel_subdomain", lookupSubdomain).
+								Str("tunnel_protocol", tunnelProtocol).
+								Msg("Tunnel found by custom domain but protocol mismatch - custom domains only work with HTTP")
+							tunnel = nil
+							exists = false
+						}
 					}
-				}
 
-				ts.logger.Info().
-					Str("custom_domain", hostname).
-					Str("tunnel_subdomain", lookupSubdomain).
-					Bool("tunnel_active", exists).
-					Msg("Found tunnel by custom domain")
+					ts.logger.Info().
+						Str("custom_domain", hostname).
+						Str("tunnel_subdomain", lookupSubdomain).
+						Bool("tunnel_active", exists).
+						Msg("Found tunnel by custom domain")
+				}
+				break
 			}
 		}
 	}
@@ -2211,9 +2254,14 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 			} else {
 				ts.logger.Info().
 					Str("subdomain", subdomain).
+					Str("host", hostname).
 					Msg("Tunnel not found in memory or database - returning 404")
 			}
-			ts.writeErrorPage(w, r, nil, http.StatusNotFound, "Tunnel Not Found", "The requested tunnel does not exist.", fmt.Sprintf("The subdomain '%s' is not associated with any tunnel. Please check the URL or create a new tunnel.", html.EscapeString(subdomain)))
+			detailMsg := fmt.Sprintf("The subdomain '%s' is not associated with any tunnel. Please check the URL or create a new tunnel.", html.EscapeString(subdomain))
+			if strings.Contains(hostname, ".") && !strings.Contains(hostname, ".tunnel.") {
+				detailMsg = fmt.Sprintf("No tunnel has the custom domain '%s' assigned, or requests for this domain are not reaching the tunnel server. Ensure your domain's DNS points to the same endpoint as tunnel.uniroute.co (CNAME to tunnel.uniroute.co or the same A record), then assign the domain: uniroute domain %s <tunnel-subdomain>", html.EscapeString(hostname), html.EscapeString(hostname))
+			}
+			ts.writeErrorPage(w, r, nil, http.StatusNotFound, "Tunnel Not Found", "The requested tunnel does not exist.", detailMsg)
 			return
 		}
 	}
@@ -4214,6 +4262,13 @@ func extractSubdomain(host string) string {
 		return ""
 	}
 	return subdomain
+}
+
+func isTunnelSubdomainHost(hostname, baseDomain string) bool {
+	if baseDomain == "" {
+		baseDomain = getEnv("TUNNEL_BASE_DOMAIN", "uniroute.co")
+	}
+	return strings.HasSuffix(hostname, ".tunnel."+baseDomain) || strings.HasSuffix(hostname, ".localhost")
 }
 
 func (ts *TunnelServer) getPublicURLForTunnel(tunnel *TunnelConnection) string {

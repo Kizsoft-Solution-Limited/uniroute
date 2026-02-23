@@ -126,7 +126,7 @@ func (r *TunnelRepository) GetTunnelByCustomDomain(ctx context.Context, domain s
 		SELECT id, user_id, subdomain, custom_domain, local_url, public_url,
 		       protocol, status, region, created_at, updated_at, last_active_at, active_since, request_count
 		FROM tunnels
-		WHERE custom_domain = $1
+		WHERE LOWER(TRIM(custom_domain)) = LOWER(TRIM($1))
 		ORDER BY created_at DESC
 		LIMIT 1
 	`
