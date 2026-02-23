@@ -45,6 +45,7 @@ func (h *CheckDomainHandler) HandleCheckDomain(c *gin.Context) {
 			c.Status(http.StatusInternalServerError)
 			return
 		}
+		
 		if exists {
 			h.logger.Debug().Str("domain", domain).Msg("check-domain: allowed (in custom_domains)")
 			c.Status(http.StatusOK)
