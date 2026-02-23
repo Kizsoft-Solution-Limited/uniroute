@@ -66,14 +66,16 @@
               </p>
               <div v-if="!domain.dns_configured" class="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                 <p class="text-xs font-medium text-yellow-800 dark:text-yellow-300 mb-2">DNS Setup Required:</p>
-                <div class="space-y-2">
-                  <code class="block text-xs text-yellow-900 dark:text-yellow-200 font-mono bg-yellow-100 dark:bg-yellow-900/50 px-2 py-1 rounded">
-                    CNAME {{ domain.domain }} → tunnel.uniroute.co
-                  </code>
-                  <p class="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
-                    <strong>Root domain (no www)?</strong> Many providers don't allow CNAME on apex. Use ALIAS/ANAME record <code class="bg-yellow-200/50 dark:bg-yellow-800/50 px-1 rounded">@</code> → <code class="bg-yellow-200/50 dark:bg-yellow-800/50 px-1 rounded">tunnel.uniroute.co</code>, or an A record with the tunnel server IP.
-                  </p>
-                  <p class="text-xs text-yellow-700 dark:text-yellow-300">
+                <div class="space-y-3 text-xs text-yellow-900 dark:text-yellow-200">
+                  <div class="font-mono bg-yellow-100 dark:bg-yellow-900/50 px-2 py-1.5 rounded">
+                    <span class="font-semibold">A Record</span><br>
+                    Host: <code>@</code> · IP Address: <code>75.119.141.27</code> · TTL: Automatic
+                  </div>
+                  <div class="font-mono bg-yellow-100 dark:bg-yellow-900/50 px-2 py-1.5 rounded">
+                    <span class="font-semibold">CNAME Record</span><br>
+                    Host: <code>www</code> · Target: <code>{{ domain.domain }}.</code> · TTL: Automatic
+                  </div>
+                  <p class="text-yellow-700 dark:text-yellow-300 pt-1">
                     After configuring DNS, click "Verify DNS" to check if it's set up correctly.
                   </p>
                 </div>

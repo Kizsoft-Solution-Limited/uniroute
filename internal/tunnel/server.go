@@ -3228,11 +3228,7 @@ func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, re
 		if (reloading) return;
 		
 		var url = window.location.href.split('?')[0] + '?_check=' + Date.now();
-		var xhr = new XMLHttpRequest();
-		var timedOut = false;
 		var timeoutId = setTimeout(function() {
-			timedOut = true;
-			xhr.abort();
 			consecutiveFailures++;
 			consecutiveSuccesses = 0;
 			wasOffline = true;
@@ -3240,39 +3236,36 @@ func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, re
 				reloading = true;
 				window.location.reload();
 			}
-		}, 3000); // Longer timeout (3 seconds)
+		}, 3000);
 		
-		xhr.open('GET', url, true);
-		xhr.setRequestHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-		xhr.setRequestHeader('Pragma', 'no-cache');
-		xhr.setRequestHeader('Expires', '0');
-		
-		xhr.onload = function() {
+		// Use fetch with redirect: 'manual' so we never follow redirects to another origin (avoids CORS when app redirects e.g. to billspot.co)
+		fetch(url, {
+			method: 'GET',
+			cache: 'no-store',
+			headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Expires': '0' },
+			redirect: 'manual'
+		}).then(function(response) {
 			clearTimeout(timeoutId);
 			lastCheck = Date.now();
-			if (xhr.status >= 200 && xhr.status < 400) {
-				// Success - reset failure counter
+			var status = response.status;
+			var isRedirect = status >= 300 && status < 400;
+			var isOk = (status >= 200 && status < 300) || isRedirect;
+			if (isOk) {
 				consecutiveFailures = 0;
 				failures = 0;
 				consecutiveSuccesses++;
-				
-				// If we were offline (showing error page) and now we have successful responses,
-				// reload to show the restored page
 				if (wasOffline && consecutiveSuccesses >= maxSuccesses) {
-					// Check if we're still on an error page
 					if (isOnErrorPage()) {
 						reloading = true;
-						wasOffline = false; // Reset flag before reload
-						consecutiveSuccesses = 0; // Reset counter
+						wasOffline = false;
+						consecutiveSuccesses = 0;
 						window.location.reload();
 					} else {
-						// We're already on the correct page, just reset flags
 						wasOffline = false;
 						consecutiveSuccesses = 0;
 					}
 				}
-			} else if (xhr.status >= 500 || xhr.status === 0 || xhr.status === 503 || xhr.status === 502) {
-				// Server errors - increment failure counter
+			} else if (status >= 500 || status === 0 || status === 503 || status === 502) {
 				consecutiveFailures++;
 				consecutiveSuccesses = 0;
 				wasOffline = true;
@@ -3281,37 +3274,19 @@ func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, re
 					window.location.reload();
 				}
 			} else {
-				// Other status codes (like 404) - don't count as failures, might be normal
 				consecutiveFailures = 0;
 				consecutiveSuccesses = 0;
 			}
-		};
-		
-		xhr.onerror = function() {
+		}).catch(function() {
 			clearTimeout(timeoutId);
 			consecutiveFailures++;
 			consecutiveSuccesses = 0;
 			wasOffline = true;
-			// Only reload if we have multiple consecutive failures AND haven't checked in a while
 			if (consecutiveFailures >= maxFailures && (Date.now() - lastCheck > 5000)) {
 				reloading = true;
 				window.location.reload();
 			}
-		};
-		
-		xhr.ontimeout = function() {
-			clearTimeout(timeoutId);
-			consecutiveFailures++;
-			consecutiveSuccesses = 0;
-			wasOffline = true;
-			if (consecutiveFailures >= maxFailures) {
-				reloading = true;
-				window.location.reload();
-			}
-		};
-		
-		xhr.timeout = 3000; // 3 second timeout
-		xhr.send();
+		});
 	}
 	
 	function startMonitoring() {

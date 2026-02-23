@@ -495,26 +495,19 @@ uniroute domain remove example.com
 
 **DNS Configuration:**
 
-After adding a domain, you need to configure DNS:
+After adding a domain, add these records in your DNS provider:
 
-1. **Add CNAME Record** in your DNS provider (for subdomains like `www.example.com`):
-   ```
-   Type: CNAME
-   Name: www  (or your subdomain)
-   Target: tunnel.uniroute.co
-   ```
+| Type            | Host | Value / Target | TTL       |
+|-----------------|------|----------------|-----------|
+| **A Record**   | `@`  | `75.119.141.27` | Automatic |
+| **CNAME Record** | `www` | `example.com.`  | Automatic |
 
-2. **Root domain (apex, e.g. example.com with no host):** Many providers do not allow CNAME on the root (`@`). Use one of:
-   - **ALIAS / ANAME record** (if your provider supports it): Name `@`, Target `tunnel.uniroute.co`
-   - **A record**: Name `@`, Value: the tunnel server IP (e.g. `75.119.141.27` — confirm with `dig tunnel.uniroute.co +short`)
+- **A Record:** Host `@`, IP Address `75.119.141.27`, TTL Automatic.
+- **CNAME Record:** Host `www`, Target your apex domain (e.g. `example.com.`), TTL Automatic.
 
-3. **Verify DNS** configuration:
-   ```bash
-   uniroute domain verify example.com
-   ```
-   Or use the dashboard at `https://app.uniroute.co/dashboard/domains`
+Confirm tunnel server IP with: `dig tunnel.uniroute.co +short`
 
-4. **Once verified**, your domain is ready to use!
+- **Verify DNS:** Run `uniroute domain verify example.com` or use the dashboard at `https://app.uniroute.co/dashboard/domains`. Once verified, your domain is ready to use.
 
 **Domain Resume Feature:**
 

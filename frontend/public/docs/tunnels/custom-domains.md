@@ -132,33 +132,21 @@ This will:
 
 ## DNS Configuration
 
-After adding a domain, you need to configure DNS:
+After adding a domain, you need to configure DNS in your provider (Cloudflare, Namecheap, GoDaddy, etc.):
 
-### Step 1: Add DNS Record
+### Step 1: Add DNS Records
 
-**For a subdomain (e.g. www.example.com, api.example.com):**
+Add these two records (replace `example.com` with your domain):
 
-In your DNS provider (Cloudflare, Namecheap, GoDaddy, etc.), add a CNAME record:
+| Type        | Host | Value / Target      | TTL        |
+|------------|------|---------------------|------------|
+| **A Record**   | `@`  | `75.119.141.27`     | Automatic  |
+| **CNAME Record** | `www` | `example.com.`      | Automatic  |
 
-```
-Type: CNAME
-Name: www   (or api, app, etc.)
-Target: tunnel.uniroute.co
-```
+- **A Record:** Host `@` (root/apex), IP Address `75.119.141.27`, TTL Automatic.
+- **CNAME Record:** Host `www`, Target your apex domain with a trailing dot (e.g. `example.com.`), TTL Automatic.
 
-**For the root domain / apex (e.g. example.com with no host):**
-
-Many providers do not allow CNAME on the root (`@`). Use one of these instead:
-
-- **ALIAS or ANAME record** (recommended if your provider supports it):  
-  Name: `@` · Target: `tunnel.uniroute.co`
-- **A record**:  
-  Name: `@` · Value: the tunnel server IP (run `dig tunnel.uniroute.co +short` to get the current IP)
-
-Examples by provider:
-- **Namecheap:** Use "ALIAS Record" for Host `@` → `tunnel.uniroute.co`, or "A Record" with the tunnel IP.
-- **Cloudflare:** CNAME at root is supported (proxy or DNS only).
-- **GoDaddy / others:** Use ALIAS/ANAME if available, otherwise A record with the tunnel IP.
+To confirm the current tunnel server IP: `dig tunnel.uniroute.co +short`
 
 ### Step 2: Verify DNS
 
