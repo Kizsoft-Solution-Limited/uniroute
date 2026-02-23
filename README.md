@@ -390,6 +390,10 @@ uniroute tcp 3306     # TCP tunnel (shortcut)
 uniroute tls 5432     # TLS tunnel (shortcut)
 uniroute udp 53       # UDP tunnel (shortcut)
 
+# TLS tunnel: connect from anywhere (e.g. PostgreSQL). Start tunnel with local port (e.g. 5432),
+# then use the public URL:port with sslmode=require:
+#   psql "postgresql://user:pass@SUBDOMAIN.tunnel.uniroute.co:PORT/dbname?sslmode=require"
+
 # Custom subdomain support (shortcut syntax)
 uniroute http 8080 myapp              # Request specific subdomain (myapp.uniroute.co) - shortcut
 uniroute http 8080 myapp --new        # Create new tunnel with specific subdomain - shortcut

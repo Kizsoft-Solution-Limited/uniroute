@@ -164,6 +164,9 @@ const navigation = [
     { path: '/tunnels/opening', title: 'Opening a Tunnel' },
     { path: '/tunnels/dev-run', title: 'Dev & Run' },
     { path: '/tunnels/protocols', title: 'Protocols' },
+    { path: '/tunnels/tcp-use-cases', title: 'TCP use cases' },
+    { path: '/tunnels/tls-use-cases', title: 'TLS use cases' },
+    { path: '/tunnels/udp-use-cases', title: 'UDP use cases' },
     { path: '/tunnels/custom-domains', title: 'Custom Domains' },
     { path: '/tunnels/reserved-subdomains', title: 'Reserved Subdomains' }
   ]},
