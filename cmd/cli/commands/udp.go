@@ -20,7 +20,8 @@ Examples:
   uniroute udp 53 dns          # Request specific subdomain (dns.uniroute.co) - shortcut
   uniroute udp 53 dns --new     # Create new tunnel with specific subdomain - shortcut
   uniroute udp 53 --host dns   # Request specific subdomain (dns.uniroute.co) - flag syntax
-  uniroute udp 53 --host dns --new  # Create new tunnel with specific subdomain - flag syntax`,
+  uniroute udp 53 --host dns --new  # Create new tunnel with specific subdomain - flag syntax
+  uniroute udp 53 --resume abc123  # Resume tunnel with subdomain abc123`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tunnelProtocol = "udp"
@@ -38,4 +39,5 @@ Examples:
 func init() {
 	udpCmd.Flags().BoolVar(&forceNew, "new", false, "Force creating a new tunnel (don't resume saved state)")
 	udpCmd.Flags().StringVar(&tunnelHost, "host", "", "Request specific host/subdomain (reserved subdomain)")
+	udpCmd.Flags().StringVar(&resumeSubdomain, "resume", "", "Resume a specific subdomain (same public URL as before)")
 }

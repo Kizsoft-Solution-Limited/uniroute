@@ -1253,43 +1253,32 @@ func (tc *TunnelClient) GetConnectionStats(serverURL string, tunnelID string) (*
 }
 
 func (tc *TunnelClient) handleTCPData(connectionID string, data []byte, isTLS bool) {
-	// Check if connection exists
 	tc.tcpConnMu.RLock()
 	conn, exists := tc.tcpConnections[connectionID]
 	tc.tcpConnMu.RUnlock()
 
-	// If connection doesn't exist and this is the first message (empty data), create new connection
 	if !exists {
-		if len(data) == 0 {
-			if err := tc.establishTCPConnection(connectionID, isTLS); err != nil {
-				tc.logger.Error().
-					Err(err).
-					Str("connection_id", connectionID).
-					Msg("Failed to establish TCP connection")
-				tc.sendTCPError(connectionID, "connection_failed", err.Error())
-				return
-			}
-			tc.tcpConnMu.RLock()
-			conn = tc.tcpConnections[connectionID]
-			tc.tcpConnMu.RUnlock()
-		} else {
-			tc.logger.Warn().
+		if err := tc.establishTCPConnection(connectionID, isTLS); err != nil {
+			tc.logger.Error().
+				Err(err).
 				Str("connection_id", connectionID).
-				Msg("Received TCP data for non-existent connection")
+				Msg("Failed to establish TCP connection")
+			tc.sendTCPError(connectionID, "connection_failed", err.Error())
 			return
 		}
+		tc.tcpConnMu.RLock()
+		conn = tc.tcpConnections[connectionID]
+		tc.tcpConnMu.RUnlock()
 	}
 
 	if conn == nil {
 		return
 	}
 
-	// If data is empty, this was just a connection establishment
 	if len(data) == 0 {
 		return
 	}
 
-	// Write data to local TCP connection
 	_, err := conn.Write(data)
 	if err != nil {
 		tc.logger.Error().

@@ -167,6 +167,17 @@ func serverHostForCompare(s string) string {
 	return s
 }
 
+func normalizeLocalURLForCompare(s string) string {
+	s = strings.TrimSpace(s)
+	for _, prefix := range []string{"https://", "http://"} {
+		if strings.HasPrefix(strings.ToLower(s), prefix) {
+			s = s[len(prefix):]
+			break
+		}
+	}
+	return s
+}
+
 func runAllTunnels(cmd *cobra.Command, args []string) error {
 	log := logger.New()
 	configManager := tunnel.NewConfigManager(log)
@@ -378,7 +389,9 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 		if state, err := persistence.Load(); err == nil && state != nil {
 			savedServer := serverHostForCompare(state.ServerURL)
 			currentServer := serverHostForCompare(tunnelServerURL)
-			if state.Protocol == tunnelProtocol && state.LocalURL == localURL &&
+			savedLocal := normalizeLocalURLForCompare(state.LocalURL)
+			currentLocal := normalizeLocalURLForCompare(localURL)
+			if state.Protocol == tunnelProtocol && savedLocal == currentLocal &&
 				(tunnelHost == "" || state.Host == tunnelHost) &&
 				savedServer == currentServer {
 				client.SetResumeInfo(state.Subdomain, state.TunnelID)

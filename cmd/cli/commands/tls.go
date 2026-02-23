@@ -20,7 +20,8 @@ Examples:
   uniroute tls 5432 mydb         # Request specific subdomain (mydb.uniroute.co) - shortcut
   uniroute tls 5432 mydb --new   # Create new tunnel with specific subdomain - shortcut
   uniroute tls 5432 --host mydb  # Request specific subdomain (mydb.uniroute.co) - flag syntax
-  uniroute tls 5432 --host mydb --new  # Create new tunnel with specific subdomain - flag syntax`,
+  uniroute tls 5432 --host mydb --new  # Create new tunnel with specific subdomain - flag syntax
+  uniroute tls 5432 --resume abc123    # Resume tunnel with subdomain abc123`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tunnelProtocol = "tls"
@@ -38,4 +39,5 @@ Examples:
 func init() {
 	tlsCmd.Flags().BoolVar(&forceNew, "new", false, "Force creating a new tunnel (don't resume saved state)")
 	tlsCmd.Flags().StringVar(&tunnelHost, "host", "", "Request specific host/subdomain (reserved subdomain)")
+	tlsCmd.Flags().StringVar(&resumeSubdomain, "resume", "", "Resume a specific subdomain (same public URL as before)")
 }

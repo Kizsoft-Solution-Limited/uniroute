@@ -20,7 +20,8 @@ Examples:
   uniroute tcp 3306 mydb         # Request specific subdomain (mydb.uniroute.co) - shortcut
   uniroute tcp 3306 mydb --new   # Create new tunnel with specific subdomain - shortcut
   uniroute tcp 3306 --host mydb  # Request specific subdomain (mydb.uniroute.co) - flag syntax
-  uniroute tcp 3306 --host mydb --new  # Create new tunnel with specific subdomain - flag syntax`,
+  uniroute tcp 3306 --host mydb --new  # Create new tunnel with specific subdomain - flag syntax
+  uniroute tcp 3306 --resume abc123    # Resume tunnel with subdomain abc123`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tunnelProtocol = "tcp"
@@ -38,4 +39,5 @@ Examples:
 func init() {
 	tcpCmd.Flags().BoolVar(&forceNew, "new", false, "Force creating a new tunnel (don't resume saved state)")
 	tcpCmd.Flags().StringVar(&tunnelHost, "host", "", "Request specific host/subdomain (reserved subdomain)")
+	tcpCmd.Flags().StringVar(&resumeSubdomain, "resume", "", "Resume a specific subdomain (same public URL as before)")
 }
