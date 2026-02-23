@@ -3140,14 +3140,19 @@ func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, re
 
 		if strings.EqualFold(k, "Content-Type") && strings.Contains(strings.ToLower(v), "text/html") {
 			bodyStr := string(resp.Body)
-			if len(bodyStr) > 0 && (strings.Contains(bodyStr, "import ") ||
-				strings.Contains(bodyStr, "export ") ||
-				strings.Contains(bodyStr, "class ") ||
-				strings.Contains(bodyStr, "function ") ||
-				strings.HasPrefix(bodyStr, "import") ||
-				strings.HasPrefix(bodyStr, "export")) {
-				w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-				continue
+			if len(bodyStr) > 0 {
+				trimmed := strings.TrimSpace(bodyStr)
+				// Only override to JS if the body is not actually HTML (e.g. Vite index.html contains "import" in script tags but is HTML)
+				isHTML := strings.HasPrefix(trimmed, "<") || strings.HasPrefix(trimmed, "<!")
+				if !isHTML && (strings.Contains(bodyStr, "import ") ||
+					strings.Contains(bodyStr, "export ") ||
+					strings.Contains(bodyStr, "class ") ||
+					strings.Contains(bodyStr, "function ") ||
+					strings.HasPrefix(trimmed, "import") ||
+					strings.HasPrefix(trimmed, "export")) {
+					w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+					continue
+				}
 			}
 		}
 
