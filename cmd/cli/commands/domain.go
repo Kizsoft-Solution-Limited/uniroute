@@ -30,7 +30,8 @@ Examples:
   uniroute domain verify example.com             # Verify DNS configuration
   uniroute domain resume abc123                  # Resume domain assignment by subdomain
   uniroute domain resume example.com             # Resume domain assignment by domain
-  uniroute domain remove example.com             # Remove domain from account`,
+  uniroute domain remove example.com             # Remove domain from account
+  uniroute domain unassign example.com          # Unassign domain from tunnel (keeps domain in account)`,
 	Args: cobra.RangeArgs(0, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
@@ -140,6 +141,7 @@ func init() {
 	domainCmd.AddCommand(domainShowCmd)
 	domainCmd.AddCommand(domainVerifyCmd)
 	domainCmd.AddCommand(domainRemoveCmd)
+	domainCmd.AddCommand(domainUnassignCmd)
 	domainCmd.AddCommand(domainResumeCmd)
 }
 
@@ -344,6 +346,47 @@ var domainRemoveCmd = &cobra.Command{
 	},
 }
 
+var domainUnassignCmd = &cobra.Command{
+	Use:   "unassign [domain]",
+	Short: "Unassign a custom domain from a tunnel",
+	Long:  `Unassign a custom domain from the tunnel it is assigned to. The domain stays in your account; use "domain remove" to delete it entirely.`,
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		domain := args[0]
+		token := getAuthToken()
+		if token == "" {
+			return fmt.Errorf("authentication required\nRun 'uniroute auth login' first")
+		}
+
+		tunnels, err := listTunnelsWithCustomDomain(token)
+		if err != nil {
+			return err
+		}
+
+		var tunnelID string
+		for _, t := range tunnels {
+			if t.CustomDomain == domain {
+				tunnelID = t.ID
+				break
+			}
+		}
+
+		if tunnelID == "" {
+			return fmt.Errorf("no tunnel has domain '%s' assigned", domain)
+		}
+
+		if err := setCustomDomain(tunnelID, "", token); err != nil {
+			return fmt.Errorf("failed to unassign domain: %w", err)
+		}
+
+		removeDomainAssignment(domain)
+
+		fmt.Println(color.Green("✓ Domain unassigned from tunnel"))
+		fmt.Printf("   Domain %s is no longer assigned. It remains in your account.\n", color.Cyan(domain))
+		return nil
+	},
+}
+
 var domainResumeCmd = &cobra.Command{
 	Use:   "resume [domain|subdomain]",
 	Short: "Resume a domain assignment to a tunnel",
@@ -539,6 +582,40 @@ func removeDomain(domainID, token string) error {
 
 func getAPIURL() string {
 	return getServerURL()
+}
+
+type tunnelWithCustomDomain struct {
+	ID           string `json:"id"`
+	Subdomain    string `json:"subdomain"`
+	CustomDomain string `json:"custom_domain"`
+}
+
+func listTunnelsWithCustomDomain(token string) ([]tunnelWithCustomDomain, error) {
+	apiURL := getAPIURL()
+	if apiURL == "" {
+		apiURL = "https://api.uniroute.co"
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest("GET", apiURL+"/auth/tunnels", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tunnels: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to list tunnels: status %d", resp.StatusCode)
+	}
+	var result struct {
+		Tunnels []tunnelWithCustomDomain `json:"tunnels"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to parse tunnels: %w", err)
+	}
+	return result.Tunnels, nil
 }
 
 type DomainAssignment struct {

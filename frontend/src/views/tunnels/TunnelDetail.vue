@@ -113,7 +113,18 @@
             </div>
             <div v-if="tunnel.customDomain">
               <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Custom domain</label>
-              <p class="text-gray-900 dark:text-white mt-1">{{ tunnel.customDomain }}</p>
+              <div class="flex items-center gap-2 mt-1 flex-wrap">
+                <p class="text-gray-900 dark:text-white">{{ tunnel.customDomain }}</p>
+                <button
+                  v-if="!isAdminView"
+                  @click="openUnassignDomainDialog"
+                  class="px-3 py-1.5 text-sm bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/60 rounded-lg transition-colors"
+                  :disabled="unassigningDomain"
+                  aria-label="Unassign custom domain from this tunnel"
+                >
+                  Unassign domain
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -174,6 +185,19 @@
       @confirm="disconnectTunnel"
       @cancel="cancelDisconnect"
     />
+
+    <!-- Unassign domain Confirmation Dialog -->
+    <ConfirmationDialog
+      :show="showUnassignDomainDialog"
+      title="Unassign custom domain"
+      :message="`Remove ${tunnel?.customDomain || ''} from this tunnel? The domain will stay in your account and can be assigned to another tunnel later.`"
+      variant="warning"
+      confirm-text="Unassign"
+      cancel-text="Cancel"
+      :loading="unassigningDomain"
+      @confirm="unassignDomain"
+      @cancel="showUnassignDomainDialog = false"
+    />
   </div>
 </template>
 
@@ -196,6 +220,8 @@ const backUrl = computed(() => (isAdminView.value ? '/dashboard/admin/tunnels' :
 const loading = ref(false)
 const disconnecting = ref(false)
 const showDisconnectDialog = ref(false)
+const unassigningDomain = ref(false)
+const showUnassignDomainDialog = ref(false)
 const tunnel = ref<{
   id: string
   subdomain: string
@@ -276,6 +302,27 @@ const disconnectTunnel = async () => {
 
 const cancelDisconnect = () => {
   showDisconnectDialog.value = false
+}
+
+const openUnassignDomainDialog = () => {
+  if (!tunnel.value?.customDomain) return
+  showUnassignDomainDialog.value = true
+}
+
+const unassignDomain = async () => {
+  if (!tunnel.value) return
+
+  unassigningDomain.value = true
+  try {
+    await tunnelsApi.setCustomDomain(tunnel.value.id, '')
+    showToast('Custom domain unassigned from this tunnel', 'success')
+    showUnassignDomainDialog.value = false
+    await loadTunnel()
+  } catch (error: any) {
+    showToast(error.response?.data?.error || error.message || 'Failed to unassign domain', 'error')
+  } finally {
+    unassigningDomain.value = false
+  }
 }
 
 const copyToClipboard = async (text: string) => {
