@@ -51,6 +51,7 @@ Examples:
 		}
 
 		assignToTunnel := false
+		savedStateNotHTTP := false
 		if tunnelID != "" || subdomain != "" {
 			assignToTunnel = true
 		} else {
@@ -58,8 +59,14 @@ Examples:
 			if data, err := os.ReadFile(statePath); err == nil {
 				var state tunnel.TunnelState
 				if err := json.Unmarshal(data, &state); err == nil && state.TunnelID != "" {
-					tunnelID = state.TunnelID
-					assignToTunnel = true
+					// Custom domains are for HTTP (web) traffic; only auto-assign to an HTTP tunnel
+					if state.Protocol == "http" {
+						tunnelID = state.TunnelID
+						subdomain = state.Subdomain
+						assignToTunnel = true
+					} else {
+						savedStateNotHTTP = true
+					}
 				}
 			}
 		}
@@ -97,8 +104,13 @@ Examples:
 		} else {
 			fmt.Println(color.Green("✓") + " Domain ready to use")
 			fmt.Printf("   Domain: %s\n", color.Cyan(domain))
-			fmt.Println(color.Gray("   To assign to a tunnel, run:"))
-			fmt.Printf(color.Gray("   uniroute domain %s <tunnel-subdomain>\n"), domain)
+			if savedStateNotHTTP {
+				fmt.Println(color.Gray("   Custom domains are for HTTP tunnels. Run an HTTP tunnel (e.g. uniroute http 8080), then:"))
+				fmt.Printf(color.Gray("   uniroute domain %s <http-tunnel-subdomain>\n"), domain)
+			} else {
+				fmt.Println(color.Gray("   To assign to a tunnel, run:"))
+				fmt.Printf(color.Gray("   uniroute domain %s <tunnel-subdomain>\n"), domain)
+			}
 		}
 
 		fmt.Println()
