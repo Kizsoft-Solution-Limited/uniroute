@@ -2,7 +2,6 @@ package tunnel
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1299,30 +1298,7 @@ func (tc *TunnelClient) establishTCPConnection(connectionID string, useTLS bool)
 		localAddr = strings.TrimPrefix(localAddr, "https://")
 	}
 
-	// Connect to local service
-	var conn net.Conn
-	var err error
-
-	if useTLS {
-		host, _, _ := net.SplitHostPort(localAddr)
-		if host == "" {
-			host = "localhost"
-		}
-		cipherSuites := make([]uint16, 0, len(tls.CipherSuites()))
-		for _, c := range tls.CipherSuites() {
-			cipherSuites = append(cipherSuites, c.ID)
-		}
-		tlsConfig := &tls.Config{
-			InsecureSkipVerify: true,
-			MinVersion:         tls.VersionTLS12,
-			ServerName:         host,
-			CipherSuites:       cipherSuites,
-		}
-		conn, err = tls.Dial("tcp", localAddr, tlsConfig)
-	} else {
-		conn, err = net.Dial("tcp", localAddr)
-	}
-
+	conn, err := net.Dial("tcp", localAddr)
 	if err != nil {
 		return fmt.Errorf("failed to connect to local service %s: %w", localAddr, err)
 	}
