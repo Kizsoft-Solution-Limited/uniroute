@@ -1308,10 +1308,15 @@ func (tc *TunnelClient) establishTCPConnection(connectionID string, useTLS bool)
 		if host == "" {
 			host = "localhost"
 		}
+		cipherSuites := make([]uint16, 0, len(tls.CipherSuites()))
+		for _, c := range tls.CipherSuites() {
+			cipherSuites = append(cipherSuites, c.ID)
+		}
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: true,
 			MinVersion:         tls.VersionTLS12,
 			ServerName:         host,
+			CipherSuites:       cipherSuites,
 		}
 		conn, err = tls.Dial("tcp", localAddr, tlsConfig)
 	} else {

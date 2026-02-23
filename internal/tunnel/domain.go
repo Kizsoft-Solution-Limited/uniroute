@@ -186,15 +186,47 @@ func (dv *DNSValidator) ValidateTXTRecord(ctx context.Context, domain, expectedV
 }
 
 func (dv *DNSValidator) ValidateCNAMERecord(ctx context.Context, domain, expectedTarget string) (bool, error) {
-	cname, err := net.LookupCNAME(domain)
-	if err != nil {
-		return false, fmt.Errorf("failed to lookup CNAME: %w", err)
+	expectedTarget = strings.TrimSuffix(expectedTarget, ".")
+
+	cname, cnameErr := net.LookupCNAME(domain)
+	if cnameErr == nil {
+		cname = strings.TrimSuffix(cname, ".")
+		if cname == expectedTarget {
+			return true, nil
+		}
 	}
 
-	cname = strings.TrimSuffix(cname, ".")
-	expectedTarget = strings.TrimSuffix(expectedTarget, ".")
-	
-	return cname == expectedTarget, nil
+	// Apex domains often use CNAME flattening or ALIAS: no real CNAME, but A/AAAA point to target.
+	// Verify by comparing resolved IPs with the expected target's IPs.
+	domainIPs, err := net.LookupIP(domain)
+	if err != nil {
+		if cnameErr != nil {
+			return false, fmt.Errorf("failed to lookup CNAME: %w", cnameErr)
+		}
+		return false, fmt.Errorf("CNAME points to %s (expected %s)", strings.TrimSuffix(cname, "."), expectedTarget)
+	}
+	if len(domainIPs) == 0 {
+		return false, fmt.Errorf("domain has no IP records")
+	}
+
+	targetIPs, err := net.LookupIP(expectedTarget)
+	if err != nil {
+		return false, fmt.Errorf("failed to resolve %s: %w", expectedTarget, err)
+	}
+	if len(targetIPs) == 0 {
+		return false, fmt.Errorf("target %s has no IP records", expectedTarget)
+	}
+
+	expectedSet := make(map[string]bool)
+	for _, ip := range targetIPs {
+		expectedSet[ip.String()] = true
+	}
+	for _, ip := range domainIPs {
+		if expectedSet[ip.String()] {
+			return true, nil
+		}
+	}
+	return false, fmt.Errorf("domain resolves to different IPs than %s (try waiting for DNS propagation)", expectedTarget)
 }
 
 // WaitForDNSPropagation waits for DNS changes to propagate
