@@ -404,7 +404,7 @@ func getTunnelServerURL() string {
 	if envURL := os.Getenv("UNIROUTE_TUNNEL_URL"); envURL != "" {
 		return envURL
 	}
-	
+
 	if isLocalMode() {
 		client := &http.Client{Timeout: 1 * time.Second}
 		if resp, err := client.Get("http://localhost:8055/health"); err == nil {
@@ -413,9 +413,9 @@ func getTunnelServerURL() string {
 				return "localhost:8055"
 			}
 		}
-		return "localhost:8080"
+		// Do not fall back to localhost:8080 - that is usually the user's app being tunneled.
+		// Use public server so "uniroute http 8080" works without a local tunnel server.
 	}
-	
 	return "tunnel.uniroute.co"
 }
 

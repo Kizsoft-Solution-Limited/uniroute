@@ -1489,10 +1489,11 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 
 		dbTunnel := &Tunnel{
 			ID:           tunnelID,
-			UserID:       userID, // Set user_id if token was validated
+			UserID:       userID,
 			Subdomain:    subdomain,
 			LocalURL:     initMsg.LocalURL,
 			PublicURL:    publicURL,
+			Protocol:     protocol,
 			Status:       "active",
 			RequestCount: 0,
 			CreatedAt:    time.Now(),
