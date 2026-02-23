@@ -30,14 +30,9 @@ func NewDomainManager(baseDomain string, logger zerolog.Logger) *DomainManager {
 	}
 }
 
-// Note: It may return a subdomain that already exists in the database
-// The CreateTunnel function uses UPSERT to handle this case and update the LocalURL
 func (dm *DomainManager) AllocateSubdomain(ctx context.Context, repository *TunnelRepository) (string, error) {
 	subdomain := dm.subdomainPool.Allocate()
 
-	// Note: We don't check if subdomain already exists here
-	// If it does, CreateTunnel will use UPSERT to update the existing tunnel's LocalURL
-	// This allows reusing subdomains with different ports
 	dm.logger.Debug().Str("subdomain", subdomain).Msg("Allocated subdomain from pool")
 	
 	return subdomain, nil
@@ -195,9 +190,7 @@ func (dv *DNSValidator) ValidateCNAMERecord(ctx context.Context, domain, expecte
 			return true, nil
 		}
 	}
-
-	// Apex domains often use CNAME flattening or ALIAS: no real CNAME, but A/AAAA point to target.
-	// Verify by comparing resolved IPs with the expected target's IPs.
+	
 	domainIPs, err := net.LookupIP(domain)
 	if err != nil {
 		if cnameErr != nil {
@@ -226,10 +219,26 @@ func (dv *DNSValidator) ValidateCNAMERecord(ctx context.Context, domain, expecte
 			return true, nil
 		}
 	}
-	return false, fmt.Errorf("domain resolves to different IPs than %s (try waiting for DNS propagation)", expectedTarget)
+
+	domainIPs, _ = net.LookupIP(domain)
+	for _, ip := range domainIPs {
+		if expectedSet[ip.String()] {
+			return true, nil
+		}
+	}
+
+	domainIPStrs := make([]string, len(domainIPs))
+	for i, ip := range domainIPs {
+		domainIPStrs[i] = ip.String()
+	}
+	targetIPStrs := make([]string, len(targetIPs))
+	for i, ip := range targetIPs {
+		targetIPStrs[i] = ip.String()
+	}
+	return false, fmt.Errorf("domain resolves to different IPs than %s (domain: %v; %s: %v). Ensure CNAME %s → %s and wait for DNS propagation",
+		expectedTarget, domainIPStrs, expectedTarget, targetIPStrs, domain, expectedTarget)
 }
 
-// WaitForDNSPropagation waits for DNS changes to propagate
 func (dv *DNSValidator) WaitForDNSPropagation(ctx context.Context, domain string, maxWait time.Duration) error {
 	deadline := time.Now().Add(maxWait)
 	ticker := time.NewTicker(5 * time.Second)

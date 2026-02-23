@@ -134,22 +134,31 @@ This will:
 
 After adding a domain, you need to configure DNS:
 
-### Step 1: Add CNAME Record
+### Step 1: Add DNS Record
+
+**For a subdomain (e.g. www.example.com, api.example.com):**
 
 In your DNS provider (Cloudflare, Namecheap, GoDaddy, etc.), add a CNAME record:
 
 ```
 Type: CNAME
-Name: example.com (or @ for root domain)
+Name: www   (or api, app, etc.)
 Target: tunnel.uniroute.co
 ```
 
-**For subdomains:**
-```
-Type: CNAME
-Name: api (for api.example.com)
-Target: tunnel.uniroute.co
-```
+**For the root domain / apex (e.g. example.com with no host):**
+
+Many providers do not allow CNAME on the root (`@`). Use one of these instead:
+
+- **ALIAS or ANAME record** (recommended if your provider supports it):  
+  Name: `@` · Target: `tunnel.uniroute.co`
+- **A record**:  
+  Name: `@` · Value: the tunnel server IP (run `dig tunnel.uniroute.co +short` to get the current IP)
+
+Examples by provider:
+- **Namecheap:** Use "ALIAS Record" for Host `@` → `tunnel.uniroute.co`, or "A Record" with the tunnel IP.
+- **Cloudflare:** CNAME at root is supported (proxy or DNS only).
+- **GoDaddy / others:** Use ALIAS/ANAME if available, otherwise A record with the tunnel IP.
 
 ### Step 2: Verify DNS
 
