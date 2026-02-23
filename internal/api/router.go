@@ -295,6 +295,7 @@ func SetupRouter(
 			admin.GET("/tunnels/stats", tunnelHandler.GetTunnelStats)
 			admin.GET("/tunnels/counts", tunnelHandler.HandleAdminTunnelCounts)
 			admin.GET("/tunnels", tunnelHandler.HandleAdminListTunnels)
+			admin.GET("/tunnels/:id", tunnelHandler.HandleAdminGetTunnel)
 			admin.DELETE("/tunnels/:id", tunnelHandler.HandleAdminDeleteTunnel)
 			admin.POST("/tunnels/delete", tunnelHandler.HandleAdminDeleteTunnels)
 		}

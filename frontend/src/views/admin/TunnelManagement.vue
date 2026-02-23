@@ -79,7 +79,14 @@
               <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
                 {{ formatDate(t.created_at) }}
               </td>
-              <td class="px-4 py-3">
+              <td class="px-4 py-3 flex items-center gap-2">
+                <router-link
+                  :to="`/dashboard/admin/tunnels/${t.id}`"
+                  class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-sm font-medium"
+                  :aria-label="`View tunnel ${t.subdomain}`"
+                >
+                  View
+                </router-link>
                 <button
                   @click="confirmDeleteOne(t)"
                   class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm font-medium"

@@ -90,6 +90,11 @@ export const tunnelsApi = {
     return response.data
   },
 
+  async getAdmin(id: string): Promise<GetTunnelResponse> {
+    const response = await apiClient.get<GetTunnelResponse>(`/admin/tunnels/${id}`)
+    return response.data
+  },
+
   async deleteAdmin(tunnelId: string): Promise<{ message: string }> {
     const response = await apiClient.delete<{ message: string }>(`/admin/tunnels/${tunnelId}`)
     return response.data

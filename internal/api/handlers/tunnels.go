@@ -622,6 +622,70 @@ func (h *TunnelHandler) HandleAdminListTunnels(c *gin.Context) {
 	})
 }
 
+func (h *TunnelHandler) HandleAdminGetTunnel(c *gin.Context) {
+	idStr := c.Param("id")
+	if idStr == "stats" || idStr == "counts" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		return
+	}
+	tunnelID, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tunnel ID"})
+		return
+	}
+	t, err := h.repository.GetTunnelByID(c.Request.Context(), tunnelID)
+	if err != nil {
+		if err == tunnel.ErrTunnelNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "tunnel not found"})
+			return
+		}
+		h.logger.Error().Err(err).Msg("Failed to get tunnel (admin)")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get tunnel"})
+		return
+	}
+	response := map[string]interface{}{
+		"id":            t.ID,
+		"subdomain":     t.Subdomain,
+		"public_url":    t.PublicURL,
+		"local_url":     t.LocalURL,
+		"status":        t.Status,
+		"request_count": t.RequestCount,
+		"created_at":    t.CreatedAt.Format(time.RFC3339),
+	}
+	if !t.LastActive.IsZero() {
+		response["last_active"] = t.LastActive.Format(time.RFC3339)
+	}
+	if !t.ActiveSince.IsZero() {
+		response["active_since"] = t.ActiveSince.Format(time.RFC3339)
+	}
+	if t.CustomDomain != "" {
+		response["custom_domain"] = t.CustomDomain
+	}
+	protocol := t.Protocol
+	if protocol == "" {
+		protocol = "http"
+	}
+	response["protocol"] = protocol
+	if t.UserID != "" {
+		response["user_id"] = t.UserID
+		if h.userRepo != nil {
+			uid, err := uuid.Parse(t.UserID)
+			if err == nil {
+				if u, err := h.userRepo.GetUserByID(c.Request.Context(), uid); err == nil && u != nil {
+					display := strings.TrimSpace(u.Name)
+					if display == "" {
+						display = u.Email
+					}
+					if display != "" {
+						response["user_display"] = display
+					}
+				}
+			}
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"tunnel": response})
+}
+
 func (h *TunnelHandler) HandleAdminDeleteTunnel(c *gin.Context) {
 	idStr := c.Param("id")
 	tunnelID, err := uuid.Parse(idStr)

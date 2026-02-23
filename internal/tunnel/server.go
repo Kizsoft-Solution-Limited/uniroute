@@ -392,20 +392,18 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			userTunnels, err := ts.repository.ListTunnelsByUser(r.Context(), userUUID, initMsg.Protocol)
 			if err == nil && len(userTunnels) > 0 {
 				ts.tunnelsMu.RLock()
+				var matchByLocalURL, firstDisconnected *Tunnel
 				for _, dbTunnel := range userTunnels {
 					if dbTunnel.UserID != authenticatedUserID {
 						continue
 					}
-					
 					tunnelIDStr := dbTunnel.ID
 					existingTunnel, isConnected := ts.tunnels[dbTunnel.Subdomain]
-					
 					if isConnected && existingTunnel != nil {
 						existingTunnel.mu.RLock()
 						existingTunnelID := existingTunnel.ID
 						existingWSConn := existingTunnel.WSConn
 						existingTunnel.mu.RUnlock()
-						
 						if existingTunnelID == tunnelIDStr && existingWSConn != nil {
 							ts.logger.Info().
 								Str("tunnel_id", tunnelIDStr).
@@ -415,18 +413,30 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 							continue
 						}
 					}
-					
-					subdomain = dbTunnel.Subdomain
-					tunnelID = tunnelIDStr
+					if firstDisconnected == nil {
+						firstDisconnected = dbTunnel
+					}
+					if initMsg.LocalURL != "" && dbTunnel.LocalURL == initMsg.LocalURL {
+						matchByLocalURL = dbTunnel
+						break
+					}
+				}
+				chosen := matchByLocalURL
+				if chosen == nil {
+					chosen = firstDisconnected
+				}
+				if chosen != nil {
+					subdomain = chosen.Subdomain
+					tunnelID = chosen.ID
 					isResume = true
 					autoFoundTunnel = true
 					ts.logger.Info().
 						Str("tunnel_id", tunnelID).
 						Str("subdomain", subdomain).
-						Str("protocol", dbTunnel.Protocol).
-						Str("status", dbTunnel.Status).
+						Str("protocol", chosen.Protocol).
+						Str("status", chosen.Status).
+						Str("local_url", chosen.LocalURL).
 						Msg("Found tunnel that is not connected - will resume it")
-					break
 				}
 				ts.tunnelsMu.RUnlock()
 				

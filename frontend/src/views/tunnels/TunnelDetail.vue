@@ -4,12 +4,12 @@
     <div class="flex items-center justify-between">
       <div>
         <button
-          @click="$router.push('/dashboard/tunnels')"
+          @click="$router.push(backUrl || '/dashboard/tunnels')"
           class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 mb-2 flex items-center space-x-2"
           aria-label="Back to tunnels list"
         >
           <ArrowLeft class="w-4 h-4" />
-          <span>Back to Tunnels</span>
+          <span>{{ isAdminView ? 'Back to Tunnel Management' : 'Back to Tunnels' }}</span>
         </button>
         <h1 class="text-3xl font-bold text-gray-900 dark:text-white" id="page-title">Tunnel Details</h1>
         <p class="text-gray-600 dark:text-gray-400 mt-1">
@@ -103,6 +103,18 @@
               <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Last Active</label>
               <p class="text-gray-900 dark:text-white mt-1">{{ formatDate(tunnel.lastActive) }}</p>
             </div>
+            <div v-if="isAdminView && (tunnel.userDisplay || tunnel.userId)">
+              <label class="text-sm font-medium text-gray-500 dark:text-gray-400">User</label>
+              <p class="text-gray-900 dark:text-white mt-1">{{ tunnel.userDisplay || tunnel.userId }}</p>
+            </div>
+            <div v-if="tunnel.protocol">
+              <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Protocol</label>
+              <p class="text-gray-900 dark:text-white mt-1">{{ tunnel.protocol }}</p>
+            </div>
+            <div v-if="tunnel.customDomain">
+              <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Custom domain</label>
+              <p class="text-gray-900 dark:text-white mt-1">{{ tunnel.customDomain }}</p>
+            </div>
           </div>
         </div>
       </Card>
@@ -129,12 +141,13 @@
       </Card>
     </div>
 
-    <!-- Actions -->
-    <Card v-if="tunnel">
+    <!-- Actions (only for own tunnel, not in admin view; show Disconnect only when tunnel is active) -->
+    <Card v-if="tunnel && !isAdminView">
       <div class="p-6">
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Actions</h2>
-        <div class="flex space-x-3">
+        <div class="flex space-x-3 items-center">
           <button
+            v-if="tunnel.status === 'active'"
             @click="openDisconnectDialog"
             class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
             :disabled="disconnecting"
@@ -142,6 +155,9 @@
           >
             Disconnect Tunnel
           </button>
+          <p v-else class="text-sm text-gray-500 dark:text-gray-400">
+            Tunnel is disconnected. Start the tunnel again from the CLI to reconnect.
+          </p>
         </div>
       </div>
     </Card>
@@ -174,6 +190,9 @@ const route = useRoute()
 const router = useRouter()
 const { showToast } = useToast()
 
+const isAdminView = computed(() => route.name === 'admin-tunnel-detail')
+const backUrl = computed(() => (isAdminView.value ? '/dashboard/admin/tunnels' : ''))
+
 const loading = ref(false)
 const disconnecting = ref(false)
 const showDisconnectDialog = ref(false)
@@ -187,6 +206,10 @@ const tunnel = ref<{
   createdAt: string
   lastActive?: string
   activeSince?: string
+  protocol?: string
+  customDomain?: string
+  userId?: string
+  userDisplay?: string
 } | null>(null)
 
 onMounted(() => {
@@ -199,10 +222,12 @@ const loadTunnel = async () => {
     const tunnelId = route.params.id as string
     if (!tunnelId) {
       showToast('Invalid tunnel ID', 'error')
-      router.push('/dashboard/tunnels')
+      router.push(isAdminView.value ? '/dashboard/admin/tunnels' : '/dashboard/tunnels')
       return
     }
-    const response = await tunnelsApi.get(tunnelId)
+    const response = isAdminView.value
+      ? await tunnelsApi.getAdmin(tunnelId)
+      : await tunnelsApi.get(tunnelId)
     const t = response.tunnel
     tunnel.value = {
       id: t.id,
@@ -213,12 +238,16 @@ const loadTunnel = async () => {
       requestCount: t.request_count || 0,
       createdAt: t.created_at,
       lastActive: t.last_active || undefined,
-      activeSince: t.active_since || undefined
+      activeSince: t.active_since || undefined,
+      protocol: t.protocol || undefined,
+      customDomain: t.custom_domain || undefined,
+      userId: t.user_id || undefined,
+      userDisplay: t.user_display || undefined
     }
   } catch (error: any) {
     console.error('Failed to load tunnel:', error)
     showToast(error.response?.data?.error || error.message || 'Failed to load tunnel details', 'error')
-    router.push('/dashboard/tunnels')
+    router.push(isAdminView.value ? '/dashboard/admin/tunnels' : '/dashboard/tunnels')
   } finally {
     loading.value = false
   }

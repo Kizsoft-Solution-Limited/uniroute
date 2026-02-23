@@ -153,6 +153,20 @@ func tunnelHostChanged(cmd *cobra.Command) bool {
 	return f != nil && f.Changed
 }
 
+func serverHostForCompare(s string) string {
+	s = strings.TrimSpace(s)
+	for _, prefix := range []string{"https://", "http://", "wss://", "ws://"} {
+		if strings.HasPrefix(strings.ToLower(s), prefix) {
+			s = s[len(prefix):]
+			break
+		}
+	}
+	if idx := strings.Index(s, "/"); idx >= 0 {
+		s = s[:idx]
+	}
+	return s
+}
+
 func runAllTunnels(cmd *cobra.Command, args []string) error {
 	log := logger.New()
 	configManager := tunnel.NewConfigManager(log)
@@ -359,6 +373,22 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 			tunnelID = lookupTunnelIDBySubdomain(resumeSubdomain, token)
 		}
 		client.SetResumeInfo(resumeSubdomain, tunnelID)
+	} else if !forceNew {
+		persistence := tunnel.NewTunnelPersistence(log)
+		if state, err := persistence.Load(); err == nil && state != nil {
+			savedServer := serverHostForCompare(state.ServerURL)
+			currentServer := serverHostForCompare(tunnelServerURL)
+			if state.Protocol == tunnelProtocol && state.LocalURL == localURL &&
+				(tunnelHost == "" || state.Host == tunnelHost) &&
+				savedServer == currentServer {
+				client.SetResumeInfo(state.Subdomain, state.TunnelID)
+				log.Debug().
+					Str("subdomain", state.Subdomain).
+					Str("protocol", tunnelProtocol).
+					Str("local_url", localURL).
+					Msg("Auto-resuming tunnel from saved state (same protocol and port)")
+			}
+		}
 	}
 
 	if err := client.Connect(); err != nil {

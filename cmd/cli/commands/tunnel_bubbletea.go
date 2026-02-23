@@ -225,6 +225,7 @@ type tunnelModel struct {
 	forwarding       string
 	connections      string
 	quote            string
+	protocol         string
 	viewport         viewport.Model
 	logs             []string
 	logsMu           sync.Mutex
@@ -358,6 +359,7 @@ func initialTunnelModel(client *tunnel.TunnelClient, info *tunnel.TunnelInfo, ac
 			color.Gray(fmt.Sprintf("%.2f", initialStats.P50)),
 			color.Gray(fmt.Sprintf("%.2f", initialStats.P90))),
 		quote:           randomQuote,
+		protocol:        protocol,
 		viewport:        vp,
 		logs:            []string{},
 		client:          client,
@@ -655,10 +657,21 @@ func (m *tunnelModel) View() string {
 	header.WriteString("\n")
 	header.WriteString(color.Yellow(m.quote))
 	header.WriteString("\n\nPress Ctrl+C to stop\n\n")
-	header.WriteString("HTTP Requests\n")
-	header.WriteString("-------------\n")
 
 	s := header.String()
+	if m.protocol == "http" {
+		header.WriteString("HTTP Requests\n")
+		header.WriteString("-------------\n")
+		s = header.String()
+		lines := strings.Count(s, "\n")
+		if len(s) > 0 && !strings.HasSuffix(s, "\n") {
+			lines++
+		}
+		if lines < tunnelHeaderLines {
+			s += strings.Repeat("\n", tunnelHeaderLines-lines)
+		}
+		return s + m.viewport.View()
+	}
 	lines := strings.Count(s, "\n")
 	if len(s) > 0 && !strings.HasSuffix(s, "\n") {
 		lines++
@@ -666,7 +679,7 @@ func (m *tunnelModel) View() string {
 	if lines < tunnelHeaderLines {
 		s += strings.Repeat("\n", tunnelHeaderLines-lines)
 	}
-	return s + m.viewport.View()
+	return s
 }
 
 func (m *tunnelModel) checkInternet() tea.Cmd {

@@ -1315,13 +1315,17 @@ func (tc *TunnelClient) establishTCPConnection(connectionID string, useTLS bool)
 	var err error
 
 	if useTLS {
-		// TLS connection
+		host, _, _ := net.SplitHostPort(localAddr)
+		if host == "" {
+			host = "localhost"
+		}
 		tlsConfig := &tls.Config{
-			InsecureSkipVerify: true, // Allow self-signed certificates
+			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12,
+			ServerName:         host,
 		}
 		conn, err = tls.Dial("tcp", localAddr, tlsConfig)
 	} else {
-		// Plain TCP connection
 		conn, err = net.Dial("tcp", localAddr)
 	}
 
@@ -1329,7 +1333,6 @@ func (tc *TunnelClient) establishTCPConnection(connectionID string, useTLS bool)
 		return fmt.Errorf("failed to connect to local service %s: %w", localAddr, err)
 	}
 
-	// Store connection
 	tc.tcpConnMu.Lock()
 	tc.tcpConnections[connectionID] = conn
 	tc.tcpConnMu.Unlock()
@@ -1415,12 +1418,17 @@ func (tc *TunnelClient) forwardTCPToTunnel(connectionID string, conn net.Conn, i
 }
 
 func (tc *TunnelClient) handleTCPError(connectionID string, err *HTTPError) {
-	tc.logger.Error().
-		Str("connection_id", connectionID).
-		Str("error", err.Error).
-		Str("message", err.Message).
-		Msg("TCP connection error from tunnel")
-
+	if err != nil && err.Error == "connection_closed" {
+		tc.logger.Debug().
+			Str("connection_id", connectionID).
+			Msg("TCP connection closed")
+	} else if err != nil {
+		tc.logger.Error().
+			Str("connection_id", connectionID).
+			Str("error", err.Error).
+			Str("message", err.Message).
+			Msg("TCP connection error from tunnel")
+	}
 	tc.closeTCPConnection(connectionID)
 }
 
@@ -1520,7 +1528,7 @@ func (tc *TunnelClient) handleUDPData(connectionID string, data []byte) {
 		}
 
 		tc.udpConn = conn
-		tc.logger.Info().
+		tc.logger.Debug().
 			Str("local_addr", localAddr).
 			Msg("Established UDP connection to local service")
 

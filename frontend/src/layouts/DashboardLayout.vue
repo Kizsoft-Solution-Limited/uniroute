@@ -12,7 +12,7 @@
     <!-- Sidebar Navigation -->
     <aside
       :class="[
-        'fixed inset-y-0 left-0 w-64 bg-slate-900/80 backdrop-blur-xl border-r border-slate-800/50 z-40 transform transition-transform duration-300 ease-in-out',
+        'fixed inset-y-0 left-0 w-64 lg:w-72 bg-slate-900/80 backdrop-blur-xl border-r border-slate-800/50 z-40 transform transition-transform duration-300 ease-in-out',
         mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       ]"
     >
@@ -87,7 +87,7 @@
     ></div>
 
     <!-- Main Content -->
-    <main class="lg:ml-64 min-h-screen">
+    <main class="lg:ml-72 min-h-screen">
       <!-- Top Bar -->
       <header class="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/50">
         <div class="px-4 sm:px-6 py-4 flex items-center justify-between">
