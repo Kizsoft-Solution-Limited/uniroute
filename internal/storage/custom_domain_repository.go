@@ -123,6 +123,22 @@ func (r *CustomDomainRepository) GetDomainByUserAndDomain(ctx context.Context, u
 	return &d, nil
 }
 
+// ExistsByDomain returns true if any user has added this domain (for Caddy on-demand TLS allowlist).
+func (r *CustomDomainRepository) ExistsByDomain(ctx context.Context, domain string) (bool, error) {
+	query := `
+		SELECT 1 FROM custom_domains WHERE LOWER(TRIM(domain)) = LOWER(TRIM($1)) LIMIT 1
+	`
+	var one int
+	err := r.pool.QueryRow(ctx, query, domain).Scan(&one)
+	if err == pgx.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to check domain: %w", err)
+	}
+	return true, nil
+}
+
 func (r *CustomDomainRepository) ListDomainsByUser(ctx context.Context, userID uuid.UUID) ([]*CustomDomain, error) {
 	query := `
 		SELECT id, user_id, domain, verified, verification_token, dns_configured, created_at, updated_at

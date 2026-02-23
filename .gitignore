@@ -29,6 +29,11 @@ go.work
 .env
 .env.local
 
+# Proxy backups and Caddy (local/deploy only)
+backups/
+scripts/caddy/
+scripts/server_backup_restore.sh
+
 # IDE
 .idea/
 .vscode/

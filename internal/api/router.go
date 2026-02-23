@@ -53,6 +53,13 @@ func SetupRouter(
 		c.JSON(http.StatusOK, gin.H{"message": "UniRoute API", "docs": "/swagger", "health": "/health"})
 	})
 	r.GET("/health", healthHandler.HandleHealth)
+	// Caddy on-demand TLS: GET /api/check-domain?domain=example.com → 200 if allowed, 404 if not (no auth)
+	if postgresClient != nil {
+		checkDomainDomainRepo := storage.NewCustomDomainRepository(postgresClient.Pool())
+		checkDomainTunnelRepo := tunnel.NewTunnelRepository(postgresClient.Pool(), zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		checkDomainHandler := handlers.NewCheckDomainHandler(checkDomainDomainRepo, checkDomainTunnelRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+		r.GET("/api/check-domain", checkDomainHandler.HandleCheckDomain)
+	}
 	swaggerHandler := handlers.NewSwaggerHandler(jwtService)
 	r.GET("/swagger", swaggerHandler.HandleSwaggerUI)
 	r.GET("/swagger.json", swaggerHandler.HandleSwaggerJSON)
