@@ -702,6 +702,8 @@ func removeDomainAssignment(domain string) {
 	if err != nil {
 		return
 	}
+
+	
 	
 	filtered := []DomainAssignment{}
 	for _, a := range assignments {
