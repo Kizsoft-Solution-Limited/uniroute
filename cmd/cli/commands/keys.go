@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const dateOnlyLayout = "2006-01-02"
+
 var keysCmd = &cobra.Command{
 	Use:   "keys",
 	Short: "Manage API keys",
@@ -30,6 +32,8 @@ var keysCreateCmd = &cobra.Command{
 Example:
   uniroute keys create
   uniroute keys create --name "My API Key"
+  uniroute keys create --name "Long-lived"   (no expiration = never expires)
+  uniroute keys create --expires-at 2030-12-31
   uniroute keys create --url http://localhost:8084 --jwt-token YOUR_JWT`,
 	RunE: runKeysCreate,
 }
@@ -58,9 +62,12 @@ Example:
 }
 
 var (
-	keysURL      string
-	keysName     string
-	keysJWTToken string
+	keysURL             string
+	keysName            string
+	keysJWTToken        string
+	keysExpiresAt       string
+	keysRateLimitMin    int
+	keysRateLimitDay    int
 )
 
 func init() {
@@ -71,6 +78,9 @@ func init() {
 	keysCreateCmd.Flags().StringVarP(&keysURL, "url", "u", "", "Gateway server URL (default: public UniRoute server)")
 	keysCreateCmd.Flags().StringVarP(&keysName, "name", "n", "", "Name for the API key")
 	keysCreateCmd.Flags().StringVarP(&keysJWTToken, "jwt-token", "t", "", "JWT token for authentication (required for database-backed keys)")
+	keysCreateCmd.Flags().StringVar(&keysExpiresAt, "expires-at", "", "Expiration date (YYYY-MM-DD); omit for no expiration (key lasts until revoked)")
+	keysCreateCmd.Flags().IntVar(&keysRateLimitMin, "rate-limit-minute", 0, "Rate limit per minute (default 60)")
+	keysCreateCmd.Flags().IntVar(&keysRateLimitDay, "rate-limit-day", 0, "Rate limit per day (default 10000)")
 
 	keysListCmd.Flags().StringVarP(&keysURL, "url", "u", "", "Gateway server URL (default: public UniRoute server)")
 	keysListCmd.Flags().StringVarP(&keysJWTToken, "jwt-token", "t", "", "JWT token for authentication")
@@ -100,6 +110,23 @@ func runKeysCreate(cmd *cobra.Command, args []string) error {
 	body := map[string]interface{}{}
 	if keysName != "" {
 		body["name"] = keysName
+	}
+	if keysRateLimitMin > 0 {
+		body["rate_limit_per_minute"] = keysRateLimitMin
+	}
+	if keysRateLimitDay > 0 {
+		body["rate_limit_per_day"] = keysRateLimitDay
+	}
+	if keysExpiresAt != "" {
+		var expiresAt time.Time
+		if t, err := time.Parse(time.RFC3339, keysExpiresAt); err == nil {
+			expiresAt = t
+		} else if t, err := time.Parse(dateOnlyLayout, keysExpiresAt); err == nil {
+			expiresAt = time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 0, time.UTC)
+		} else {
+			return fmt.Errorf("invalid --expires-at: use YYYY-MM-DD or RFC3339")
+		}
+		body["expires_at"] = expiresAt.Format(time.RFC3339)
 	}
 
 	jsonBody, err := json.Marshal(body)
@@ -233,6 +260,8 @@ func runKeysList(cmd *cobra.Command, args []string) error {
 		}
 		if expiresAt, ok := keyMap["expires_at"].(string); ok && expiresAt != "" {
 			fmt.Printf("   Expires: %s\n", expiresAt)
+		} else {
+			fmt.Printf("   Expires: Never\n")
 		}
 		if isActive, ok := keyMap["is_active"].(bool); ok {
 			if isActive {

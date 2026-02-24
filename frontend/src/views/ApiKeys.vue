@@ -144,6 +144,38 @@
               />
             </div>
           </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Expiration
+            </label>
+            <div class="space-y-3">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  v-model="newKey.expirationMode"
+                  type="radio"
+                  value="never"
+                  class="rounded-full border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                />
+                <span class="text-gray-700 dark:text-gray-300">Never expire</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  v-model="newKey.expirationMode"
+                  type="radio"
+                  value="custom"
+                  class="rounded-full border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                />
+                <span class="text-gray-700 dark:text-gray-300">Expire on date</span>
+              </label>
+              <Input
+                v-if="newKey.expirationMode === 'custom'"
+                v-model="newKey.expiresAt"
+                type="date"
+                class="mt-2 ml-6 max-w-xs"
+                :min="minExpiryDate"
+              />
+            </div>
+          </div>
           <div class="flex items-center space-x-4 pt-4">
             <Button type="submit" :loading="creating">
               Create Key
@@ -248,8 +280,12 @@ const revoking = ref(false)
 const newKey = ref({
   name: '',
   rate_limit_per_minute: 60,
-  rate_limit_per_day: 10000
+  rate_limit_per_day: 10000,
+  expirationMode: 'never' as 'never' | 'custom',
+  expiresAt: ''
 })
+
+const minExpiryDate = new Date().toISOString().slice(0, 10)
 
 onMounted(() => {
   loadApiKeys()
@@ -281,13 +317,18 @@ const createApiKey = async () => {
     return
   }
 
+  const payload: Parameters<typeof apiKeysApi.create>[0] = {
+    name: newKey.value.name.trim(),
+    rate_limit_per_minute: newKey.value.rate_limit_per_minute || 60,
+    rate_limit_per_day: newKey.value.rate_limit_per_day || 10000
+  }
+  if (newKey.value.expirationMode === 'custom' && newKey.value.expiresAt) {
+    payload.expires_at = new Date(newKey.value.expiresAt + 'T23:59:59Z').toISOString()
+  }
+
   creating.value = true
   try {
-    const response: CreateApiKeyResponse = await apiKeysApi.create({
-      name: newKey.value.name.trim(),
-      rate_limit_per_minute: newKey.value.rate_limit_per_minute || 60,
-      rate_limit_per_day: newKey.value.rate_limit_per_day || 10000
-    })
+    const response: CreateApiKeyResponse = await apiKeysApi.create(payload)
     
     // Show the key to user (only time it's shown!)
     newlyCreatedKey.value = response.key
@@ -298,7 +339,9 @@ const createApiKey = async () => {
     newKey.value = {
       name: '',
       rate_limit_per_minute: 60,
-      rate_limit_per_day: 10000
+      rate_limit_per_day: 10000,
+      expirationMode: 'never',
+      expiresAt: ''
     }
     
     // Reload list
