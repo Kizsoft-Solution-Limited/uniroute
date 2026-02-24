@@ -62,9 +62,9 @@
                 <span class="font-medium">Created:</span>
                 {{ formatDate(key.createdAt) }}
               </p>
-              <p v-if="key.expiresAt">
+              <p>
                 <span class="font-medium">Expires:</span>
-                {{ formatDate(key.expiresAt) }}
+                {{ key.expiresAt ? formatDate(key.expiresAt) : 'Never' }}
               </p>
               <p>
                 <span class="font-medium">Rate Limit:</span>
@@ -96,9 +96,17 @@
               <ShieldOff class="w-5 h-5" />
             </button>
             <button
+              v-else
+              class="p-2 text-gray-400 dark:text-gray-500 cursor-not-allowed rounded-lg"
+              title="Already revoked"
+              disabled
+            >
+              <ShieldOff class="w-5 h-5" />
+            </button>
+            <button
               @click="openDeleteDialog(key.id)"
               class="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-              :title="key.isActive ? 'Delete (remove)' : 'Delete (remove)'"
+              title="Delete (remove)"
             >
               <Trash2 class="w-5 h-5" />
             </button>
