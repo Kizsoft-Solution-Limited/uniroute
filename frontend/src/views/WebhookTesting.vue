@@ -284,6 +284,7 @@ import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import { Webhook, Search, RotateCcw, X } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
+import { getTunnelServerURL } from '@/services/api/client'
 import { webhookTestingApi } from '@/services/api/webhookTesting'
 
 interface Tunnel {
@@ -392,9 +393,7 @@ const filteredRequests = computed(() => {
 
 const loadTunnels = async () => {
   try {
-    // Get tunnel server URL from config or use default (for fallback)
-    const tunnelServerUrl = import.meta.env.VITE_TUNNEL_SERVER_URL || 'http://localhost:8080'
-    // Use authenticated endpoint to get user's tunnels
+    const tunnelServerUrl = getTunnelServerURL()
     const data = await webhookTestingApi.listTunnels(tunnelServerUrl)
     tunnels.value = data
   } catch (error: any) {
@@ -407,7 +406,7 @@ const loadRequests = async () => {
 
   loading.value = true
   try {
-    const tunnelServerUrl = import.meta.env.VITE_TUNNEL_SERVER_URL || 'http://localhost:8080'
+    const tunnelServerUrl = getTunnelServerURL()
     const data = await webhookTestingApi.listRequests(tunnelServerUrl, selectedTunnel.value, {
       method: filters.value.method || undefined,
       path: filters.value.path || undefined,
@@ -432,7 +431,7 @@ const selectRequest = async (request: Request) => {
   }
 
   try {
-    const tunnelServerUrl = import.meta.env.VITE_TUNNEL_SERVER_URL || 'http://localhost:8080'
+    const tunnelServerUrl = getTunnelServerURL()
     const data = await webhookTestingApi.getRequest(tunnelServerUrl, selectedTunnel.value, request.request_id)
     allRequestDetails.value.set(request.id, data)
     selectedRequestDetail.value = data
@@ -446,7 +445,7 @@ const replayRequest = async (request: Request | RequestDetail) => {
 
   replaying.value = true
   try {
-    const tunnelServerUrl = import.meta.env.VITE_TUNNEL_SERVER_URL || 'http://localhost:8080'
+    const tunnelServerUrl = getTunnelServerURL()
     const data = await webhookTestingApi.replayRequest(tunnelServerUrl, selectedTunnel.value, request.request_id)
     showToast(`Request replayed successfully (Status: ${data.status_code})`, 'success')
     await loadRequests()

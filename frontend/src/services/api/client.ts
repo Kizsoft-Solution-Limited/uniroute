@@ -18,6 +18,23 @@ const getBaseURL = () => {
   return 'https://app.uniroute.co'
 }
 
+export function getTunnelServerURL(): string {
+  if (import.meta.env.VITE_TUNNEL_SERVER_URL) {
+    return import.meta.env.VITE_TUNNEL_SERVER_URL.replace(/\/$/, '')
+  }
+  if (import.meta.env.DEV) {
+    return 'http://localhost:8080'
+  }
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname
+    if (host === 'uniroute.co' || host === 'www.uniroute.co' || host === 'app.uniroute.co') {
+      return 'https://tunnel.uniroute.co'
+    }
+    return window.location.origin
+  }
+  return 'https://tunnel.uniroute.co'
+}
+
 export const apiClient: AxiosInstance = axios.create({
   baseURL: getBaseURL(),
   timeout: 30000,
