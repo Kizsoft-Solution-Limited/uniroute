@@ -37,20 +37,6 @@
           />
         </div>
 
-        <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Roles
-          </label>
-          <Input
-            :value="profile.roles?.join(', ') || 'user'"
-            disabled
-            class="bg-gray-50 dark:bg-gray-800"
-          />
-          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Roles cannot be changed from profile settings
-          </p>
-        </div>
-
         <div class="flex items-center space-x-4 pt-4">
           <Button type="submit" :loading="saving">
             Save Changes
