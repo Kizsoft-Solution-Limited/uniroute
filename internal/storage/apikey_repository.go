@@ -43,7 +43,6 @@ func (r *APIKeyRepository) Create(ctx context.Context, key *APIKey) error {
 	return err
 }
 
-// Lookup is by SHA256 hash of the key.
 func (r *APIKeyRepository) FindByLookupHash(ctx context.Context, lookupHash string) (*APIKey, error) {
 	query := `
 		SELECT id, user_id, lookup_hash, verification_hash, name, rate_limit_per_minute, rate_limit_per_day, created_at, expires_at, is_active
@@ -143,6 +142,12 @@ func (r *APIKeyRepository) Delete(ctx context.Context, id uuid.UUID) error {
 		WHERE id = $1
 	`
 
+	_, err := r.pool.Exec(ctx, query, id)
+	return err
+}
+
+func (r *APIKeyRepository) DeletePermanently(ctx context.Context, id uuid.UUID) error {
+	query := `DELETE FROM api_keys WHERE id = $1`
 	_, err := r.pool.Exec(ctx, query, id)
 	return err
 }

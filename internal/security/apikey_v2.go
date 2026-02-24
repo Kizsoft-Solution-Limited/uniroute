@@ -27,25 +27,19 @@ func NewAPIKeyServiceV2(repo storage.APIKeyRepositoryInterface, secret string) *
 }
 
 func (s *APIKeyServiceV2) CreateAPIKey(ctx context.Context, userID uuid.UUID, name string, rateLimitPerMinute, rateLimitPerDay int, expiresAt *time.Time) (string, *storage.APIKey, error) {
-	// Generate random bytes
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", nil, fmt.Errorf("failed to generate random bytes: %w", err)
 	}
 
-	// Create API key with prefix
 	key := "ur_" + hex.EncodeToString(bytes)
-
-	// Create lookup hash (SHA256) for fast database lookup
 	lookupHash := s.hashForLookup(key)
 
-	// Hash the key with bcrypt for secure storage
 	bcryptHash, err := bcrypt.GenerateFromPassword([]byte(key), bcrypt.DefaultCost)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to hash API key: %w", err)
 	}
 
-	// Create API key record
 	apiKey := &storage.APIKey{
 		ID:                 uuid.New(),
 		UserID:             userID,
@@ -59,7 +53,6 @@ func (s *APIKeyServiceV2) CreateAPIKey(ctx context.Context, userID uuid.UUID, na
 		IsActive:           true,
 	}
 
-	// Store in database
 	if err := s.repo.Create(ctx, apiKey); err != nil {
 		return "", nil, fmt.Errorf("failed to store API key: %w", err)
 	}
@@ -68,10 +61,8 @@ func (s *APIKeyServiceV2) CreateAPIKey(ctx context.Context, userID uuid.UUID, na
 }
 
 func (s *APIKeyServiceV2) ValidateAPIKey(ctx context.Context, key string) (*storage.APIKey, error) {
-	// Create lookup hash to find the key
 	lookupHash := s.hashForLookup(key)
 
-	// Find by lookup hash
 	apiKey, err := s.repo.FindByLookupHash(ctx, lookupHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find API key: %w", err)
@@ -80,7 +71,6 @@ func (s *APIKeyServiceV2) ValidateAPIKey(ctx context.Context, key string) (*stor
 		return nil, fmt.Errorf("API key not found")
 	}
 
-	// Verify the key matches the stored bcrypt hash
 	err = bcrypt.CompareHashAndPassword([]byte(apiKey.VerificationHash), []byte(key))
 	if err != nil {
 		return nil, fmt.Errorf("invalid API key")
@@ -95,6 +85,10 @@ func (s *APIKeyServiceV2) ListAPIKeysByUser(ctx context.Context, userID uuid.UUI
 
 func (s *APIKeyServiceV2) DeleteAPIKey(ctx context.Context, keyID uuid.UUID) error {
 	return s.repo.Delete(ctx, keyID)
+}
+
+func (s *APIKeyServiceV2) DeleteAPIKeyPermanently(ctx context.Context, keyID uuid.UUID) error {
+	return s.repo.DeletePermanently(ctx, keyID)
 }
 
 func (s *APIKeyServiceV2) hashForLookup(key string) string {

@@ -88,9 +88,17 @@
           </div>
           <div class="flex items-center space-x-2 ml-4">
             <button
+              v-if="key.isActive"
               @click="openRevokeDialog(key.id)"
+              class="p-2 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors"
+              title="Revoke (disable)"
+            >
+              <ShieldOff class="w-5 h-5" />
+            </button>
+            <button
+              @click="openDeleteDialog(key.id)"
               class="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-              title="Revoke key"
+              :title="key.isActive ? 'Delete (remove)' : 'Delete (remove)'"
             >
               <Trash2 class="w-5 h-5" />
             </button>
@@ -129,6 +137,7 @@
                 v-model.number="newKey.rate_limit_per_minute"
                 type="number"
                 min="1"
+                placeholder="60"
                 required
               />
             </div>
@@ -140,10 +149,14 @@
                 v-model.number="newKey.rate_limit_per_day"
                 type="number"
                 min="1"
+                placeholder="10000"
                 required
               />
             </div>
           </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 -mt-1">
+            Defaults: 60/min, 10,000/day. Use higher values (e.g. 300/min, 100,000/day) for more traffic.
+          </p>
           <div>
             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Expiration
@@ -241,17 +254,30 @@
       </Card>
     </div>
 
-    <!-- Revoke Confirmation Dialog -->
+    <!-- Revoke (disable) Confirmation Dialog -->
     <ConfirmationDialog
       :show="showRevokeDialog"
-      title="Revoke API Key"
-      message="Are you sure you want to revoke this API key? This action cannot be undone. The key will immediately stop working."
+      title="Revoke (disable) API Key"
+      message="The key will stop working immediately but will stay in the list as inactive. You can remove it later with Delete (remove)."
       variant="danger"
-      confirm-text="Revoke Key"
+      confirm-text="Revoke (disable)"
       cancel-text="Cancel"
       :loading="revoking"
       @confirm="revokeKey"
       @cancel="cancelRevoke"
+    />
+
+    <!-- Delete (remove) Confirmation Dialog -->
+    <ConfirmationDialog
+      :show="showDeleteDialog"
+      title="Delete (remove) API Key"
+      message="Permanently remove this key from the list. This cannot be undone. The key will stop working if it is still active."
+      variant="danger"
+      confirm-text="Delete (remove)"
+      cancel-text="Cancel"
+      :loading="deleting"
+      @confirm="deleteKeyPermanently"
+      @cancel="cancelDelete"
     />
   </div>
 </template>
@@ -261,7 +287,7 @@ import { ref, onMounted } from 'vue'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
-import { Key, Plus, Copy, Trash2 } from 'lucide-vue-next'
+import { Key, Plus, Copy, Trash2, ShieldOff } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import { apiKeysApi, type ApiKey, type CreateApiKeyResponse } from '@/services/api/apikeys'
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog.vue'
@@ -277,6 +303,9 @@ const newlyCreatedKey = ref<string>('')
 const showRevokeDialog = ref(false)
 const keyToRevoke = ref<string | null>(null)
 const revoking = ref(false)
+const showDeleteDialog = ref(false)
+const keyToDelete = ref<string | null>(null)
+const deleting = ref(false)
 const newKey = ref({
   name: '',
   rate_limit_per_minute: 60,
@@ -358,13 +387,17 @@ const openRevokeDialog = (id: string) => {
   showRevokeDialog.value = true
 }
 
+const openDeleteDialog = (id: string) => {
+  keyToDelete.value = id
+  showDeleteDialog.value = true
+}
+
 const revokeKey = async () => {
   if (!keyToRevoke.value) return
-  
   revoking.value = true
   try {
     await apiKeysApi.revoke(keyToRevoke.value)
-    showToast('API key revoked successfully', 'success')
+    showToast('API key revoked (disabled)', 'success')
     showRevokeDialog.value = false
     keyToRevoke.value = null
     await loadApiKeys()
@@ -375,9 +408,30 @@ const revokeKey = async () => {
   }
 }
 
+const deleteKeyPermanently = async () => {
+  if (!keyToDelete.value) return
+  deleting.value = true
+  try {
+    await apiKeysApi.deletePermanently(keyToDelete.value)
+    showToast('API key deleted permanently', 'success')
+    showDeleteDialog.value = false
+    keyToDelete.value = null
+    await loadApiKeys()
+  } catch (error: any) {
+    showToast(error.response?.data?.error || error.message || 'Failed to delete API key', 'error')
+  } finally {
+    deleting.value = false
+  }
+}
+
 const cancelRevoke = () => {
   showRevokeDialog.value = false
   keyToRevoke.value = null
+}
+
+const cancelDelete = () => {
+  showDeleteDialog.value = false
+  keyToDelete.value = null
 }
 
 const copyToClipboard = async (text: string) => {

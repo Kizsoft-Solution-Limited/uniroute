@@ -32,27 +32,22 @@ export interface ListApiKeysResponse {
 }
 
 export const apiKeysApi = {
-  /**
-   * List all API keys for the authenticated user
-   */
   async list(): Promise<ListApiKeysResponse> {
     const response = await apiClient.get<ListApiKeysResponse>('/auth/api-keys')
     return response.data
   },
 
-  /**
-   * Create a new API key
-   */
   async create(data: CreateApiKeyRequest): Promise<CreateApiKeyResponse> {
     const response = await apiClient.post<CreateApiKeyResponse>('/auth/api-keys', data)
     return response.data
   },
 
-  /**
-   * Revoke (delete) an API key
-   */
   async revoke(id: string): Promise<void> {
     await apiClient.delete(`/auth/api-keys/${id}`)
+  },
+
+  async deletePermanently(id: string): Promise<void> {
+    await apiClient.delete(`/auth/api-keys/${id}/permanent`)
   },
 }
 

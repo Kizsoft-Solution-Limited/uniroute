@@ -12,5 +12,6 @@ type APIKeyRepositoryInterface interface {
 	ListByUserID(ctx context.Context, userID uuid.UUID) ([]*APIKey, error)
 	Update(ctx context.Context, key *APIKey) error
 	Delete(ctx context.Context, id uuid.UUID) error
+	DeletePermanently(ctx context.Context, id uuid.UUID) error
 }
 

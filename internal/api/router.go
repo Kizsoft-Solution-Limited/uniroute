@@ -123,6 +123,7 @@ func SetupRouter(
 			apiKeyHandler := handlers.NewAPIKeyHandler(apiKeyServiceV2)
 			authProtected.POST("/api-keys", apiKeyHandler.CreateAPIKey)
 			authProtected.GET("/api-keys", apiKeyHandler.ListAPIKeys)
+			authProtected.DELETE("/api-keys/:id/permanent", apiKeyHandler.DeleteAPIKeyPermanently)
 			authProtected.DELETE("/api-keys/:id", apiKeyHandler.RevokeAPIKey)
 		}
 

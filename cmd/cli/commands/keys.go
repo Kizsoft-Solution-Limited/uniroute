@@ -21,7 +21,8 @@ var keysCmd = &cobra.Command{
 Commands:
   create  Create a new API key
   list    List all API keys (requires authentication)
-  revoke  Revoke an API key (requires authentication)`,
+  revoke  Revoke (disable) an API key - key stops working but stays in list
+  delete  Delete (remove) an API key permanently`,
 }
 
 var keysCreateCmd = &cobra.Command{
@@ -51,14 +52,26 @@ Example:
 
 var keysRevokeCmd = &cobra.Command{
 	Use:   "revoke",
-	Short: "Revoke an API key",
-	Long: `Revoke (delete) an API key by ID.
+	Short: "Revoke (disable) an API key",
+	Long: `Revoke (disable) an API key by ID. The key stops working but remains in the list as inactive.
 
 Example:
   uniroute keys revoke <key-id>
   uniroute keys revoke <key-id> --url http://localhost:8084`,
 	Args:  cobra.ExactArgs(1),
 	RunE:  runKeysRevoke,
+}
+
+var keysDeleteCmd = &cobra.Command{
+	Use:   "delete",
+	Short: "Delete (remove) an API key permanently",
+	Long: `Delete (remove) an API key permanently by ID. The key is removed from the list; cannot be undone.
+
+Example:
+  uniroute keys delete <key-id>
+  uniroute keys delete <key-id> --url http://localhost:8084`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  runKeysDelete,
 }
 
 var (
@@ -74,6 +87,7 @@ func init() {
 	keysCmd.AddCommand(keysCreateCmd)
 	keysCmd.AddCommand(keysListCmd)
 	keysCmd.AddCommand(keysRevokeCmd)
+	keysCmd.AddCommand(keysDeleteCmd)
 
 	keysCreateCmd.Flags().StringVarP(&keysURL, "url", "u", "", "Gateway server URL (default: public UniRoute server)")
 	keysCreateCmd.Flags().StringVarP(&keysName, "name", "n", "", "Name for the API key")
@@ -87,6 +101,9 @@ func init() {
 
 	keysRevokeCmd.Flags().StringVarP(&keysURL, "url", "u", "", "Gateway server URL (default: public UniRoute server)")
 	keysRevokeCmd.Flags().StringVarP(&keysJWTToken, "jwt-token", "t", "", "JWT token for authentication")
+
+	keysDeleteCmd.Flags().StringVarP(&keysURL, "url", "u", "", "Gateway server URL (default: public UniRoute server)")
+	keysDeleteCmd.Flags().StringVarP(&keysJWTToken, "jwt-token", "t", "", "JWT token for authentication")
 }
 
 func runKeysCreate(cmd *cobra.Command, args []string) error {
@@ -327,5 +344,51 @@ func runKeysRevoke(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("✅ API key %s revoked successfully\n", keyID)
+	return nil
+}
+
+func runKeysDelete(cmd *cobra.Command, args []string) error {
+	keyID := args[0]
+
+	serverURL := keysURL
+	if serverURL == "" {
+		serverURL = getServerURL()
+	}
+
+	token := keysJWTToken
+	if token == "" {
+		token = getAuthToken()
+		if token == "" {
+			return fmt.Errorf("not authenticated. Run 'uniroute auth login' or use --jwt-token")
+		}
+	}
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/auth/api-keys/%s/permanent", serverURL, keyID), nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to connect to server: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("server returned error: %s", string(respBody))
+	}
+
+	fmt.Printf("✅ API key %s deleted permanently\n", keyID)
 	return nil
 }

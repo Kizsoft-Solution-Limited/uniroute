@@ -37,7 +37,6 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	// Get user ID from context (set by JWT middleware)
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -54,7 +53,6 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 		return
 	}
 
-	// Set defaults
 	if req.RateLimitPerMinute == 0 {
 		req.RateLimitPerMinute = 60
 	}
@@ -62,7 +60,6 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 		req.RateLimitPerDay = 10000
 	}
 
-	// Create API key
 	key, apiKey, err := h.apiKeyService.CreateAPIKey(
 		c.Request.Context(),
 		userID,
@@ -89,7 +86,6 @@ func (h *APIKeyHandler) CreateAPIKey(c *gin.Context) {
 }
 
 func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
-	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -106,7 +102,6 @@ func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
 		return
 	}
 
-	// List API keys for user
 	keys, err := h.apiKeyService.ListAPIKeysByUser(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -115,7 +110,6 @@ func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
 		return
 	}
 
-	// Format response (don't expose sensitive data)
 	keyList := make([]map[string]interface{}, len(keys))
 	for i, key := range keys {
 		keyList[i] = map[string]interface{}{
@@ -138,7 +132,6 @@ func (h *APIKeyHandler) ListAPIKeys(c *gin.Context) {
 }
 
 func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
-	// Get user ID from context
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -155,7 +148,6 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 		return
 	}
 
-	// Parse API key ID
 	idStr := c.Param("id")
 	keyID, err := uuid.Parse(idStr)
 	if err != nil {
@@ -165,7 +157,6 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 		return
 	}
 
-	// Verify the key belongs to the user
 	keys, err := h.apiKeyService.ListAPIKeysByUser(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -174,7 +165,6 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 		return
 	}
 
-	// Check if key exists and belongs to user
 	found := false
 	for _, key := range keys {
 		if key.ID == keyID {
@@ -190,7 +180,6 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 		return
 	}
 
-	// Delete the API key
 	if err := h.apiKeyService.DeleteAPIKey(c.Request.Context(), keyID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
@@ -201,4 +190,44 @@ func (h *APIKeyHandler) RevokeAPIKey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "API key revoked successfully",
 	})
+}
+
+func (h *APIKeyHandler) DeleteAPIKeyPermanently(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
+		return
+	}
+	idStr := c.Param("id")
+	keyID, err := uuid.Parse(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid API key ID"})
+		return
+	}
+	keys, err := h.apiKeyService.ListAPIKeysByUser(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	found := false
+	for _, key := range keys {
+		if key.ID == keyID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "API key not found"})
+		return
+	}
+	if err := h.apiKeyService.DeleteAPIKeyPermanently(c.Request.Context(), keyID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "API key deleted permanently"})
 }
