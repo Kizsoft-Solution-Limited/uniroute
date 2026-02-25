@@ -61,6 +61,30 @@ extensions/
 └── jetbrains/     # JetBrains plugin (Kotlin)
 ```
 
+## Download from GitHub
+
+For each [release](https://github.com/Kizsoft-Solution-Limited/uniroute/releases), the workflow attaches:
+
+- **VS Code**: `uniroute-0.1.0.vsix` (or similar) — in VS Code: **Extensions** → **⋯** → **Install from VSIX…** → select the file.
+- **JetBrains**: `UniRoute-0.1.0.zip` — in IntelliJ/Android Studio: **Settings → Plugins → ⚙ → Install Plugin from Disk…** → select the zip.
+
+Version numbers follow the release tag (e.g. `v0.1.0`).
+
+## Releasing extension updates
+
+Extensions are released **with the same Git tag as the CLI**. One tag triggers the full release (CLI binaries + VS Code .vsix + JetBrains .zip).
+
+1. **Bump extension versions** so they match the release tag (for correct in-IDE update checks):
+   - **VS Code**: set `version` in `extensions/vscode/package.json` (e.g. `"1.0.63"`).
+   - **JetBrains**: set `version` in `extensions/jetbrains/build.gradle.kts` (e.g. `version = "1.0.63"`).
+2. **Commit** the version bumps (and any other changes).
+3. **Create and push the tag** (same as for CLI):
+   ```bash
+   git tag v1.0.63
+   git push origin v1.0.63
+   ```
+4. The **Release** workflow runs on that tag: it builds CLI, Gateway, Tunnel Server, VS Code extension, and JetBrains plugin, then creates the GitHub release and attaches all assets. Users see the new version in the release; the in-IDE update checker will notify them when a newer tag exists.
+
 ## Building and developing
 
 ### VS Code

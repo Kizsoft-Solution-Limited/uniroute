@@ -7,9 +7,62 @@ const execAsync = promisify(exec);
 
 let chatProvider: ChatViewProvider | null = null;
 
+const RELEASES_URL = 'https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest'
+const GITHUB_API_LATEST = 'https://api.github.com/repos/Kizsoft-Solution-Limited/uniroute/releases/latest'
+const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
+
+function parseVersion(s: string): number[] {
+  const v = (s || '').replace(/^v/, '').trim()
+  const parts = v.split('.').map((n) => parseInt(n, 10) || 0)
+  return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0]
+}
+
+function isNewer(latest: string, current: string): boolean {
+  const a = parseVersion(latest)
+  const b = parseVersion(current)
+  for (let i = 0; i < 3; i++) {
+    if (a[i] > b[i]) return true
+    if (a[i] < b[i]) return false
+  }
+  return false
+}
+
+async function checkForUpdate(context: vscode.ExtensionContext) {
+  const current = (context.extension.packageJSON?.version as string) || '0.0.0'
+  const lastCheck = context.globalState.get<number>('uniroute.lastUpdateCheck') || 0
+  if (Date.now() - lastCheck < CHECK_INTERVAL_MS) return
+  context.globalState.update('uniroute.lastUpdateCheck', Date.now())
+
+  try {
+    const res = await fetch(GITHUB_API_LATEST, {
+      headers: { Accept: 'application/vnd.github.v3+json' },
+    })
+    if (!res.ok) return
+    const data = (await res.json()) as { tag_name?: string }
+    const latest = (data.tag_name || '').replace(/^v/, '').trim()
+    if (!latest || !isNewer(latest, current)) return
+    const lastNotified = context.globalState.get<string>('uniroute.lastNotifiedVersion')
+    if (lastNotified === latest) return
+    context.globalState.update('uniroute.lastNotifiedVersion', latest)
+
+    const action = await vscode.window.showInformationMessage(
+      `UniRoute: A new version (${latest}) is available. You have ${current}.`,
+      'Download',
+      'Dismiss'
+    )
+    if (action === 'Download') {
+      await vscode.env.openExternal(vscode.Uri.parse(RELEASES_URL))
+    }
+  } catch {
+    // ignore network/parse errors
+  }
+}
+
 export function activate(context: vscode.ExtensionContext) {
   const apiUrl = vscode.workspace.getConfiguration('uniroute').get<string>('apiUrl') ?? '';
   const cliPath = vscode.workspace.getConfiguration('uniroute').get<string>('cliPath') ?? 'uniroute';
+
+  setTimeout(() => checkForUpdate(context), 5000);
 
   chatProvider = new ChatViewProvider(context.extensionUri, apiUrl);
   context.subscriptions.push(

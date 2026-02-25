@@ -51,15 +51,46 @@
       <div class="container mx-auto px-4 sm:px-6">
         <div class="max-w-4xl mx-auto min-w-0">
           <!-- Header -->
-          <div class="text-center mb-10 sm:mb-16">
-            <h1 class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 sm:mb-6 leading-tight tracking-tight px-1">
-              Download UniRoute CLI
+          <div class="text-center mb-8 sm:mb-12">
+            <h1 class="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-3 sm:mb-4 leading-tight tracking-tight px-1">
+              Download UniRoute
             </h1>
-            <p class="text-base sm:text-lg md:text-xl text-slate-300 max-w-2xl mx-auto">
-              Get the CLI tool for your platform.
+            <p class="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto mb-6 sm:mb-8">
+              CLI for the terminal, or IDE extensions for VS Code and JetBrains.
             </p>
+            <!-- Tabs -->
+            <div class="inline-flex rounded-xl bg-slate-800/80 p-1 border border-slate-700/50">
+              <button
+                type="button"
+                :class="[
+                  'flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all',
+                  activeTab === 'cli'
+                    ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-500/20'
+                    : 'text-slate-400 hover:text-white'
+                ]"
+                @click="activeTab = 'cli'"
+              >
+                <Terminal class="w-4 h-4" />
+                CLI
+              </button>
+              <button
+                type="button"
+                :class="[
+                  'flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all',
+                  activeTab === 'extension'
+                    ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-500/20'
+                    : 'text-slate-400 hover:text-white'
+                ]"
+                @click="activeTab = 'extension'"
+              >
+                <Puzzle class="w-4 h-4" />
+                Extension
+              </button>
+            </div>
           </div>
 
+          <!-- CLI Tab -->
+          <div v-show="activeTab === 'cli'" class="min-w-0">
           <!-- Detected Platform -->
           <div v-if="detectedPlatform" class="bg-slate-800/60 rounded-xl sm:rounded-2xl border border-slate-700/50 p-4 sm:p-6 md:p-8 mb-6 sm:mb-8">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4 sm:mb-6">
@@ -222,6 +253,61 @@
               </div>
             </div>
           </div>
+          </div>
+
+          <!-- Extension Tab -->
+          <div v-show="activeTab === 'extension'" class="min-w-0 space-y-6">
+            <p class="text-slate-300 text-center">
+              Get UniRoute in your IDE: chat, accept/reject AI edits, and tunnels. Download the latest release and install from disk.
+            </p>
+            <div class="grid sm:grid-cols-2 gap-4 sm:gap-6">
+              <a
+                :href="releasesUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="block bg-slate-800/60 rounded-xl sm:rounded-2xl border border-slate-700/50 p-6 sm:p-8 hover:border-blue-500/50 transition-all group"
+              >
+                <div class="flex items-center gap-3 mb-4">
+                  <div class="w-12 h-12 rounded-xl bg-slate-700/60 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
+                    <Code2 class="w-6 h-6 text-slate-300 group-hover:text-blue-400" />
+                  </div>
+                  <h2 class="text-xl font-semibold text-white">VS Code</h2>
+                </div>
+                <p class="text-sm text-slate-400 mb-4">
+                  Chat in the sidebar, accept or reject AI code edits, start tunnels. Install the <code class="bg-slate-900/60 px-1.5 py-0.5 rounded text-slate-300">.vsix</code> from the release.
+                </p>
+                <span class="inline-flex items-center text-blue-400 text-sm font-medium">
+                  Download from GitHub →
+                </span>
+              </a>
+              <a
+                :href="releasesUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="block bg-slate-800/60 rounded-xl sm:rounded-2xl border border-slate-700/50 p-6 sm:p-8 hover:border-indigo-500/50 transition-all group"
+              >
+                <div class="flex items-center gap-3 mb-4">
+                  <div class="w-12 h-12 rounded-xl bg-slate-700/60 flex items-center justify-center group-hover:bg-indigo-500/20 transition-colors">
+                    <Puzzle class="w-6 h-6 text-slate-300 group-hover:text-indigo-400" />
+                  </div>
+                  <h2 class="text-xl font-semibold text-white">IntelliJ / Android Studio</h2>
+                </div>
+                <p class="text-sm text-slate-400 mb-4">
+                  Same plugin for IntelliJ IDEA and Android Studio. Download the <code class="bg-slate-900/60 px-1.5 py-0.5 rounded text-slate-300">.zip</code> and use Plugins → Install from Disk.
+                </p>
+                <span class="inline-flex items-center text-indigo-400 text-sm font-medium">
+                  Download from GitHub →
+                </span>
+              </a>
+            </div>
+            <div class="bg-slate-800/60 rounded-xl border border-slate-700/50 p-4 sm:p-6">
+              <h3 class="text-base font-semibold text-white mb-2">How to install</h3>
+              <ul class="text-sm text-slate-400 space-y-1">
+                <li><strong class="text-slate-300">VS Code:</strong> Extensions → ⋯ → Install from VSIX… → select the <code class="bg-slate-900/60 px-1 rounded">.vsix</code> file.</li>
+                <li><strong class="text-slate-300">IntelliJ / Android Studio:</strong> Settings → Plugins → ⚙ → Install Plugin from Disk… → select the <code class="bg-slate-900/60 px-1 rounded">.zip</code> file.</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -230,7 +316,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { Monitor, Apple, Server, Laptop, Zap } from 'lucide-vue-next'
+import { Monitor, Apple, Server, Laptop, Zap, Code2, Puzzle, Terminal } from 'lucide-vue-next'
+
+const activeTab = ref<'cli' | 'extension'>('cli')
+const releasesUrl = 'https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest'
 
 interface Platform {
   os: string
