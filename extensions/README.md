@@ -83,7 +83,7 @@ Extensions are released **with the same Git tag as the CLI**. One tag triggers t
    git tag v1.0.63
    git push origin v1.0.63
    ```
-4. The **Release** workflow runs on that tag: it builds CLI, Gateway, Tunnel Server, VS Code extension, and JetBrains plugin, then creates the GitHub release and attaches all assets. Users see the new version in the release; the in-IDE update checker will notify them when a newer tag exists.
+4. The **Release** workflow runs on that tag: it builds CLI, Gateway, Tunnel Server, VS Code extension, and JetBrains plugin, then creates the GitHub release and attaches all assets. Users see the new version in the release; the in-IDE update checker will notify them when a newer tag exists. In **VS Code**, choosing **Update** downloads and installs the new .vsix in the IDE; in **JetBrains**, **Update** downloads the plugin zip and guides the user to Install from Disk (then restart).
 
 ## Building and developing
 

@@ -714,6 +714,9 @@ const speakResponsesEnabled = ref(false)
 const imageErrors = ref(new Set<number>())
 const showMobileConversations = ref(false)
 
+/** Context sent from IDE (VS Code / JetBrains) so the AI can work in the codebase */
+const ideContext = ref<{ workspaceRoot?: string; filePath?: string; selection?: string } | null>(null)
+
 const isSearchCapableModel = computed(() => {
   const m = selectedModel.value
   return /^gemini-/i.test(m) || /^gpt-|^o\d/i.test(m) || /^claude-/i.test(m)
@@ -902,8 +905,23 @@ function handleCopyEditAsJson(edit: SuggestedEdit) {
   })
 }
 
+function buildContextBlock(): string {
+  const ctx = ideContext.value
+  if (!ctx || (!ctx.filePath && !ctx.workspaceRoot && !ctx.selection)) return ''
+  const parts: string[] = ['[Context from IDE]']
+  if (ctx.workspaceRoot) parts.push('Workspace: ' + ctx.workspaceRoot)
+  if (ctx.filePath) parts.push('File: ' + ctx.filePath)
+  if (ctx.selection) parts.push('Selection:\n```\n' + ctx.selection + '\n```')
+  return parts.join('\n') + '\n\n'
+}
+
 const handleSend = async () => {
-  const textToSend = inputMessage.value.trim()
+  let textToSend = inputMessage.value.trim()
+  const contextBlock = buildContextBlock()
+  if (contextBlock) {
+    textToSend = contextBlock + (textToSend || '(no additional message)')
+    ideContext.value = null
+  }
   if ((!textToSend && attachedImages.value.length === 0 && attachedAudios.value.length === 0) || loading.value) return
 
   if (!currentConversationId.value) {
@@ -1432,8 +1450,41 @@ const handlePreviewImageError = (_event: Event, index: number) => {
   showToast('Failed to load image preview', 'error')
 }
 
+function onIdeContextMessage(e: MessageEvent) {
+  const d = e.data
+  if (d && d.type === 'uniroute.ideContext' && (d.workspaceRoot != null || d.filePath != null || d.selection != null)) {
+    ideContext.value = {
+      workspaceRoot: typeof d.workspaceRoot === 'string' ? d.workspaceRoot : undefined,
+      filePath: typeof d.filePath === 'string' ? d.filePath : undefined,
+      selection: typeof d.selection === 'string' ? d.selection : undefined
+    }
+    showToast('IDE context received. Your next message will include current file/selection.', 'success')
+  }
+}
+
+function applyIdeContextFromUrl() {
+  if (typeof window === 'undefined' || !window.location.search) return
+  const params = new URLSearchParams(window.location.search)
+  const workspaceRoot = params.get('workspaceRoot') ?? undefined
+  const filePath = params.get('filePath') ?? undefined
+  const selection = params.get('selection') ?? undefined
+  if (workspaceRoot || filePath || selection) {
+    ideContext.value = { workspaceRoot, filePath, selection }
+    showToast('IDE context received. Your next message will include current file/selection.', 'success')
+    const url = new URL(window.location.href)
+    url.searchParams.delete('workspaceRoot')
+    url.searchParams.delete('filePath')
+    url.searchParams.delete('selection')
+    window.history.replaceState({}, '', url.pathname + (url.search || ''))
+  }
+}
+
 onMounted(async () => {
   scrollToBottom()
+  applyIdeContextFromUrl()
+  if (typeof window !== 'undefined') {
+    window.addEventListener('message', onIdeContextMessage)
+  }
   try {
     const res = await providersApi.list()
     if (res.providers?.length) apiProviders.value = res.providers
@@ -1445,6 +1496,9 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('message', onIdeContextMessage)
+  }
   document.body.style.overflow = ''
   attachedImages.value.forEach(img => {
     if (img.preview.startsWith('blob:')) {

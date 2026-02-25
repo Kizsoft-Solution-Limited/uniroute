@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -27,6 +29,31 @@ function isNewer(latest: string, current: string): boolean {
   return false
 }
 
+async function installUpdateInIde(vsixUrl: string, context: vscode.ExtensionContext): Promise<boolean> {
+  try {
+    const res = await fetch(vsixUrl, { redirect: 'follow' })
+    if (!res.ok || !res.body) return false
+    const buf = await res.arrayBuffer()
+    const vsixPath = path.join(os.tmpdir(), `uniroute-${Date.now()}.vsix`)
+    fs.writeFileSync(vsixPath, Buffer.from(buf))
+    const execPath = process.execPath
+    await execAsync(`"${execPath}" --install-extension "${vsixPath}" --force`)
+    try { fs.unlinkSync(vsixPath) } catch { /* ignore */ }
+    const reload = await vscode.window.showInformationMessage(
+      'UniRoute: Extension updated. Reload the window to use the new version.',
+      'Reload',
+      'Later'
+    )
+    if (reload === 'Reload') {
+      await vscode.commands.executeCommand('workbench.action.reloadWindow')
+    }
+    return true
+  } catch (e) {
+    console.error('UniRoute update install failed:', e)
+    return false
+  }
+}
+
 async function checkForUpdate(context: vscode.ExtensionContext) {
   const current = (context.extension.packageJSON?.version as string) || '0.0.0'
   const lastCheck = context.globalState.get<number>('uniroute.lastUpdateCheck') || 0
@@ -38,19 +65,35 @@ async function checkForUpdate(context: vscode.ExtensionContext) {
       headers: { Accept: 'application/vnd.github.v3+json' },
     })
     if (!res.ok) return
-    const data = (await res.json()) as { tag_name?: string }
+    const data = (await res.json()) as { tag_name?: string; assets?: { name: string; browser_download_url: string }[] }
     const latest = (data.tag_name || '').replace(/^v/, '').trim()
     if (!latest || !isNewer(latest, current)) return
     const lastNotified = context.globalState.get<string>('uniroute.lastNotifiedVersion')
     if (lastNotified === latest) return
     context.globalState.update('uniroute.lastNotifiedVersion', latest)
 
+    const vsixAsset = data.assets?.find((a) => a.name.endsWith('.vsix'))
+    const vsixUrl = vsixAsset?.browser_download_url
+
     const action = await vscode.window.showInformationMessage(
       `UniRoute: A new version (${latest}) is available. You have ${current}.`,
-      'Download',
+      'Update',
+      'Download from GitHub',
       'Dismiss'
     )
-    if (action === 'Download') {
+    if (action === 'Update' && vsixUrl) {
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'UniRoute: Installing update…' },
+        async () => {
+          const ok = await installUpdateInIde(vsixUrl, context)
+          if (!ok) {
+            vscode.window.showErrorMessage(
+              'UniRoute: Update failed. Try "Download from GitHub" and install the .vsix manually.'
+            )
+          }
+        }
+      )
+    } else if (action === 'Download from GitHub' || (action === 'Update' && !vsixUrl)) {
       await vscode.env.openExternal(vscode.Uri.parse(RELEASES_URL))
     }
   } catch {}
@@ -70,6 +113,27 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('uniroute.chat.open', () => {
       vscode.commands.executeCommand('workbench.view.extension.uniroute');
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('uniroute.chat.sendContext', () => {
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      const editor = vscode.window.activeTextEditor;
+      let filePath = '';
+      let selection = '';
+      if (editor) {
+        const doc = editor.document;
+        filePath = workspaceRoot ? path.relative(workspaceRoot, doc.uri.fsPath) : doc.uri.fsPath;
+        const range = editor.selection;
+        if (!range.isEmpty) {
+          selection = doc.getText(range);
+        }
+      }
+      chatProvider?.postIdeContext({ workspaceRoot, filePath, selection });
+      vscode.window.showInformationMessage(
+        selection ? 'Current file and selection sent to UniRoute Chat.' : 'Current file path sent to UniRoute Chat.'
+      );
     })
   );
 
@@ -153,16 +217,23 @@ export function deactivate() {
 }
 
 class ChatViewProvider implements vscode.WebviewViewProvider {
+  private webview: vscode.Webview | null = null;
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly apiUrl: string,
   ) {}
+
+  postIdeContext(ctx: { workspaceRoot?: string; filePath?: string; selection?: string }): void {
+    this.webview?.postMessage({ type: 'uniroute.ideContext', ...ctx });
+  }
 
   resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
   ): void | Thenable<void> {
+    this.webview = webviewView.webview;
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [this.extensionUri],
@@ -195,11 +266,11 @@ function getChatWebviewHtml(webview: vscode.Webview, _extensionUri: vscode.Uri, 
 <html>
 <head><meta charset="UTF-8"><title>UniRoute Chat</title></head>
 <body style="font-family: var(--vscode-font-family); padding: 1rem;">
-  <p>Set <strong>UniRoute: Frontend URL</strong> in Settings to your app URL (e.g. <code>https://uniroute.co</code>).</p>
+  <p>Set <strong>UniRoute: Frontend URL</strong> in Settings to your app URL (only needed for self-hosted). Default: <code>https://uniroute.co</code>.</p>
 </body>
 </html>`;
   }
-  const chatAppUrl = allowed + '/chat';
+  const chatAppUrl = allowed + '/dashboard/chat';
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -215,17 +286,27 @@ function getChatWebviewHtml(webview: vscode.Webview, _extensionUri: vscode.Uri, 
 </head>
 <body>
   <div class="toolbar">
-    <a href="#">UniRoute Chat</a> – runs in your codebase. Use the app for full chat; here you can open it in browser.
+    <span>UniRoute Chat</span> – Not signed in? The panel below shows the login page. After signing in, chat runs in your codebase.
+    <a href="${chatAppUrl}" target="_blank" rel="noopener">Open in browser</a>
   </div>
-  <iframe src="${chatAppUrl}" title="UniRoute Chat"></iframe>
+  <iframe id="uniroute-chat-iframe" src="${chatAppUrl}" title="UniRoute Chat"></iframe>
   <script>
     (function() {
       const vscode = acquireVsCodeApi();
+      const iframeOrigin = new URL('${allowed}').origin;
       window.addEventListener('message', function(e) {
         if (e.data && e.data.type === 'applyEdit' && e.data.edit) {
           vscode.postMessage({ type: 'applyEdit', edit: e.data.edit });
         } else if (e.data && e.data.type === 'rejectEdit') {
           vscode.postMessage({ type: 'rejectEdit' });
+        }
+      });
+      window.addEventListener('message', function(e) {
+        if (e.data && e.data.type === 'uniroute.ideContext') {
+          var iframe = document.getElementById('uniroute-chat-iframe');
+          if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage(e.data, iframeOrigin);
+          }
         }
       });
     })();

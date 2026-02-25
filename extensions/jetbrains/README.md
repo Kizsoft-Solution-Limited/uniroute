@@ -21,6 +21,11 @@ One plugin for **IntelliJ IDEA** and **Android Studio**: UniRoute chat (with acc
 2. Zip is under `build/distributions/UniRoute-0.1.0.zip`
 3. In IDE: **Settings → Plugins → ⚙ → Install Plugin from Disk…** → select the zip.
 
+## Send context so the AI works in your codebase
+
+- **Tools → UniRoute → Send current file/selection to Chat**: Opens the chat in your browser with the current file path and selection in the URL. The chat page reads these and includes them in your next message so the AI can see your code.
+- In the **UniRoute Chat** tool window, use **Send current file/selection to Chat** to do the same (uses the currently active editor file and selection if any).
+
 ## Config
 
 Stored in `UniRouteSettings.State` (and in `uniroute.xml`):

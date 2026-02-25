@@ -18,6 +18,10 @@
         "title": "UniRoute: Open Chat"
       },
       {
+        "command": "uniroute.chat.sendContext",
+        "title": "UniRoute: Send current file/selection to Chat"
+      },
+      {
         "command": "uniroute.tunnel.start",
         "title": "UniRoute: Start Tunnel"
       },
@@ -61,13 +65,13 @@
       "properties": {
         "uniroute.apiUrl": {
           "type": "string",
-          "default": "",
-          "description": "Frontend URL where the chat UI is served (e.g. https://uniroute.co). Required for the chat panel."
+          "default": "https://uniroute.co",
+          "description": "Frontend URL where the chat UI is served. Leave default for UniRoute cloud; set for self-hosted."
         },
         "uniroute.tunnelServerUrl": {
           "type": "string",
-          "default": "",
-          "description": "Tunnel server URL (e.g. https://tunnel.uniroute.co). Used by the CLI."
+          "default": "https://tunnel.uniroute.co",
+          "description": "Tunnel server URL. Leave default for UniRoute cloud; set for self-hosted."
         },
         "uniroute.cliPath": {
           "type": "string",

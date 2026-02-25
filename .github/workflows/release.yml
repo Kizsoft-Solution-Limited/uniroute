@@ -216,15 +216,15 @@ jobs:
             for f in release-assets/UniRoute-*.zip release-assets/uniroute-jetbrains-*.zip; do [ -f "$f" ] && JBZIP="$f" && break; done
             if [ -n "$JBZIP" ]; then
               ROOT=$(pwd)
-              mkdir -p jb-unpack && cd jb-unpack && unzip -q -o "$ROOT/$JBZIP"
-              DIR_TO_ZIP="."
+              mkdir -p jb-unpack && cd jb-unpack && unzip -q -o "$ROOT/$JBZIP" && ls -la && ls -la */
+              PLUGIN_ROOT="."
               if [ ! -f META-INF/plugin.xml ]; then
-                SUBDIR=$(find . -maxdepth 1 -type d ! -name . | head -1)
-                if [ -n "$SUBDIR" ] && [ -f "$SUBDIR/META-INF/plugin.xml" ]; then
-                  DIR_TO_ZIP="$SUBDIR"
-                fi
+                PLUGIN_ROOT=$(find . -type f -path "*/META-INF/plugin.xml" | head -1 | sed 's|/META-INF/plugin.xml||')
+                [ -z "$PLUGIN_ROOT" ] && PLUGIN_ROOT="."
               fi
-              cd "$DIR_TO_ZIP" && zip -r -X -q "$ROOT/release-assets/UniRoute-latest.zip" META-INF lib
+              echo "JetBrains plugin root: $PLUGIN_ROOT"
+              ls -la "$PLUGIN_ROOT/"
+              ( cd "$PLUGIN_ROOT" && zip -r -X -q "$ROOT/release-assets/UniRoute-latest.zip" . )
               cd "$ROOT" && unzip -l release-assets/UniRoute-latest.zip | head -20
               test -f release-assets/UniRoute-latest.zip && ( unzip -l release-assets/UniRoute-latest.zip | grep -q "META-INF/plugin.xml" ) || exit 1
               rm -rf jb-unpack
