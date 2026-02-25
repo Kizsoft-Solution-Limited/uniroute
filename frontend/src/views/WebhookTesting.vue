@@ -44,7 +44,7 @@
             </label>
             <select
               v-model="filters.method"
-              @change="loadRequests"
+              @change="loadRequests(true)"
               class="w-full px-3 py-2 border border-slate-700 rounded-lg bg-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All</option>
@@ -61,7 +61,7 @@
             </label>
             <Input
               v-model="filters.path"
-              @input="debouncedSearch"
+              @blur="loadRequests(true)"
               placeholder="/webhook"
               class="w-full"
             />
@@ -72,7 +72,7 @@
             </label>
             <select
               v-model="filters.statusCode"
-              @change="loadRequests"
+              @change="loadRequests(true)"
               class="w-full px-3 py-2 border border-slate-700 rounded-lg bg-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All</option>
@@ -83,7 +83,7 @@
             </select>
           </div>
           <div class="flex items-end">
-            <Button @click="loadRequests" :loading="loading" class="w-full">
+            <Button @click="loadRequests(true)" :loading="loading" class="w-full">
               <Search class="w-4 h-4 mr-2" />
               Refresh
             </Button>
@@ -171,6 +171,40 @@
             </button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div
+      v-if="selectedTunnel && totalRequests > 0"
+      class="flex flex-wrap items-center justify-between gap-3 py-3 text-sm text-slate-400"
+    >
+      <span>
+        Showing {{ paginationStart }}–{{ paginationEnd }} of {{ totalRequests }}
+      </span>
+      <div class="flex items-center gap-2">
+        <select
+          v-model="requestLimit"
+          @change="loadRequests(true)"
+          class="px-2 py-1.5 border border-slate-700 rounded bg-slate-800 text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option :value="20">20 per page</option>
+          <option :value="50">50 per page</option>
+          <option :value="100">100 per page</option>
+        </select>
+        <button
+          :disabled="!hasPrevPage"
+          @click="goPrevPage"
+          class="px-3 py-1.5 rounded border border-slate-700 bg-slate-800 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors"
+        >
+          Previous
+        </button>
+        <button
+          :disabled="!hasNextPage"
+          @click="goNextPage"
+          class="px-3 py-1.5 rounded border border-slate-700 bg-slate-800 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors"
+        >
+          Next
+        </button>
       </div>
     </div>
 
@@ -313,6 +347,9 @@ const selectedTunnel = ref('')
 const requests = ref<Request[]>([])
 const selectedRequestDetail = ref<RequestDetail | null>(null)
 const allRequestDetails = ref<Map<string, RequestDetail>>(new Map())
+const totalRequests = ref(0)
+const requestLimit = ref(20)
+const requestOffset = ref(0)
 
 const filters = ref({
   method: '',
@@ -413,8 +450,9 @@ const loadTunnels = async () => {
   }
 }
 
-const loadRequests = async () => {
+const loadRequests = async (resetOffset = false) => {
   if (!selectedTunnel.value) return
+  if (resetOffset) requestOffset.value = 0
 
   loading.value = true
   try {
@@ -422,15 +460,35 @@ const loadRequests = async () => {
     const data = await webhookTestingApi.listRequests(tunnelServerUrl, selectedTunnel.value, {
       method: filters.value.method || undefined,
       path: filters.value.path || undefined,
-      limit: 50,
-      offset: 0
+      limit: requestLimit.value,
+      offset: requestOffset.value
     })
     requests.value = data.requests
+    totalRequests.value = data.total ?? data.requests.length
   } catch (error: any) {
     showToast('Failed to load requests', 'error')
   } finally {
     loading.value = false
   }
+}
+
+const paginationStart = computed(() =>
+  totalRequests.value === 0 ? 0 : requestOffset.value + 1
+)
+const paginationEnd = computed(() =>
+  Math.min(requestOffset.value + requests.value.length, totalRequests.value)
+)
+const hasPrevPage = computed(() => requestOffset.value > 0)
+const hasNextPage = computed(() =>
+  requestOffset.value + requests.value.length < totalRequests.value
+)
+const goPrevPage = () => {
+  requestOffset.value = Math.max(0, requestOffset.value - requestLimit.value)
+  loadRequests()
+}
+const goNextPage = () => {
+  requestOffset.value = requestOffset.value + requestLimit.value
+  loadRequests()
 }
 
 const selectRequest = async (request: Request) => {

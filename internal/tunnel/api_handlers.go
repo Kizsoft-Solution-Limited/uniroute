@@ -237,6 +237,12 @@ func (ts *TunnelServer) handleListTunnelRequests(w http.ResponseWriter, r *http.
 		fmt.Sscanf(o, "%d", &offset)
 	}
 
+	total, err := ts.repository.CountTunnelRequests(r.Context(), tunnelID, method, pathFilter)
+	if err != nil {
+		ts.logger.Error().Err(err).Str("tunnel_id", tunnelID).Msg("Failed to count tunnel requests")
+		http.Error(w, "Failed to retrieve requests", http.StatusInternalServerError)
+		return
+	}
 	requests, err := ts.repository.ListTunnelRequests(r.Context(), tunnelID, limit, offset, method, pathFilter)
 	if err != nil {
 		ts.logger.Error().Err(err).Str("tunnel_id", tunnelID).Msg("Failed to list tunnel requests")
@@ -281,6 +287,7 @@ func (ts *TunnelServer) handleListTunnelRequests(w http.ResponseWriter, r *http.
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"requests": summaries,
 		"count":    len(summaries),
+		"total":    total,
 		"limit":    limit,
 		"offset":   offset,
 	})
@@ -397,10 +404,28 @@ func (ts *TunnelServer) handleReplayTunnelRequest(w http.ResponseWriter, r *http
 	}
 
 	ts.tunnelsMu.RLock()
-	tunnel, exists := ts.tunnels[tunnelID]
+	var tunnel *TunnelConnection
+	if t, ok := ts.tunnels[tunnelID]; ok {
+		tunnel = t
+	} else {
+		for _, t := range ts.tunnels {
+			if t.ID == tunnelID {
+				tunnel = t
+				break
+			}
+		}
+	}
+	if tunnel == nil {
+		for _, t := range ts.tunnels {
+			if t.Subdomain == tunnelID {
+				tunnel = t
+				break
+			}
+		}
+	}
 	ts.tunnelsMu.RUnlock()
 
-	if !exists {
+	if tunnel == nil {
 		http.Error(w, "Tunnel not found or not connected", http.StatusNotFound)
 		return
 	}

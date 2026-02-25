@@ -155,7 +155,7 @@ jobs:
           npm ci 2>/dev/null || npm install
           npm run compile
           npx --yes @vscode/vsce package --no-dependencies
-        continue-on-error: true
+          ls -la *.vsix 2>/dev/null || true
 
       - name: Build JetBrains plugin
         uses: gradle/gradle-build-action@v3
@@ -163,7 +163,15 @@ jobs:
           gradle-version: 8.5
           arguments: build
           build-root-directory: extensions/jetbrains
-        continue-on-error: true
+
+      - name: Verify extension build outputs
+        run: |
+          echo "VS Code:"
+          ls -la extensions/vscode/*.vsix 2>/dev/null || true
+          echo "JetBrains:"
+          ls -la extensions/jetbrains/build/distributions/*.zip 2>/dev/null || true
+          test -n "$(find extensions/vscode -maxdepth 1 -name '*.vsix' -print)" || { echo "No .vsix found"; exit 1; }
+          test -n "$(find extensions/jetbrains/build/distributions -maxdepth 1 -name '*.zip' -print 2>/dev/null)" || { echo "No JetBrains .zip found"; exit 1; }
 
       - name: Upload extension artifacts
         uses: actions/upload-artifact@v4
@@ -172,7 +180,7 @@ jobs:
           path: |
             extensions/vscode/*.vsix
             extensions/jetbrains/build/distributions/*.zip
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   release:
     needs: [build, build-extensions]

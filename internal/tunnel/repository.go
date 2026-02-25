@@ -840,6 +840,25 @@ func (r *TunnelRepository) GetTunnelRequest(ctx context.Context, requestID strin
 	return &req, nil
 }
 
+func (r *TunnelRepository) CountTunnelRequests(ctx context.Context, tunnelID string, method, pathFilter string) (int, error) {
+	query := `SELECT COUNT(*) FROM tunnel_requests WHERE tunnel_id = $1`
+	args := []interface{}{tunnelID}
+	argIndex := 2
+	if method != "" {
+		query += fmt.Sprintf(" AND method = $%d", argIndex)
+		args = append(args, method)
+		argIndex++
+	}
+	if pathFilter != "" {
+		query += fmt.Sprintf(" AND path LIKE $%d", argIndex)
+		args = append(args, "%"+pathFilter+"%")
+		argIndex++
+	}
+	var count int
+	err := r.pool.QueryRow(ctx, query, args...).Scan(&count)
+	return count, err
+}
+
 func (r *TunnelRepository) ListTunnelRequests(ctx context.Context, tunnelID string, limit, offset int, method, pathFilter string) ([]*TunnelRequestLog, error) {
 	query := `
 		SELECT id, tunnel_id, request_id, method, path, query_string,

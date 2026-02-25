@@ -97,7 +97,7 @@ export const webhookTestingApi = {
     tunnelServerUrl: string,
     tunnelId: string,
     params: ListRequestsParams = {}
-  ): Promise<{ requests: RequestSummary[]; count: number; limit: number; offset: number }> {
+  ): Promise<{ requests: RequestSummary[]; count: number; total: number; limit: number; offset: number }> {
     const queryParams = new URLSearchParams()
     if (params.method) queryParams.append('method', params.method)
     if (params.path) queryParams.append('path', params.path)
