@@ -260,6 +260,9 @@
             <p class="text-slate-300 text-center">
               Get UniRoute in your IDE: chat, accept/reject AI edits, and tunnels. Download the latest release and install from disk.
             </p>
+            <p v-if="latestReleaseTag" class="text-slate-500 text-center text-sm">
+              Downloads use <strong class="text-slate-400">{{ latestReleaseTag }}</strong> (GitHub redirects “latest” to this release).
+            </p>
             <div class="grid sm:grid-cols-2 gap-4 sm:gap-6">
               <a
                 :href="vsixDownloadUrl"
@@ -316,13 +319,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Monitor, Apple, Server, Laptop, Zap, Code2, Puzzle, Terminal } from 'lucide-vue-next'
 
-const activeTab = ref<'cli' | 'extension'>('cli')
-const releasesUrl = 'https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest'
-const vsixDownloadUrl = 'https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest/download/uniroute-latest.vsix'
-const jetbrainsZipDownloadUrl = 'https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest/download/UniRoute-latest.zip'
+const GITHUB_REPO = 'Kizsoft-Solution-Limited/uniroute'
+const route = useRoute()
+const router = useRouter()
+const activeTab = ref<'cli' | 'extension'>((route.query.tab as string) === 'extension' ? 'extension' : 'cli')
+const latestReleaseTag = ref<string>('')
+const releasesUrl = `https://github.com/${GITHUB_REPO}/releases/latest`
+const vsixDownloadUrl = `https://github.com/${GITHUB_REPO}/releases/latest/download/uniroute-latest.vsix`
+const jetbrainsZipDownloadUrl = `https://github.com/${GITHUB_REPO}/releases/latest/download/UniRoute-latest.zip`
 
 interface Platform {
   os: string
@@ -386,8 +394,30 @@ function trackDownload(platform?: string) {
   }
 }
 
+async function fetchLatestReleaseTag () {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+      headers: { Accept: 'application/vnd.github.v3+json' }
+    })
+    if (res.ok) {
+      const data = await res.json()
+      latestReleaseTag.value = data.tag_name || ''
+    }
+  } catch (_) {}
+}
+
+watch(activeTab, (tab) => {
+  const q = { ...route.query }
+  if (tab === 'cli') delete q.tab
+  else q.tab = tab
+  router.replace({ path: route.path, query: q })
+})
+
 onMounted(() => {
+  const tabFromUrl = route.query.tab as string
+  if (tabFromUrl === 'extension' || tabFromUrl === 'cli') activeTab.value = tabFromUrl
   detectPlatform()
+  fetchLatestReleaseTag()
 })
 </script>
 

@@ -154,15 +154,16 @@ jobs:
           cd extensions/vscode
           npm ci 2>/dev/null || npm install
           npm run compile
-          npx --yes @vscode/vsce package --no-dependencies
+          npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository
           ls -la *.vsix 2>/dev/null || true
 
       - name: Build JetBrains plugin
-        uses: gradle/gradle-build-action@v3
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.5
-          arguments: build
-          build-root-directory: extensions/jetbrains
+      - name: Run Gradle build
+        run: gradle build --no-daemon
+        working-directory: extensions/jetbrains
 
       - name: Verify extension build outputs
         run: |

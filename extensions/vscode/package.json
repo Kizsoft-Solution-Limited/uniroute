@@ -4,6 +4,7 @@
   "description": "UniRoute chat in your codebase (accept/reject AI edits) and tunnels",
   "version": "0.1.0",
   "publisher": "uniroute",
+  "repository": { "type": "git", "url": "https://github.com/Kizsoft-Solution-Limited/uniroute.git" },
   "engines": { "vscode": "^1.74.0" },
   "categories": ["Other", "Machine Learning"],
   "activationEvents": [
