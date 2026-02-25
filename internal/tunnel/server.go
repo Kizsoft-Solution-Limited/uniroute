@@ -3164,7 +3164,8 @@ func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, re
 		contentType := resp.Headers["Content-Type"]
 
 		if strings.Contains(contentType, "text/html") {
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' *;")
+			w.Header().Set("Content-Security-Policy",
+				"default-src 'self'; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' * ws: wss:; frame-src 'self' https:;")
 		}
 
 		if strings.Contains(contentType, "text/html") ||
@@ -3198,6 +3199,30 @@ func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, re
 					return tunnelURL + path
 				}
 				return tunnelURL
+			})
+
+			wsScheme := "ws"
+			if r.TLS != nil {
+				wsScheme = "wss"
+			}
+			wsTunnelURL := fmt.Sprintf("%s://%s", wsScheme, tunnelHost)
+			re3 := regexp.MustCompile(`(wss?://)localhost:\d+(/[^"'\s>]*)?`)
+			bodyStr = re3.ReplaceAllStringFunc(bodyStr, func(match string) string {
+				pathMatch := regexp.MustCompile(`localhost:\d+(.*)`)
+				if pathMatch.MatchString(match) {
+					path := pathMatch.FindStringSubmatch(match)[1]
+					return wsTunnelURL + path
+				}
+				return wsTunnelURL
+			})
+			re4 := regexp.MustCompile(`(wss?://)127\.0\.0\.1:\d+(/[^"'\s>]*)?`)
+			bodyStr = re4.ReplaceAllStringFunc(bodyStr, func(match string) string {
+				pathMatch := regexp.MustCompile(`127\.0\.0\.1:\d+(.*)`)
+				if pathMatch.MatchString(match) {
+					path := pathMatch.FindStringSubmatch(match)[1]
+					return wsTunnelURL + path
+				}
+				return wsTunnelURL
 			})
 
 			if strings.Contains(contentType, "text/html") {
