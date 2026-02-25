@@ -157,6 +157,10 @@ jobs:
           npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository
           ls -la *.vsix 2>/dev/null || true
 
+      - name: Ensure JetBrains LICENSE
+        run: |
+          cp LICENSE extensions/jetbrains/LICENSE
+          cp LICENSE extensions/jetbrains/LICENSE.txt
       - name: Build JetBrains plugin
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -212,18 +216,18 @@ jobs:
             for f in release-assets/UniRoute-*.zip release-assets/uniroute-jetbrains-*.zip; do [ -f "$f" ] && JBZIP="$f" && break; done
             if [ -n "$JBZIP" ]; then
               ROOT=$(pwd)
-              mkdir -p jb-unpack && cd jb-unpack && unzip -q "$ROOT/$JBZIP"
-              if [ -f META-INF/plugin.xml ]; then
-                zip -r -q "$ROOT/release-assets/UniRoute-latest.zip" .
-              else
+              mkdir -p jb-unpack && cd jb-unpack && unzip -q -o "$ROOT/$JBZIP"
+              DIR_TO_ZIP="."
+              if [ ! -f META-INF/plugin.xml ]; then
                 SUBDIR=$(find . -maxdepth 1 -type d ! -name . | head -1)
                 if [ -n "$SUBDIR" ] && [ -f "$SUBDIR/META-INF/plugin.xml" ]; then
-                  cd "$SUBDIR" && zip -r -q "$ROOT/release-assets/UniRoute-latest.zip" . && cd "$ROOT/jb-unpack"
-                else
-                  zip -r -q "$ROOT/release-assets/UniRoute-latest.zip" .
+                  DIR_TO_ZIP="$SUBDIR"
                 fi
               fi
-              cd "$ROOT" && rm -rf jb-unpack
+              cd "$DIR_TO_ZIP" && zip -r -X -q "$ROOT/release-assets/UniRoute-latest.zip" META-INF lib
+              cd "$ROOT" && unzip -l release-assets/UniRoute-latest.zip | head -20
+              test -f release-assets/UniRoute-latest.zip && ( unzip -l release-assets/UniRoute-latest.zip | grep -q "META-INF/plugin.xml" ) || exit 1
+              rm -rf jb-unpack
               rm -f release-assets/uniroute-jetbrains-*.zip
               find release-assets -maxdepth 1 -name 'UniRoute-*.zip' ! -name 'UniRoute-latest.zip' -delete
             fi
