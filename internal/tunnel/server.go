@@ -30,7 +30,7 @@ type TunnelServer struct {
 	tcpConnMu       sync.RWMutex
 	udpConnections  map[string]*UDPConnection // Track active UDP connections
 	udpConnMu       sync.RWMutex
-	portMap         map[int]*TunnelConnection // Map TCP/UDP port -> tunnel (for TCP/TLS/UDP tunnels)
+	portMap         map[int]*TunnelConnection
 	portMapMu       sync.RWMutex
 	nextTCPPort     int          // Next available TCP port for allocation
 	tcpListener     net.Listener // TCP listener for accepting connections
@@ -39,7 +39,7 @@ type TunnelServer struct {
 	udpListenersMu  sync.RWMutex
 	httpServer      *http.Server
 	port            int
-	tcpPortBase     int // Base port for TCP/UDP tunnel allocation (default: 20000)
+	tcpPortBase     int
 	tcpPortRange    int // Number of ports in the range (default: 10000). Use 101 for 20000-20100 to speed up Docker.
 	logger          zerolog.Logger
 	subdomainPrefix string
@@ -55,7 +55,7 @@ type TunnelServer struct {
 	jwtValidator    func(tokenString string) (userID string, err error)                 // JWT validator function (optional)
 	apiKeyValidator func(ctx context.Context, apiKey string) (userID string, err error)
 	apiKeyValidatorWithLimits func(ctx context.Context, apiKey string) (userID string, rateLimitPerMinute, rateLimitPerDay int, err error)
-	baseDomain      string // Base domain for tunnels (e.g., "uniroute.co")
+	baseDomain      string
 	websiteURL      string // Website URL for links (e.g., "https://uniroute.co")
 }
 
@@ -85,9 +85,13 @@ type TunnelConnection struct {
 	CreatedAt    time.Time
 	LastActive   time.Time
 	RequestCount int64
-	handlerReady bool // Flag to indicate handler goroutine is ready
+	handlerReady bool
 	mu           sync.RWMutex
-	writeMu      sync.Mutex // Mutex to serialize WebSocket writes (WebSocket is not thread-safe for concurrent writes)
+	writeMu      sync.Mutex
+	wsProxies      map[string]*websocket.Conn
+	wsProxiesMu    sync.RWMutex
+	wsReadyChans   map[string]chan struct{}
+	wsReadyChansMu sync.RWMutex
 }
 
 func NewTunnelServer(port int, logger zerolog.Logger, allowedOrigins []string) *TunnelServer {
@@ -990,6 +994,8 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			LastActive:   time.Now(),
 			RequestCount: 0,
 			handlerReady: false,
+			wsProxies:    make(map[string]*websocket.Conn),
+			wsReadyChans: make(map[string]chan struct{}),
 		}
 
 		if isAPIKey {
@@ -1258,6 +1264,8 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			LastActive:   time.Now(),
 			RequestCount: 0,
 			handlerReady: false,
+			wsProxies:    make(map[string]*websocket.Conn),
+			wsReadyChans: make(map[string]chan struct{}),
 		}
 
 		if isAPIKey {
@@ -1931,6 +1939,52 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 			if msg.Error != nil {
 				ts.handleUDPError(tunnel, msg.RequestID, msg.Error)
 			}
+		case MsgTypeWSData:
+			if msg.RequestID != "" && len(msg.Data) > 0 {
+				tunnel.wsProxiesMu.RLock()
+				browserConn := tunnel.wsProxies[msg.RequestID]
+				tunnel.wsProxiesMu.RUnlock()
+				if browserConn != nil {
+					mt := websocket.TextMessage
+					if msg.WSFrameType == 2 {
+						mt = websocket.BinaryMessage
+					}
+					_ = browserConn.WriteMessage(mt, msg.Data)
+				}
+			}
+		case MsgTypeWSReady:
+			if msg.RequestID != "" {
+				tunnel.wsReadyChansMu.Lock()
+				ch := tunnel.wsReadyChans[msg.RequestID]
+				delete(tunnel.wsReadyChans, msg.RequestID)
+				tunnel.wsReadyChansMu.Unlock()
+				if ch != nil {
+					select {
+					case ch <- struct{}{}:
+					default:
+					}
+				}
+			}
+		case MsgTypeWSClose:
+			if msg.RequestID != "" {
+				tunnel.wsProxiesMu.Lock()
+				browserConn := tunnel.wsProxies[msg.RequestID]
+				delete(tunnel.wsProxies, msg.RequestID)
+				tunnel.wsProxiesMu.Unlock()
+				tunnel.wsReadyChansMu.Lock()
+				ch := tunnel.wsReadyChans[msg.RequestID]
+				delete(tunnel.wsReadyChans, msg.RequestID)
+				tunnel.wsReadyChansMu.Unlock()
+				if ch != nil {
+					select {
+					case ch <- struct{}{}:
+					default:
+					}
+				}
+				if browserConn != nil {
+					browserConn.Close()
+				}
+			}
 		default:
 			ts.logger.Warn().
 				Str("type", msg.Type).
@@ -1980,8 +2034,6 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		Str("extracted_subdomain", subdomain).
 		Msg("Extracted subdomain from host header")
 
-	// When the host looks like a custom domain (e.g. thecityforbes.com), try custom domain
-	// lookup first so we don't treat "thecityforbes" as a subdomain and then 404.
 	if ts.repository != nil && !isTunnelSubdomainHost(hostname, ts.baseDomain) {
 		tryHosts := []string{hostname}
 		if strings.HasPrefix(strings.ToLower(hostname), "www.") {
@@ -2023,7 +2075,6 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 	}
 
 	if !exists && ts.repository != nil {
-		// Try custom domain lookup (hostname as-is, then without "www." so www.thecityforbes.com finds thecityforbes.com)
 		tryHosts := []string{hostname}
 		if strings.HasPrefix(strings.ToLower(hostname), "www.") {
 			tryHosts = append(tryHosts, hostname[4:])
@@ -2367,122 +2418,120 @@ func (ts *TunnelServer) proxyWebSocket(tunnel *TunnelConnection, w http.Response
 	}
 	defer clientConn.Close()
 
-	ts.logger.Info().
-		Str("path", r.URL.Path).
-		Str("query", r.URL.RawQuery).
-		Str("local_url", tunnel.LocalURL).
-		Msg("WebSocket connection upgraded, connecting to local server")
-
-	localURL, err := url.Parse(tunnel.LocalURL)
-	if err != nil {
-		ts.logger.Error().Err(err).Str("local_url", tunnel.LocalURL).Msg("Failed to parse local URL")
-		clientConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "Invalid tunnel configuration"))
-		return
-	}
-
-	wsScheme := "ws"
-	if localURL.Scheme == "https" {
-		wsScheme = "wss"
-	}
-
+	connID := generateID()
 	wsPath := r.URL.Path
-	if wsPath == "" || wsPath == "/" {
+	if wsPath == "" {
 		wsPath = "/"
 	}
-	wsURL := fmt.Sprintf("%s://%s%s", wsScheme, localURL.Host, wsPath)
-	if r.URL.RawQuery != "" {
-		wsURL += "?" + r.URL.RawQuery
-	}
 
-	dialer := websocket.Dialer{
-		HandshakeTimeout: 10 * time.Second,
-	}
+	tunnel.wsProxiesMu.Lock()
+	tunnel.wsProxies[connID] = clientConn
+	tunnel.wsProxiesMu.Unlock()
+	defer func() {
+		tunnel.wsProxiesMu.Lock()
+		delete(tunnel.wsProxies, connID)
+		tunnel.wsProxiesMu.Unlock()
+	}()
 
-	headers := make(http.Header)
-	for k, v := range r.Header {
-		lowerKey := strings.ToLower(k)
-		if lowerKey == "connection" ||
-			lowerKey == "upgrade" ||
-			lowerKey == "sec-websocket-key" ||
-			lowerKey == "sec-websocket-version" ||
-			lowerKey == "sec-websocket-extensions" ||
-			lowerKey == "sec-websocket-protocol" {
-			continue
+	for i := 0; i < 30; i++ {
+		tunnel.mu.RLock()
+		ready := tunnel.handlerReady
+		tunnel.mu.RUnlock()
+		if ready {
+			break
 		}
-		headers[k] = v
+		time.Sleep(50 * time.Millisecond)
 	}
 
-	headers.Set("Host", localURL.Host)
-
-	if origin := r.Header.Get("Origin"); origin != "" {
-		headers.Set("Origin", origin)
+	tunnel.mu.RLock()
+	wsConn := tunnel.WSConn
+	tunnel.mu.RUnlock()
+	if wsConn == nil {
+		clientConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "Tunnel not ready"))
+		return
 	}
 
-	remoteConn, resp, err := dialer.Dial(wsURL, headers)
+	openMsg := TunnelMessage{
+		Type: MsgTypeWSOpen,
+		Request: &HTTPRequest{
+			RequestID: connID,
+			Method:    "WEBSOCKET",
+			Path:      wsPath,
+			Query:     r.URL.RawQuery,
+		},
+	}
+	tunnel.writeMu.Lock()
+	wsConn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	err = wsConn.WriteJSON(openMsg)
+	wsConn.SetWriteDeadline(time.Time{})
+	tunnel.writeMu.Unlock()
 	if err != nil {
-		ts.logger.Warn().
-			Err(err).
-			Str("ws_url", wsURL).
-			Str("local_url", tunnel.LocalURL).
-			Str("origin", r.Header.Get("Origin")).
-			Int("status_code", func() int {
-				if resp != nil {
-					return resp.StatusCode
-				}
-				return 0
-			}()).
-			Msg("Failed to connect to local server WebSocket - local server may not support WebSocket or may be down")
+		ts.logger.Warn().Err(err).Str("conn_id", connID).Msg("Failed to send ws_open to tunnel client")
+		clientConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, "Tunnel error"))
+		return
+	}
 
-		closeMsg := websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, "Failed to connect to local server")
-		clientConn.WriteMessage(websocket.CloseMessage, closeMsg)
-		clientConn.Close()
+	readyCh := make(chan struct{}, 1)
+	tunnel.wsReadyChansMu.Lock()
+	tunnel.wsReadyChans[connID] = readyCh
+	tunnel.wsReadyChansMu.Unlock()
+	defer func() {
+		tunnel.wsReadyChansMu.Lock()
+		delete(tunnel.wsReadyChans, connID)
+		tunnel.wsReadyChansMu.Unlock()
+	}()
+
+	select {
+	case <-readyCh:
+	case <-time.After(10 * time.Second):
+		ts.logger.Warn().Str("conn_id", connID).Msg("WebSocket proxy: client did not become ready in time")
+		clientConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseAbnormalClosure, "Local WebSocket connect timeout"))
 		return
 	}
 
 	ts.logger.Info().
-		Str("ws_url", wsURL).
-		Str("path", r.URL.Path).
-		Msg("Successfully connected to local server WebSocket, starting proxy")
-	defer remoteConn.Close()
+		Str("conn_id", connID).
+		Str("path", wsPath).
+		Str("query", r.URL.RawQuery).
+		Msg("WebSocket proxy registered, forwarding via tunnel client")
 
-	done := make(chan struct{}, 2)
-
-	go func() {
-		defer func() { done <- struct{}{} }()
-		for {
-			messageType, data, err := clientConn.ReadMessage()
-			if err != nil {
-				if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-					ts.logger.Debug().Err(err).Msg("Client WebSocket read error")
-				}
-				return
+	for {
+		messageType, data, err := clientConn.ReadMessage()
+		if err != nil {
+			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				ts.logger.Debug().Err(err).Str("conn_id", connID).Msg("Browser WebSocket read error")
 			}
-			if err := remoteConn.WriteMessage(messageType, data); err != nil {
-				ts.logger.Debug().Err(err).Msg("Remote WebSocket write error")
-				return
-			}
+			break
 		}
-	}()
-
-	go func() {
-		defer func() { done <- struct{}{} }()
-		for {
-			messageType, data, err := remoteConn.ReadMessage()
-			if err != nil {
-				if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-					ts.logger.Debug().Err(err).Msg("Remote WebSocket read error")
-				}
-				return
-			}
-			if err := clientConn.WriteMessage(messageType, data); err != nil {
-				ts.logger.Debug().Err(err).Msg("Client WebSocket write error")
-				return
-			}
+		frameType := 1
+		if messageType == websocket.BinaryMessage {
+			frameType = 2
 		}
-	}()
+		msg := TunnelMessage{Type: MsgTypeWSData, RequestID: connID, Data: data, WSFrameType: frameType}
+		tunnel.mu.RLock()
+		wsConn := tunnel.WSConn
+		tunnel.mu.RUnlock()
+		if wsConn == nil {
+			break
+		}
+		tunnel.writeMu.Lock()
+		wsConn.SetWriteDeadline(time.Now().Add(30 * time.Second))
+		err = wsConn.WriteJSON(msg)
+		wsConn.SetWriteDeadline(time.Time{})
+		tunnel.writeMu.Unlock()
+		if err != nil {
+			ts.logger.Debug().Err(err).Str("conn_id", connID).Msg("Failed to send ws_data to tunnel client")
+			break
+		}
+	}
 
-	<-done
-	ts.logger.Debug().Str("path", requestPath).Msg("WebSocket proxy connection closed")
+	closeMsg := TunnelMessage{Type: MsgTypeWSClose, RequestID: connID}
+	tunnel.writeMu.Lock()
+	if tunnel.WSConn != nil {
+		_ = tunnel.WSConn.WriteJSON(closeMsg)
+	}
+	tunnel.writeMu.Unlock()
+	ts.logger.Debug().Str("conn_id", connID).Str("path", requestPath).Msg("WebSocket proxy connection closed")
 }
 
 func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request) {
@@ -2744,7 +2793,6 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 		</div>
 	</div>
 	<script>
-		// Auto-refresh every 5 seconds to show updated tunnel counts
 		setTimeout(function() {
 			window.location.reload();
 		}, 5000);
@@ -2765,7 +2813,6 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 	start := time.Now()
 	requestID := generateID()
 
-	// Note: Rate limits are per-tunnel, not per-user or per-API-key.
 	allowed, err := ts.rateLimiter.CheckRateLimit(r.Context(), tunnel.ID)
 	if err != nil {
 		ts.logger.Error().Err(err).Str("tunnel_id", tunnel.ID).Msg("Rate limit check failed")
@@ -3895,7 +3942,6 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 		if parseErr == nil {
 			dbTunnel, err := ts.repository.GetTunnelByID(context.Background(), tunnelUUID)
 			if err == nil && dbTunnel != nil && dbTunnel.Status == "inactive" {
-				// Tunnel was disconnected from dashboard - close connection and remove from memory
 				ts.logger.Info().
 					Str("tunnel_id", tunnelID).
 					Str("subdomain", subdomain).
@@ -4357,7 +4403,6 @@ func validateLocalURL(url string) error {
 	return fmt.Errorf("invalid URL format, must be http://..., https://..., or host:port")
 }
 
-// reservedSubdomains are system subdomains that cannot be used for user tunnels (app, api, www, dashboard, etc.)
 var reservedSubdomains = map[string]bool{
 	"www": true,"tunnel": true, "api": true, "app": true, "admin": true, "dashboard": true, "docs": true,
 }

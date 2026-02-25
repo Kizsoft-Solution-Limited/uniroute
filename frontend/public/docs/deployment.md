@@ -71,6 +71,33 @@ Deploy frontend, backend, and tunnel as three separate Coolify applications from
   - **TCP/TLS/UDP tunnels:** Publish TCP and UDP port ranges in addition to the main port (8080 or 8081). Recommended: **20000-20100** (101 ports) with `TUNNEL_TCP_PORT_RANGE=101`. In Coolify, add **Port** mappings: `20000-20100:20000-20100` (TCP) and `20000-20100:20000-20100/udp` (UDP). Docker publishes TCP only by default, so UDP tunnels need an explicit UDP mapping. Without TCP mapping, `uniroute tcp` public URLs fail with "Connection refused"; without UDP mapping, `uniroute udp` packets never reach the server. Open the range on the host firewall for both: `ufw allow 20000:20100/tcp` and `ufw allow 20000:20100/udp`.
   - **If Coolify’s Port Mappings don’t support UDP:** Coolify’s UI may only expose TCP when you enter a port range. To get UDP as well, deploy the tunnel using the **Docker Compose** build pack and the repo’s `docker-compose.tunnel.yml`, which already includes both TCP and UDP port entries. In the Compose deploy, the file is the source of truth, so both mappings will be applied.
 
+### WebSocket forwarding (Coolify + Caddy)
+
+If the tunnel server sits behind **Caddy** (e.g. in Coolify with Caddy as the reverse proxy), the proxy must forward WebSocket upgrades so that browser WebSockets (e.g. Vite HMR, live reload) work through the tunnel. Otherwise the Go tunnel server receives a normal HTTP request instead of an upgrade and the WebSocket connection fails.
+
+With **Caddy v2**, `reverse_proxy` supports WebSocket by default: it forwards the `Upgrade` and `Connection` headers. Ensure your tunnel server block does not override or strip those. Example for `*.tunnel.example.com`:
+
+```caddy
+*.tunnel.example.com {
+	reverse_proxy tunnel_backend:8080
+}
+```
+
+If you use a custom config that sets headers, avoid removing `Upgrade` or `Connection`. For long-lived HMR connections you can increase timeouts:
+
+```caddy
+*.tunnel.example.com {
+	reverse_proxy tunnel_backend:8080 {
+		transport http {
+			read_timeout 86400s
+			write_timeout 86400s
+		}
+	}
+}
+```
+
+Replace `tunnel_backend:8080` with your tunnel service name and port (e.g. the Coolify-generated host/port for the tunnel app).
+
 ### Persisting tunnel state when the tunnel client runs in Coolify
 
 If you run the **tunnel client** (CLI) inside Coolify (e.g. a service that runs `uniroute tunnel` to expose an app), redeploys clear the in-memory connection on the tunnel server. The client cannot “keep” a WebSocket across a restart, but it can **resume the same tunnel** after restart by loading saved state.

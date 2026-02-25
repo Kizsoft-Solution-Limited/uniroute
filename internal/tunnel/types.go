@@ -2,7 +2,6 @@ package tunnel
 
 import "time"
 
-// Tunnel protocols
 const (
 	ProtocolHTTP = "http"
 	ProtocolTCP  = "tcp"
@@ -10,7 +9,6 @@ const (
 	ProtocolUDP  = "udp"
 )
 
-// Message types for WebSocket protocol
 const (
 	MsgTypeInit          = "init"
 	MsgTypeTunnelCreated = "tunnel_created"
@@ -27,6 +25,10 @@ const (
 	MsgTypeUDPError      = "udp_error"
 	MsgTypeUpdateTunnel  = "update_tunnel"
 	MsgTypeTunnelStatus  = "tunnel_status"
+	MsgTypeWSOpen        = "ws_open"
+	MsgTypeWSReady       = "ws_ready"
+	MsgTypeWSData        = "ws_data"
+	MsgTypeWSClose       = "ws_close"
 )
 
 type InitMessage struct {
@@ -52,12 +54,13 @@ type InitResponse struct {
 }
 
 type TunnelMessage struct {
-	Type      string        `json:"type"`
-	RequestID string        `json:"request_id,omitempty"`
-	Request   *HTTPRequest  `json:"request,omitempty"`
-	Response  *HTTPResponse `json:"response,omitempty"`
-	Error     *HTTPError    `json:"error,omitempty"`
-	Data     []byte       `json:"data,omitempty"` // For TCP/TLS raw data
+	Type        string        `json:"type"`
+	RequestID   string        `json:"request_id,omitempty"`
+	Request     *HTTPRequest  `json:"request,omitempty"`
+	Response    *HTTPResponse `json:"response,omitempty"`
+	Error       *HTTPError    `json:"error,omitempty"`
+	Data        []byte        `json:"data,omitempty"`         // For TCP/TLS/WS raw data
+	WSFrameType int           `json:"ws_frame_type,omitempty"` // For ws_data: 1=text, 2=binary
 }
 
 type HTTPRequest struct {

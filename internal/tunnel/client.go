@@ -65,8 +65,10 @@ type TunnelClient struct {
 	statusChangeHandlerMu sync.RWMutex                  // Mutex for status change handler
 	onAuthInvalid         func()                        // Optional: called when server rejects token (so CLI can clear saved auth)
 	onAuthInvalidMu       sync.RWMutex                  // Mutex for onAuthInvalid
-	writeMu               sync.Mutex                    // Mutex to serialize WebSocket writes (WebSocket is not thread-safe for concurrent writes)
+	writeMu               sync.Mutex
 	lastNotifiedStatus    string                        // Last status that was notified to prevent duplicate notifications
+	wsProxies             map[string]*websocket.Conn
+	wsProxiesMu           sync.RWMutex
 }
 
 func NewTunnelClient(serverURL, localURL string, logger zerolog.Logger) *TunnelClient {
@@ -92,6 +94,7 @@ func NewTunnelClientWithOptions(serverURL, localURL, protocol, host string, logg
 		logger:         logger,
 		requestQueue:   make([]*HTTPRequest, 0),
 		tcpConnections: make(map[string]net.Conn),
+		wsProxies:      make(map[string]*websocket.Conn),
 		persistence:    NewTunnelPersistence(logger),
 	}
 
@@ -510,12 +513,10 @@ func (tc *TunnelClient) handleMessages() {
 
 		switch msg.Type {
 		case MsgTypeHTTPRequest:
-			// Forward HTTP request to local server
 			if msg.Request != nil {
 				if tc.IsConnected() {
 					go tc.forwardToLocal(msg.Request)
 				} else {
-					// Queue request if disconnected
 					tc.queueMu.Lock()
 					tc.requestQueue = append(tc.requestQueue, msg.Request)
 					tc.queueMu.Unlock()
@@ -545,10 +546,135 @@ func (tc *TunnelClient) handleMessages() {
 			tc.logger.Debug().Msg("Received pong")
 		case MsgTypeTunnelStatus:
 			tc.logger.Debug().Msg("Received tunnel status update")
+		case MsgTypeWSOpen:
+			if msg.Request != nil && msg.Request.RequestID != "" {
+				go tc.handleWSOpen(msg.Request)
+			}
+		case MsgTypeWSData:
+			if msg.RequestID != "" && len(msg.Data) > 0 {
+				tc.wsProxiesMu.RLock()
+				localConn := tc.wsProxies[msg.RequestID]
+				tc.wsProxiesMu.RUnlock()
+				if localConn != nil {
+					mt := websocket.TextMessage
+					if msg.WSFrameType == 2 {
+						mt = websocket.BinaryMessage
+					}
+					_ = localConn.WriteMessage(mt, msg.Data)
+				}
+			}
+		case MsgTypeWSClose:
+			if msg.RequestID != "" {
+				tc.wsProxiesMu.Lock()
+				localConn := tc.wsProxies[msg.RequestID]
+				delete(tc.wsProxies, msg.RequestID)
+				tc.wsProxiesMu.Unlock()
+				if localConn != nil {
+					localConn.Close()
+				}
+			}
 		default:
 			tc.logger.Warn().Str("type", msg.Type).Msg("Unknown message type")
 		}
 	}
+}
+
+func (tc *TunnelClient) handleWSOpen(req *HTTPRequest) {
+	if req == nil || req.RequestID == "" {
+		return
+	}
+	connID := req.RequestID
+	path := req.Path
+	if path == "" {
+		path = "/"
+	}
+	baseURL, err := url.Parse(tc.localURL)
+	if err != nil {
+		tc.logger.Warn().Err(err).Str("conn_id", connID).Msg("WS open: invalid local URL")
+		tc.sendWSClose(connID)
+		return
+	}
+	wsScheme := "ws"
+	if baseURL.Scheme == "https" {
+		wsScheme = "wss"
+	}
+	wsURL := fmt.Sprintf("%s://%s%s", wsScheme, baseURL.Host, path)
+	if req.Query != "" {
+		wsURL += "?" + req.Query
+	}
+	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
+	localConn, _, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		tc.logger.Warn().Err(err).Str("conn_id", connID).Str("ws_url", wsURL).Msg("WS open: failed to dial local WebSocket")
+		tc.sendWSClose(connID)
+		return
+	}
+	tc.wsProxiesMu.Lock()
+	tc.wsProxies[connID] = localConn
+	tc.wsProxiesMu.Unlock()
+
+	tc.mu.RLock()
+	conn := tc.wsConn
+	tc.mu.RUnlock()
+	if conn != nil {
+		readyMsg := TunnelMessage{Type: MsgTypeWSReady, RequestID: connID}
+		tc.writeMu.Lock()
+		_ = conn.WriteJSON(readyMsg)
+		tc.writeMu.Unlock()
+	}
+
+	defer func() {
+		tc.wsProxiesMu.Lock()
+		delete(tc.wsProxies, connID)
+		tc.wsProxiesMu.Unlock()
+		localConn.Close()
+	}()
+
+	for {
+		mt, data, err := localConn.ReadMessage()
+		if err != nil {
+			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				tc.logger.Debug().Err(err).Str("conn_id", connID).Msg("WS proxy: local read error")
+			}
+			break
+		}
+		frameType := 1
+		if mt == websocket.BinaryMessage {
+			frameType = 2
+		}
+		msg := TunnelMessage{Type: MsgTypeWSData, RequestID: connID, Data: data, WSFrameType: frameType}
+		tc.mu.RLock()
+		conn := tc.wsConn
+		tc.mu.RUnlock()
+		if conn == nil {
+			break
+		}
+		tc.writeMu.Lock()
+		if err := conn.WriteJSON(msg); err != nil {
+			tc.writeMu.Unlock()
+			break
+		}
+		tc.writeMu.Unlock()
+	}
+	tc.sendWSClose(connID)
+}
+
+func (tc *TunnelClient) sendWSClose(connID string) {
+	tc.mu.RLock()
+	conn := tc.wsConn
+	tc.mu.RUnlock()
+	if conn == nil {
+		return
+	}
+	tc.writeMu.Lock()
+	defer tc.writeMu.Unlock()
+	tc.mu.RLock()
+	conn = tc.wsConn
+	tc.mu.RUnlock()
+	if conn == nil {
+		return
+	}
+	_ = conn.WriteJSON(TunnelMessage{Type: MsgTypeWSClose, RequestID: connID})
 }
 
 func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
@@ -590,23 +716,18 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		return
 	}
 
-	// Extract host:port from base URL (e.g., "localhost:3002")
-	// Rewrites Host header to match upstream server
 	localHost := baseURL.Host
 	if localHost == "" {
-		// Fallback: extract from URL string
 		if strings.HasPrefix(tc.localURL, "http://") {
 			localHost = strings.TrimPrefix(tc.localURL, "http://")
 		} else if strings.HasPrefix(tc.localURL, "https://") {
 			localHost = strings.TrimPrefix(tc.localURL, "https://")
 		}
-		// Remove path if present
 		if idx := strings.Index(localHost, "/"); idx != -1 {
 			localHost = localHost[:idx]
 		}
 	}
 
-	// Copy headers, but rewrite Host header to match local server
 	originalHost := ""
 	for k, v := range req.Headers {
 		if strings.EqualFold(k, "Host") {
@@ -620,7 +741,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		}
 	}
 
-	// Rewrite Host header to match local server
 	if localHost != "" {
 		httpReq.Header.Set("Host", localHost)
 		httpReq.Host = localHost
@@ -637,14 +757,10 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 			Msg("Cannot rewrite Host header - empty host after parsing")
 	}
 
-	// Preserve original host in X-Forwarded-Host header for reference
-	// Some servers use this for validation or logging
 	if originalHost != "" {
 		httpReq.Header.Set("X-Forwarded-Host", originalHost)
 	}
 
-	// Forward to local server
-	// Log detailed request information for debugging
 	tc.logger.Debug().
 		Str("request_id", req.RequestID).
 		Str("base_local_url", tc.localURL).
@@ -688,7 +804,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 			}()).
 			Msg("Failed to forward request to local server - check if local server is running on correct port")
 
-		// Notify request handler of error (502 Bad Gateway)
 		latency := time.Since(startTime)
 		tc.requestHandlerMu.RLock()
 		handler := tc.requestHandler
@@ -710,7 +825,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 	}
 	defer resp.Body.Close()
 
-	// Log at debug level to avoid cluttering CLI output
 	tc.logger.Debug().
 		Str("request_id", req.RequestID).
 		Str("local_url", localURL).
@@ -719,7 +833,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		Int("header_count", len(resp.Header)).
 		Msg("Received response from local server")
 
-	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		tc.logger.Error().Err(err).Str("request_id", req.RequestID).Msg("Failed to read response body")
@@ -727,7 +840,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		return
 	}
 
-	// Build response
 	response := &HTTPResponse{
 		RequestID: req.RequestID,
 		Status:    resp.StatusCode,
@@ -735,7 +847,6 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		Body:      body,
 	}
 
-	// Copy headers
 	for k, v := range resp.Header {
 		if len(v) > 0 {
 			response.Headers[k] = v[0]
@@ -805,12 +916,10 @@ func (tc *TunnelClient) forwardToLocal(req *HTTPRequest) {
 		}
 	}
 
-	// Send response back through tunnel
 	tc.sendResponse(response)
 
 	latency := time.Since(startTime)
 
-	// Notify request handler if set (show all requests including static assets)
 	tc.requestHandlerMu.RLock()
 	handler := tc.requestHandler
 	tc.requestHandlerMu.RUnlock()
@@ -853,11 +962,9 @@ func (tc *TunnelClient) sendResponse(resp *HTTPResponse) {
 		return
 	}
 
-	// Serialize writes to prevent concurrent write panics
 	tc.writeMu.Lock()
 	defer tc.writeMu.Unlock()
 
-	// Re-check connection after acquiring lock (it might have been closed)
 	tc.mu.RLock()
 	conn = tc.wsConn
 	tc.mu.RUnlock()
@@ -891,11 +998,9 @@ func (tc *TunnelClient) sendError(requestID, errorType, message string) {
 		return
 	}
 
-	// Serialize writes to prevent concurrent write panics
 	tc.writeMu.Lock()
 	defer tc.writeMu.Unlock()
 
-	// Re-check connection after acquiring lock (it might have been closed)
 	tc.mu.RLock()
 	conn = tc.wsConn
 	tc.mu.RUnlock()
@@ -917,7 +1022,6 @@ func (tc *TunnelClient) heartbeat() {
 	pongCheckTicker := time.NewTicker(5 * time.Second)
 	defer pongCheckTicker.Stop()
 
-	// Initialize last pong time
 	tc.pongMu.Lock()
 	tc.lastPongTime = time.Now()
 	tc.pongMu.Unlock()
@@ -1016,7 +1120,6 @@ func (tc *TunnelClient) reconnect() {
 	shouldExit := tc.shouldExit
 	tc.mu.RUnlock()
 
-	// If tunnel was disconnected from dashboard, don't reconnect - exit instead
 	if shouldExit {
 		tc.logger.Info().Msg("Tunnel was disconnected from dashboard - not reconnecting")
 		return
@@ -1030,7 +1133,6 @@ func (tc *TunnelClient) reconnect() {
 		return // Already reconnecting in another goroutine
 	}
 
-	// Mark as reconnecting
 	tc.mu.Lock()
 	tc.isReconnecting = true
 	tc.mu.Unlock()
@@ -1083,7 +1185,6 @@ func (tc *TunnelClient) reconnect() {
 			Dur("next_attempt", backoff).
 			Msg("Reconnection failed, will retry")
 
-		// Exponential backoff
 		backoff *= 2
 		if backoff > maxBackoff {
 			backoff = maxBackoff
@@ -1109,11 +1210,8 @@ func (tc *TunnelClient) processQueuedRequests() {
 func (tc *TunnelClient) Close() error {
 	tc.mu.Lock()
 
-	// Mark as disconnected immediately to stop goroutines
 	tc.isConnected = false
 	tc.isReconnecting = false
-
-	// Notify status change immediately
 	tc.notifyStatusChange()
 
 	wsConn := tc.wsConn
@@ -1121,35 +1219,26 @@ func (tc *TunnelClient) Close() error {
 	tc.mu.Unlock()
 
 	if wsConn != nil {
-		// Try to send close frame with timeout to prevent hanging
-		// Use a channel to make the write non-blocking
 		done := make(chan struct{}, 1)
 		go func() {
 			defer func() {
-				// Recover from any panic during close
 				if r := recover(); r != nil {
 					tc.logger.Debug().Interface("panic", r).Msg("Recovered from panic during close")
 				}
 				done <- struct{}{}
 			}()
 
-			// Set a short write deadline to prevent hanging
 			wsConn.SetWriteDeadline(time.Now().Add(500 * time.Millisecond))
 			closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Client shutting down")
 			wsConn.WriteMessage(websocket.CloseMessage, closeMsg)
 		}()
 
-		// Wait for write with timeout (very short - don't block shutdown)
 		select {
 		case <-done:
-			// Write completed (success or error - doesn't matter)
 		case <-time.After(1 * time.Second):
-			// Timeout - just close the connection immediately
 			tc.logger.Debug().Msg("Close message write timed out, closing connection immediately")
 		}
 
-		// Close the connection immediately regardless of write result
-		// Don't wait - just close it
 		wsConn.Close()
 	}
 	return nil
@@ -1290,7 +1379,6 @@ func (tc *TunnelClient) handleTCPData(connectionID string, data []byte, isTLS bo
 }
 
 func (tc *TunnelClient) establishTCPConnection(connectionID string, useTLS bool) error {
-	// Parse local URL (format: host:port for TCP/TLS)
 	localAddr := tc.localURL
 	if strings.HasPrefix(localAddr, "http://") {
 		localAddr = strings.TrimPrefix(localAddr, "http://")
@@ -1313,7 +1401,6 @@ func (tc *TunnelClient) establishTCPConnection(connectionID string, useTLS bool)
 		Bool("tls", useTLS).
 		Msg("Established TCP connection to local service")
 
-	// Start reading from local connection and forwarding to tunnel
 	go tc.forwardTCPToTunnel(connectionID, conn, useTLS)
 
 	return nil
@@ -1332,13 +1419,11 @@ func (tc *TunnelClient) forwardTCPToTunnel(connectionID string, conn net.Conn, i
 					Str("connection_id", connectionID).
 					Msg("TCP connection read error")
 			}
-			// Send close message to tunnel
 			tc.sendTCPError(connectionID, "connection_closed", "Local connection closed")
 			return
 		}
 
 		if n > 0 {
-			// Forward data to tunnel
 			msgType := MsgTypeTCPData
 			if isTLS {
 				msgType = MsgTypeTLSData
@@ -1361,9 +1446,7 @@ func (tc *TunnelClient) forwardTCPToTunnel(connectionID string, conn net.Conn, i
 				return
 			}
 
-			// Serialize writes to prevent concurrent write panics
 			tc.writeMu.Lock()
-			// Re-check connection after acquiring lock
 			tc.mu.RLock()
 			wsConn = tc.wsConn
 			tc.mu.RUnlock()
@@ -1421,11 +1504,9 @@ func (tc *TunnelClient) sendTCPError(connectionID, errorType, message string) {
 		return
 	}
 
-	// Serialize writes to prevent concurrent write panics
 	tc.writeMu.Lock()
 	defer tc.writeMu.Unlock()
 
-	// Re-check connection after acquiring lock (it might have been closed)
 	tc.mu.RLock()
 	conn = tc.wsConn
 	tc.mu.RUnlock()
@@ -1460,10 +1541,8 @@ func (tc *TunnelClient) closeTCPConnection(connectionID string) {
 }
 
 func (tc *TunnelClient) handleUDPData(connectionID string, data []byte) {
-	// Ensure UDP connection is established
 	tc.udpConnMu.Lock()
 	if tc.udpConn == nil {
-		// Parse local URL (format: host:port for UDP)
 		localAddr := tc.localURL
 		if strings.HasPrefix(localAddr, "udp://") {
 			localAddr = strings.TrimPrefix(localAddr, "udp://")
@@ -1473,7 +1552,6 @@ func (tc *TunnelClient) handleUDPData(connectionID string, data []byte) {
 			localAddr = strings.TrimPrefix(localAddr, "https://")
 		}
 
-		// Resolve UDP address
 		addr, err := net.ResolveUDPAddr("udp", localAddr)
 		if err != nil {
 			tc.logger.Error().
@@ -1485,7 +1563,6 @@ func (tc *TunnelClient) handleUDPData(connectionID string, data []byte) {
 			return
 		}
 
-		// Create UDP connection (we'll use a single connection for all packets)
 		conn, err := net.DialUDP("udp", nil, addr)
 		if err != nil {
 			tc.logger.Error().
@@ -1502,13 +1579,11 @@ func (tc *TunnelClient) handleUDPData(connectionID string, data []byte) {
 			Str("local_addr", localAddr).
 			Msg("Established UDP connection to local service")
 
-		// Start reading from local UDP connection and forwarding to tunnel
 		go tc.forwardUDPToTunnel()
 	}
 	udpConn := tc.udpConn
 	tc.udpConnMu.Unlock()
 
-	// Write data to local UDP connection
 	_, err := udpConn.Write(data)
 	if err != nil {
 		tc.logger.Error().
@@ -1535,16 +1610,11 @@ func (tc *TunnelClient) forwardUDPToTunnel() {
 			tc.logger.Debug().
 				Err(err).
 				Msg("UDP connection read error")
-			// UDP is connectionless, so we don't close on read error
-			// Just log and continue
 			continue
 		}
 
 		if n > 0 {
-			// Generate connection ID for this packet
 			connectionID := fmt.Sprintf("udp-%d", time.Now().UnixNano())
-
-			// Forward data to tunnel
 			msg := TunnelMessage{
 				Type:      MsgTypeUDPData,
 				RequestID: connectionID,
@@ -1556,9 +1626,7 @@ func (tc *TunnelClient) forwardUDPToTunnel() {
 			tc.mu.RUnlock()
 
 			if wsConn != nil {
-				// Serialize writes to prevent concurrent write panics
 				tc.writeMu.Lock()
-				// Re-check connection after acquiring lock
 				tc.mu.RLock()
 				wsConn = tc.wsConn
 				tc.mu.RUnlock()
@@ -1608,11 +1676,9 @@ func (tc *TunnelClient) sendUDPError(connectionID, errorType, message string) {
 		return
 	}
 
-	// Serialize writes to prevent concurrent write panics
 	tc.writeMu.Lock()
 	defer tc.writeMu.Unlock()
 
-	// Re-check connection after acquiring lock (it might have been closed)
 	tc.mu.RLock()
 	conn = tc.wsConn
 	tc.mu.RUnlock()
