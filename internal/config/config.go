@@ -51,6 +51,7 @@ type Config struct {
 	// vLLM (OpenAI-compatible local server)
 	VLLMBaseURL string
 	VLLMAPIKey  string
+	MCPServers []string
 }
 
 func Load() *Config {
@@ -96,7 +97,7 @@ func Load() *Config {
 		XOAuthClientSecret:       getEnv("X_OAUTH_CLIENT_SECRET", ""),
 		GithubOAuthClientID:      getEnv("GITHUB_OAUTH_CLIENT_ID", ""),
 		GithubOAuthClientSecret:  getEnv("GITHUB_OAUTH_CLIENT_SECRET", ""),
-		BackendURL:               getEnv("BACKEND_URL", ""), // Empty = auto-detect from PORT
+		BackendURL:               getEnv("BACKEND_URL", ""),
 		CORSOrigins:              parseCORSOrigins(getEnv("CORS_ORIGINS", "")),
 		TunnelOrigins:            parseCORSOrigins(getEnv("TUNNEL_ORIGINS", "")),
 		SeedAdminEmail:           getEnv("SEED_ADMIN_EMAIL", "adikekizinho@gmail.com"),
@@ -104,7 +105,25 @@ func Load() *Config {
 		SeedAdminPassword:        getEnv("SEED_ADMIN_PASSWORD", ""),
 		VLLMBaseURL:              getEnv("VLLM_BASE_URL", ""),
 		VLLMAPIKey:               getEnv("VLLM_API_KEY", ""),
+		MCPServers:               parseMCPServers(getEnv("MCP_SERVERS", "")),
 	}
+}
+
+func parseMCPServers(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]bool)
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" && !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func getEnv(key, defaultValue string) string {

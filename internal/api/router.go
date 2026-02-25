@@ -7,6 +7,7 @@ import (
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/api/middleware"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/email"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/gateway"
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/mcp"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/oauth"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/providers"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
@@ -31,9 +32,12 @@ func SetupRouter(
 	frontendURL string,
 	oauthService *oauth.OAuthService,
 	corsOrigins []string,
+	mcpServers []string,
 ) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
+	mcpService := mcp.NewService(mcpServers)
+	mcpHandler := handlers.NewMCPHandler(mcpService, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 	r.Use(middleware.CORSMiddleware(corsOrigins))
 	r.Use(middleware.SecurityHeadersMiddleware())
 	if len(ipWhitelist) > 0 {
@@ -150,9 +154,14 @@ func SetupRouter(
 
 		chatHandler := handlers.NewChatHandler(router, requestRepo, convRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 		chatHandler.SetJWTService(jwtService)
+		chatHandler.SetMCPService(mcpService)
 		authProtected.POST("/chat", chatHandler.HandleChat)
-		authProtected.POST("/chat/stream", chatHandler.HandleChatStream) // SSE streaming endpoint
+		authProtected.POST("/chat/stream", chatHandler.HandleChatStream)
 		authProtected.GET("/chat/ws", chatHandler.HandleChatWebSocket)
+
+		authProtected.GET("/mcp/servers", mcpHandler.ListServers)
+		authProtected.GET("/mcp/tools", mcpHandler.ListTools)
+		authProtected.POST("/mcp/call", mcpHandler.CallTool)
 
 		authProviderHandler := handlers.NewProviderHandler(router, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
 		authProtected.GET("/providers", authProviderHandler.ListProviders)
@@ -234,9 +243,14 @@ func SetupRouter(
 	}
 
 	chatHandler := handlers.NewChatHandler(router, requestRepo, nil, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())
+	chatHandler.SetMCPService(mcpService)
 	api.POST("/chat", chatHandler.HandleChat)
 	api.POST("/chat/stream", chatHandler.HandleChatStream)
 	api.GET("/chat/ws", chatHandler.HandleChatWebSocket)
+
+	api.GET("/mcp/servers", mcpHandler.ListServers)
+	api.GET("/mcp/tools", mcpHandler.ListTools)
+	api.POST("/mcp/call", mcpHandler.CallTool)
 
 	if requestRepo != nil {
 		analyticsHandler := handlers.NewAnalyticsHandler(requestRepo, zerolog.New(gin.DefaultWriter).With().Timestamp().Logger())

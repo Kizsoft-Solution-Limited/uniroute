@@ -294,6 +294,35 @@
                     {{ message.metadata.latency }}ms
                   </span>
                 </div>
+
+                <!-- Accept / Reject suggested edit (IDE or dashboard) -->
+                <div
+                  v-if="message.role === 'assistant' && message.suggestedEdit"
+                  class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600 flex items-center gap-2"
+                >
+                  <span class="text-xs text-gray-600 dark:text-gray-400">Suggested edit: {{ message.suggestedEdit.file }}</span>
+                  <button
+                    type="button"
+                    @click="handleAcceptEdit(message.suggestedEdit!, index)"
+                    class="px-2 py-1 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    @click="handleCopyEditAsJson(message.suggestedEdit!)"
+                    class="px-2 py-1 text-xs font-medium rounded bg-gray-400 text-gray-100 hover:bg-gray-500 dark:bg-gray-600 dark:hover:bg-gray-500"
+                  >
+                    Copy as JSON
+                  </button>
+                  <button
+                    type="button"
+                    @click="handleRejectEdit(index)"
+                    class="px-2 py-1 text-xs font-medium rounded bg-gray-500 text-gray-200 hover:bg-gray-600"
+                  >
+                    Reject
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -615,7 +644,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import Card from '@/components/ui/Card.vue'
 import { MessageSquare, Send, Settings, Image as ImageIcon, X } from 'lucide-vue-next'
-import { chatApi, type Message, type ChatResponse, type ContentPart, type StreamChunk } from '@/services/api/chat'
+import { chatApi, type Message, type ChatResponse, type ContentPart, type StreamChunk, type SuggestedEdit } from '@/services/api/chat'
 import { conversationsApi, type Conversation } from '@/services/api/conversations'
 import { providersApi, type ProviderInfo } from '@/services/api/providers'
 import { useToast } from '@/composables/useToast'
@@ -642,6 +671,7 @@ interface ChatMessage extends Message {
     provider?: string
     latency?: number
   }
+  suggestedEdit?: SuggestedEdit
 }
 
 const messages = ref<ChatMessage[]>([])
@@ -830,6 +860,48 @@ const scrollToBottomAfterUpdate = () => {
   })
 }
 
+function handleAcceptEdit(edit: SuggestedEdit, messageIndex: number) {
+  const payload = { file: edit.file, range: edit.range, newText: edit.new_text }
+  try {
+    if (typeof window !== 'undefined' && window.parent !== window) {
+      window.parent.postMessage({ type: 'applyEdit', edit: payload }, '*')
+      showToast('Edit sent to IDE. If you\'re in the UniRoute extension, it will be applied.', 'success')
+    } else {
+      const json = editJsonForClipboard(edit)
+      navigator.clipboard.writeText(json).then(() => {
+        showToast('Edit JSON copied. In JetBrains: UniRoute → Apply suggested edit from clipboard.', 'success')
+      }).catch(() => {
+        showToast('Edit: ' + edit.file + ' – open in IDE or use Copy as JSON.', 'info')
+      })
+    }
+  } catch (_) {
+    showToast('Could not send edit to IDE. Copy from the message or use the extension.', 'info')
+  }
+  messages.value[messageIndex] = { ...messages.value[messageIndex], suggestedEdit: undefined }
+}
+
+function handleRejectEdit(messageIndex: number) {
+  messages.value[messageIndex] = { ...messages.value[messageIndex], suggestedEdit: undefined }
+  showToast('Edit rejected', 'info')
+}
+
+function editJsonForClipboard(edit: SuggestedEdit): string {
+  return JSON.stringify({
+    file: edit.file,
+    range: edit.range,
+    new_text: edit.new_text
+  })
+}
+
+function handleCopyEditAsJson(edit: SuggestedEdit) {
+  const json = editJsonForClipboard(edit)
+  navigator.clipboard.writeText(json).then(() => {
+    showToast('Edit JSON copied. In JetBrains: UniRoute → Apply suggested edit from clipboard.', 'success')
+  }).catch(() => {
+    showToast('Failed to copy', 'error')
+  })
+}
+
 const handleSend = async () => {
   const textToSend = inputMessage.value.trim()
   if ((!textToSend && attachedImages.value.length === 0 && attachedAudios.value.length === 0) || loading.value) return
@@ -904,7 +976,7 @@ const handleSend = async () => {
       .filter(m => m.role !== 'system' || messages.value.indexOf(m) === 0)
       .map(m => ({ 
         role: m.role, 
-        content: m.content // Can be string or ContentPart[]
+        content: m.content
       }))
 
     const chatRequestData: any = {
@@ -934,6 +1006,12 @@ const handleSend = async () => {
         (chunk) => {
           if (chunk.content) {
             assistantMessage.content += chunk.content
+            messages.value[assistantMessageIndex] = { ...assistantMessage }
+            scrollToBottomAfterUpdate()
+          }
+
+          if (chunk.suggested_edit) {
+            assistantMessage.suggestedEdit = chunk.suggested_edit
             messages.value[assistantMessageIndex] = { ...assistantMessage }
             scrollToBottomAfterUpdate()
           }
@@ -1115,7 +1193,6 @@ const sendMessage = (message: string) => {
 
 const clearChat = () => {
   if (confirm('Are you sure you want to clear the chat history?')) {
-    // Clean up preview URLs (only revoke blob URLs)
     attachedImages.value.forEach(img => {
       if (img.preview.startsWith('blob:')) {
         URL.revokeObjectURL(img.preview)
@@ -1360,9 +1437,7 @@ onMounted(async () => {
   try {
     const res = await providersApi.list()
     if (res.providers?.length) apiProviders.value = res.providers
-  } catch {
-    // fallback to static model list
-  }
+  } catch {}
   await loadConversations()
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     speechSynthesis.value = window.speechSynthesis

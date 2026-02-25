@@ -343,6 +343,7 @@ func main() {
 		cfg.FrontendURL,    // Frontend URL
 		oauthService,       // OAuth service
 		cfg.CORSOrigins,
+		cfg.MCPServers,     // MCP server URLs (optional)
 	)
 
 	addr := fmt.Sprintf(":%s", cfg.Port)

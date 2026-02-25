@@ -51,13 +51,22 @@ type Usage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
+// SuggestedEdit is a structured code edit for IDE accept/reject.
+type SuggestedEdit struct {
+	File    string `json:"file"`
+	Range   [4]int `json:"range"` // startLine, startCol, endLine, endCol (0-based)
+	OldText string `json:"old_text,omitempty"`
+	NewText string `json:"new_text"`
+}
+
 type StreamChunk struct {
-	ID       string `json:"id,omitempty"`
-	Content  string `json:"content"`
-	Done     bool   `json:"done"`
-	Usage    *Usage `json:"usage,omitempty"`
-	Error    string `json:"error,omitempty"`
-	Provider string `json:"provider,omitempty"`
+	ID             string          `json:"id,omitempty"`
+	Content        string          `json:"content"`
+	Done           bool            `json:"done"`
+	Usage          *Usage          `json:"usage,omitempty"`
+	Error          string          `json:"error,omitempty"`
+	Provider       string          `json:"provider,omitempty"`
+	SuggestedEdit  *SuggestedEdit  `json:"suggested_edit,omitempty"`
 }
 
 type StreamingProvider interface {

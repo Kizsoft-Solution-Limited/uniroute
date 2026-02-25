@@ -3,17 +3,13 @@ import { apiClient } from './client'
 export interface ContentPart {
   type: 'text' | 'image_url' | 'audio_url'
   text?: string
-  image_url?: {
-    url: string // Can be data URL (base64) or HTTP URL
-  }
-  audio_url?: {
-    url: string // Can be data URL (base64) or HTTP URL
-  }
+  image_url?: { url: string }
+  audio_url?: { url: string }
 }
 
 export interface Message {
   role: 'system' | 'user' | 'assistant'
-  content: string | ContentPart[] // string for text-only, ContentPart[] for multimodal
+  content: string | ContentPart[]
 }
 
 export interface ChatRequest {
@@ -21,7 +17,7 @@ export interface ChatRequest {
   messages: Message[]
   temperature?: number
   max_tokens?: number
-  conversation_id?: string // Optional: save to conversation
+  conversation_id?: string
 }
 
 export interface ChatResponse {
@@ -40,6 +36,13 @@ export interface ChatResponse {
   latency_ms?: number
 }
 
+export interface SuggestedEdit {
+  file: string
+  range: [number, number, number, number]
+  old_text?: string
+  new_text: string
+}
+
 export interface StreamChunk {
   id?: string
   content: string
@@ -51,6 +54,7 @@ export interface StreamChunk {
   }
   error?: string
   provider?: string
+  suggested_edit?: SuggestedEdit
 }
 
 export type StreamChunkCallback = (chunk: StreamChunk) => void
@@ -113,11 +117,11 @@ export const chatApi = {
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // Keep incomplete line in buffer
+        buffer = lines.pop() || ''
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            const data = line.slice(6) // Remove "data: " prefix
+            const data = line.slice(6)
             if (data.trim() === '') continue
 
             try {
@@ -127,10 +131,9 @@ export const chatApi = {
               if (chunk.done) {
                 if (chunk.error) {
                   onError?.(new Error(chunk.error))
-                } else {
-                  onComplete?.(chunk.usage)
+                  return
                 }
-                return
+                onComplete?.(chunk.usage)
               }
             } catch (err) {
               console.error('Failed to parse SSE chunk:', err, data)

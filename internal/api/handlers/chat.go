@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/gateway"
+	"github.com/Kizsoft-Solution-Limited/uniroute/internal/mcp"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/monitoring"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/providers"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
@@ -26,9 +27,10 @@ type ChatHandler struct {
 	router      *gateway.Router
 	requestRepo *storage.RequestRepository
 	convRepo    *storage.ConversationRepository
+	mcpService  *mcp.Service
 	logger      zerolog.Logger
 	upgrader    websocket.Upgrader
-	jwtService  *security.JWTService // For WebSocket authentication
+	jwtService  *security.JWTService
 }
 
 func NewChatHandler(router *gateway.Router, requestRepo *storage.RequestRepository, convRepo *storage.ConversationRepository, logger zerolog.Logger) *ChatHandler {
@@ -36,8 +38,9 @@ func NewChatHandler(router *gateway.Router, requestRepo *storage.RequestReposito
 		router:      router,
 		requestRepo: requestRepo,
 		convRepo:    convRepo,
+		mcpService:  nil,
 		logger:      logger,
-		jwtService:  nil, // Will be set if JWT service is available
+		jwtService:  nil,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true
@@ -52,9 +55,19 @@ func (h *ChatHandler) SetJWTService(jwtService *security.JWTService) {
 	h.jwtService = jwtService
 }
 
+func (h *ChatHandler) SetMCPService(service *mcp.Service) {
+	h.mcpService = service
+}
+
 type ChatRequestWithConversation struct {
 	providers.ChatRequest
 	ConversationID *string `json:"conversation_id,omitempty"`
+}
+
+type mcpToolCall struct {
+	ServerURL string                 `json:"server_url"`
+	Name      string                 `json:"name"`
+	Arguments map[string]interface{} `json:"arguments,omitempty"`
 }
 
 type chatStreamRequest struct {
@@ -65,6 +78,7 @@ type chatStreamRequest struct {
 	MaxTokens             int                   `json:"max_tokens,omitempty"`
 	GoogleSearchGrounding bool                  `json:"google_search_grounding,omitempty"`
 	WebSearch             bool                  `json:"web_search,omitempty"`
+	MCPToolCalls          []mcpToolCall          `json:"mcp_tool_calls,omitempty"`
 }
 
 func (h *ChatHandler) HandleChat(c *gin.Context) {
@@ -254,6 +268,42 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 		GoogleSearchGrounding: streamReq.GoogleSearchGrounding || streamReq.WebSearch,
 		WebSearch:             streamReq.WebSearch,
 	}
+	const maxMCPToolCalls = 10
+	const maxMCPContextBytes = 100 << 10
+	if h.mcpService != nil && len(streamReq.MCPToolCalls) > 0 {
+		n := len(streamReq.MCPToolCalls)
+		if n > maxMCPToolCalls {
+			n = maxMCPToolCalls
+		}
+		var mcpParts []string
+		var totalLen int
+		for i := 0; i < n && totalLen < maxMCPContextBytes; i++ {
+			tc := streamReq.MCPToolCalls[i]
+			if tc.ServerURL == "" || tc.Name == "" {
+				continue
+			}
+			if mcp.ValidateServerURL(tc.ServerURL) != nil {
+				continue
+			}
+			result, err := h.mcpService.CallTool(c.Request.Context(), tc.ServerURL, tc.Name, tc.Arguments)
+			if err != nil {
+				h.logger.Debug().Err(err).Str("server", tc.ServerURL).Str("tool", tc.Name).Msg("MCP tool call failed")
+				continue
+			}
+			if len(result) > 0 {
+				part := fmt.Sprintf("[MCP %s/%s]: %s", tc.ServerURL, tc.Name, string(result))
+				if totalLen+len(part) > maxMCPContextBytes {
+					part = part[:maxMCPContextBytes-totalLen]
+				}
+				totalLen += len(part)
+				mcpParts = append(mcpParts, part)
+			}
+		}
+		if len(mcpParts) > 0 {
+			mcpContext := "MCP context:\n" + strings.Join(mcpParts, "\n\n")
+			req.Messages = append([]providers.Message{{Role: "system", Content: mcpContext}}, req.Messages...)
+		}
+	}
 	reqWithConv := ChatRequestWithConversation{
 		ChatRequest:    req,
 		ConversationID: streamReq.ConversationID,
@@ -406,7 +456,23 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 					}
 				}
 
-				return false // Close stream
+				if fullContent.Len() > 0 {
+					if edit := parseSuggestedEditFromContent(fullContent.String()); edit != nil {
+						editChunk := providers.StreamChunk{
+							ID:            responseID,
+							Content:       "",
+							Done:          false,
+							SuggestedEdit: edit,
+						}
+						editJSON, _ := json.Marshal(editChunk)
+						fmt.Fprintf(w, "data: %s\n\n", editJSON)
+						if flusher, ok := c.Writer.(http.Flusher); ok {
+							flusher.Flush()
+						}
+					}
+				}
+
+				return false
 			}
 
 			if chunk.ID != "" {
@@ -511,7 +577,7 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 
 		case err, ok := <-errChan:
 			if !ok {
-				return false // Channel closed
+				return false
 			}
 
 			status = "error"
@@ -552,7 +618,7 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 				}()
 			}
 
-			return false // Close stream on error
+			return false
 
 		case <-c.Request.Context().Done():
 			return false
@@ -560,14 +626,96 @@ func (h *ChatHandler) HandleChatStream(c *gin.Context) {
 	})
 }
 
+func parseSuggestedEditFromContent(content string) *providers.SuggestedEdit {
+	content = strings.TrimSpace(content)
+	start := strings.Index(content, `{"file"`)
+	if start < 0 {
+		start = strings.Index(content, `{"file":`)
+	}
+	if start < 0 {
+		return nil
+	}
+	sub := content[start:]
+	obj := extractJSONObject(sub)
+	if obj == "" {
+		return nil
+	}
+	var raw map[string]interface{}
+	if err := json.Unmarshal([]byte(obj), &raw); err != nil {
+		return nil
+	}
+	file, _ := raw["file"].(string)
+	newText, _ := raw["new_text"].(string)
+	if newText == "" {
+		newText, _ = raw["newText"].(string)
+	}
+	if file == "" || newText == "" {
+		return nil
+	}
+	edit := &providers.SuggestedEdit{File: file, NewText: newText}
+	if r, ok := raw["range"].([]interface{}); ok && len(r) >= 4 {
+		for i := 0; i < 4 && i < len(r); i++ {
+			if n, ok := r[i].(float64); ok {
+				edit.Range[i] = int(n)
+			}
+		}
+	}
+	if oldText, ok := raw["old_text"].(string); ok {
+		edit.OldText = oldText
+	} else if oldText, ok := raw["oldText"].(string); ok {
+		edit.OldText = oldText
+	}
+	return edit
+}
+
+func extractJSONObject(s string) string {
+	if len(s) == 0 || s[0] != '{' {
+		return ""
+	}
+	depth := 0
+	inString := false
+	escape := false
+	quote := byte(0)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if escape {
+			escape = false
+			continue
+		}
+		if inString {
+			if c == '\\' {
+				escape = true
+				continue
+			}
+			if c == quote {
+				inString = false
+			}
+			continue
+		}
+		switch c {
+		case '"', '\'':
+			inString = true
+			quote = c
+		case '{', '[':
+			depth++
+		case '}', ']':
+			depth--
+			if depth == 0 {
+				return s[:i+1]
+			}
+		}
+	}
+	return ""
+}
+
 type WebSocketMessage struct {
-	Type    string                 `json:"type"` // "request", "ping", "pong"
+	Type    string                 `json:"type"`
 	Request *ChatRequestWithConversation `json:"request,omitempty"`
 	Data    map[string]interface{} `json:"data,omitempty"`
 }
 
 type WebSocketResponse struct {
-	Type    string                 `json:"type"` // "chunk", "done", "error"
+	Type    string                 `json:"type"`
 	ID      string                 `json:"id,omitempty"`
 	Content string                 `json:"content,omitempty"`
 	Done    bool                   `json:"done"`
@@ -758,7 +906,7 @@ func (h *ChatHandler) HandleChatWebSocket(c *gin.Context) {
 
 			ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			response := WebSocketResponse{
-				ID:       responseID, // Use tracked responseID
+				ID:       responseID,
 				Content:  chunk.Content,
 				Done:     chunk.Done,
 				Usage:    chunk.Usage,

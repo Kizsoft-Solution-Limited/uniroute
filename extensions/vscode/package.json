@@ -1,0 +1,108 @@
+{
+  "name": "uniroute",
+  "displayName": "UniRoute",
+  "description": "UniRoute chat in your codebase (accept/reject AI edits) and tunnels",
+  "version": "0.1.0",
+  "publisher": "uniroute",
+  "engines": { "vscode": "^1.74.0" },
+  "categories": ["Other", "Machine Learning"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "uniroute.chat.open",
+        "title": "UniRoute: Open Chat"
+      },
+      {
+        "command": "uniroute.tunnel.start",
+        "title": "UniRoute: Start Tunnel"
+      },
+      {
+        "command": "uniroute.tunnel.stop",
+        "title": "UniRoute: Stop Tunnel"
+      },
+      {
+        "command": "uniroute.tunnel.list",
+        "title": "UniRoute: List Tunnels"
+      },
+      {
+        "command": "uniroute.acceptEdit",
+        "title": "Accept AI edit"
+      },
+      {
+        "command": "uniroute.rejectEdit",
+        "title": "Reject AI edit"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "uniroute",
+          "title": "UniRoute",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "uniroute": [
+        {
+          "type": "webview",
+          "id": "uniroute.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "UniRoute",
+      "properties": {
+        "uniroute.apiUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Frontend URL where the chat UI is served (e.g. https://uniroute.co). Required for the chat panel."
+        },
+        "uniroute.tunnelServerUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Tunnel server URL (e.g. https://tunnel.uniroute.co). Used by the CLI."
+        },
+        "uniroute.cliPath": {
+          "type": "string",
+          "default": "uniroute",
+          "description": "Path to uniroute CLI (or 'uniroute' if in PATH)"
+        },
+        "uniroute.mcp.figmaDesktop": {
+          "type": "string",
+          "default": "",
+          "description": "Figma desktop MCP server URL when Figma app is open (e.g. http://127.0.0.1:3845/mcp)"
+        },
+        "uniroute.mcp.figmaRemote": {
+          "type": "string",
+          "default": "",
+          "description": "Figma remote MCP server URL (e.g. https://mcp.figma.com/mcp)"
+        },
+        "uniroute.mcp.servers": {
+          "type": "array",
+          "default": [],
+          "description": "Additional MCP server URLs for backend (Figma, filesystem, custom MCP tools)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext .ts"
+  },
+  "devDependencies": {
+    "@types/node": "^18.x",
+    "@types/vscode": "^1.74.0",
+    "@vscode/eslint-plugin": "^0.48.0",
+    "eslint": "^8.x",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {}
+}
