@@ -53,9 +53,7 @@ async function checkForUpdate(context: vscode.ExtensionContext) {
     if (action === 'Download') {
       await vscode.env.openExternal(vscode.Uri.parse(RELEASES_URL))
     }
-  } catch {
-    // ignore network/parse errors
-  }
+  } catch {}
 }
 
 export function activate(context: vscode.ExtensionContext) {

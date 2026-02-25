@@ -262,10 +262,9 @@
             </p>
             <div class="grid sm:grid-cols-2 gap-4 sm:gap-6">
               <a
-                :href="releasesUrl"
-                target="_blank"
-                rel="noopener noreferrer"
+                :href="vsixDownloadUrl"
                 class="block bg-slate-800/60 rounded-xl sm:rounded-2xl border border-slate-700/50 p-6 sm:p-8 hover:border-blue-500/50 transition-all group"
+                @click="trackDownload('extension-vscode')"
               >
                 <div class="flex items-center gap-3 mb-4">
                   <div class="w-12 h-12 rounded-xl bg-slate-700/60 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
@@ -274,17 +273,16 @@
                   <h2 class="text-xl font-semibold text-white">VS Code</h2>
                 </div>
                 <p class="text-sm text-slate-400 mb-4">
-                  Chat in the sidebar, accept or reject AI code edits, start tunnels. Install the <code class="bg-slate-900/60 px-1.5 py-0.5 rounded text-slate-300">.vsix</code> from the release.
+                  Chat in the sidebar, accept or reject AI code edits, start tunnels. Install the <code class="bg-slate-900/60 px-1.5 py-0.5 rounded text-slate-300">.vsix</code> after download.
                 </p>
                 <span class="inline-flex items-center text-blue-400 text-sm font-medium">
-                  Download from GitHub →
+                  Download .vsix →
                 </span>
               </a>
               <a
-                :href="releasesUrl"
-                target="_blank"
-                rel="noopener noreferrer"
+                :href="jetbrainsZipDownloadUrl"
                 class="block bg-slate-800/60 rounded-xl sm:rounded-2xl border border-slate-700/50 p-6 sm:p-8 hover:border-indigo-500/50 transition-all group"
+                @click="trackDownload('extension-jetbrains')"
               >
                 <div class="flex items-center gap-3 mb-4">
                   <div class="w-12 h-12 rounded-xl bg-slate-700/60 flex items-center justify-center group-hover:bg-indigo-500/20 transition-colors">
@@ -296,7 +294,7 @@
                   Same plugin for IntelliJ IDEA and Android Studio. Download the <code class="bg-slate-900/60 px-1.5 py-0.5 rounded text-slate-300">.zip</code> and use Plugins → Install from Disk.
                 </p>
                 <span class="inline-flex items-center text-indigo-400 text-sm font-medium">
-                  Download from GitHub →
+                  Download .zip →
                 </span>
               </a>
             </div>
@@ -306,6 +304,9 @@
                 <li><strong class="text-slate-300">VS Code:</strong> Extensions → ⋯ → Install from VSIX… → select the <code class="bg-slate-900/60 px-1 rounded">.vsix</code> file.</li>
                 <li><strong class="text-slate-300">IntelliJ / Android Studio:</strong> Settings → Plugins → ⚙ → Install Plugin from Disk… → select the <code class="bg-slate-900/60 px-1 rounded">.zip</code> file.</li>
               </ul>
+              <p class="text-sm text-slate-500 mt-3">
+                <a :href="releasesUrl" target="_blank" rel="noopener noreferrer" class="text-slate-400 hover:text-white transition-colors">View release notes on GitHub →</a>
+              </p>
             </div>
           </div>
         </div>
@@ -320,6 +321,8 @@ import { Monitor, Apple, Server, Laptop, Zap, Code2, Puzzle, Terminal } from 'lu
 
 const activeTab = ref<'cli' | 'extension'>('cli')
 const releasesUrl = 'https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest'
+const vsixDownloadUrl = 'https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest/download/uniroute-latest.vsix'
+const jetbrainsZipDownloadUrl = 'https://github.com/Kizsoft-Solution-Limited/uniroute/releases/latest/download/UniRoute-latest.zip'
 
 interface Platform {
   os: string

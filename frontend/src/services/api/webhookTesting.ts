@@ -145,12 +145,6 @@ export const webhookTestingApi = {
     return await response.json()
   },
 
-  /**
-   * Replay a request
-   * @param tunnelServerUrl - URL of the tunnel server
-   * @param tunnelId - Tunnel ID
-   * @param requestId - Request ID to replay
-   */
   async replayRequest(
     tunnelServerUrl: string,
     tunnelId: string,
@@ -166,7 +160,19 @@ export const webhookTestingApi = {
       }
     )
     if (!response.ok) {
-      throw new Error(`Failed to replay request: ${response.statusText}`)
+      let message = response.statusText
+      try {
+        const body = await response.text()
+        if (body) {
+          const parsed = JSON.parse(body)
+          if (typeof parsed === 'object' && parsed.message) message = parsed.message
+          else if (typeof body === 'string' && body.length < 200) message = body
+        }
+      } catch (_) {}
+      if (response.status === 404) {
+        message = 'Request not found or tunnel disconnected. Ensure the tunnel is running and request logging is enabled.'
+      }
+      throw new Error(message)
     }
     return await response.json()
   }

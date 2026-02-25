@@ -149,8 +149,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: extensions/vscode/package-lock.json
       - name: Install and package VS Code extension
         run: |
           cd extensions/vscode
@@ -200,6 +198,8 @@ jobs:
           find artifacts -type f \( -name "uniroute-*" -o -name "uniroute-*.exe" \) -exec cp {} release-assets/ \;
           if [ -d artifacts/extensions ]; then
             find artifacts/extensions -type f \( -name "*.vsix" -o -name "*.zip" \) -exec cp {} release-assets/ \;
+            for f in release-assets/*.vsix; do [ -f "$f" ] && cp "$f" release-assets/uniroute-latest.vsix && break; done
+            for f in release-assets/UniRoute-*.zip; do [ -f "$f" ] && cp "$f" release-assets/UniRoute-latest.zip && break; done
           fi
           chmod +x release-assets/uniroute-* 2>/dev/null || true
           chmod +x release-assets/uniroute-*.exe 2>/dev/null || true

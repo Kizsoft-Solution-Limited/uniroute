@@ -1,18 +1,20 @@
 <template>
   <div class="space-y-6">
-    <!-- Header -->
-    <div class="flex items-center justify-between">
-      <div>
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="min-w-0">
         <h1 class="text-3xl font-bold text-white">Webhook Testing</h1>
         <p class="text-slate-400 mt-1">
           Inspect, replay, and test webhook requests
         </p>
       </div>
-      <div class="flex items-center space-x-4">
+      <div class="w-full sm:w-auto sm:min-w-[280px]">
+        <label for="webhook-tunnel-select" class="sr-only">Select tunnel</label>
         <select
+          id="webhook-tunnel-select"
           v-model="selectedTunnel"
           @change="onTunnelChange"
-          class="px-4 py-2 border border-slate-700 rounded-lg bg-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="w-full min-h-[44px] px-4 py-3 text-base border border-slate-700 rounded-lg bg-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none cursor-pointer touch-manipulation"
+          style="-webkit-appearance: none; appearance: none; background-image: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%2394a3b8%27 stroke-width=%272%27%3e%3cpath d=%27M6 9l6 6 6-6%27/%3e%3c/svg%3e'); background-repeat: no-repeat; background-position: right 0.75rem center; background-size: 1.25rem; padding-right: 2.5rem;"
         >
           <option value="">Select tunnel...</option>
           <option v-for="tunnel in tunnels" :key="tunnel.id" :value="tunnel.id">
@@ -22,10 +24,8 @@
       </div>
     </div>
 
-    <!-- Filters & Search -->
     <Card v-if="selectedTunnel">
       <div class="space-y-4">
-        <!-- Search Bar -->
         <div>
           <label class="block text-sm font-medium text-slate-300 mb-2">
             Search
@@ -37,8 +37,6 @@
             class="w-full"
           />
         </div>
-        
-        <!-- Filter Grid -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label class="block text-sm font-medium text-slate-300 mb-2">
@@ -94,7 +92,6 @@
       </div>
     </Card>
 
-    <!-- Requests List -->
     <Card v-if="loading && requests.length === 0">
       <div class="text-center py-8">
         <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
@@ -177,7 +174,6 @@
       </div>
     </div>
 
-    <!-- Request Detail Modal -->
     <div
       v-if="selectedRequestDetail"
       class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
@@ -195,7 +191,6 @@
         </div>
 
         <div class="space-y-6">
-          <!-- Request Info -->
           <div>
             <h3 class="text-lg font-semibold text-white mb-4">Request</h3>
             <div class="bg-slate-800/60 rounded-lg p-4 space-y-2 border border-slate-700/50">
@@ -213,8 +208,6 @@
               </div>
             </div>
           </div>
-
-          <!-- Request Headers -->
           <div>
             <h3 class="text-lg font-semibold text-white mb-4">Request Headers</h3>
             <div class="bg-slate-800/60 rounded-lg p-4 border border-slate-700/50">
@@ -222,15 +215,12 @@
             </div>
           </div>
 
-          <!-- Request Body -->
           <div v-if="selectedRequestDetail.request_body">
             <h3 class="text-lg font-semibold text-white mb-4">Request Body</h3>
             <div class="bg-slate-800/60 rounded-lg p-4 border border-slate-700/50">
               <pre class="text-sm text-white overflow-x-auto">{{ formatBody(selectedRequestDetail.request_body) }}</pre>
             </div>
           </div>
-
-          <!-- Response Info -->
           <div>
             <h3 class="text-lg font-semibold text-white mb-4">Response</h3>
             <div class="bg-slate-800/60 rounded-lg p-4 space-y-2 border border-slate-700/50">
@@ -244,24 +234,18 @@
               </div>
             </div>
           </div>
-
-          <!-- Response Headers -->
           <div v-if="selectedRequestDetail.response_headers">
             <h3 class="text-lg font-semibold text-white mb-4">Response Headers</h3>
             <div class="bg-slate-800/60 rounded-lg p-4 border border-slate-700/50">
               <pre class="text-sm text-white overflow-x-auto">{{ formatHeaders(selectedRequestDetail.response_headers) }}</pre>
             </div>
           </div>
-
-          <!-- Response Body -->
           <div v-if="selectedRequestDetail.response_body">
             <h3 class="text-lg font-semibold text-white mb-4">Response Body</h3>
             <div class="bg-slate-800/60 rounded-lg p-4 border border-slate-700/50">
               <pre class="text-sm text-white overflow-x-auto">{{ formatBody(selectedRequestDetail.response_body) }}</pre>
             </div>
           </div>
-
-          <!-- Actions -->
           <div class="flex items-center space-x-4 pt-4 border-t border-slate-700">
             <Button @click="replayRequest(selectedRequestDetail)" :loading="replaying">
               <RotateCcw class="w-4 h-4 mr-2" />
@@ -278,7 +262,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -316,6 +301,9 @@ interface RequestDetail extends Request {
   response_body: string
 }
 
+const TUNNEL_STORAGE_KEY = 'webhook-testing-selected-tunnel'
+const route = useRoute()
+const router = useRouter()
 const { showToast } = useToast()
 
 const loading = ref(false)
@@ -335,11 +323,46 @@ const filters = ref({
 
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
-onMounted(() => {
-  loadTunnels()
+function persistTunnel(tunnelId: string) {
+  try {
+    if (tunnelId) {
+      localStorage.setItem(TUNNEL_STORAGE_KEY, tunnelId)
+      router.replace({ query: { ...route.query, tunnel: tunnelId } })
+    } else {
+      localStorage.removeItem(TUNNEL_STORAGE_KEY)
+      const q = { ...route.query }
+      delete q.tunnel
+      router.replace({ query: q })
+    }
+  } catch (_) {}
+}
+
+function restoreTunnel() {
+  const fromQuery = route.query.tunnel as string | undefined
+  if (fromQuery) {
+    selectedTunnel.value = fromQuery
+    loadRequests()
+    return
+  }
+  try {
+    const stored = localStorage.getItem(TUNNEL_STORAGE_KEY)
+    if (stored && tunnels.value.some(t => t.id === stored)) {
+      selectedTunnel.value = stored
+      router.replace({ query: { ...route.query, tunnel: stored } })
+      loadRequests()
+    }
+  } catch (_) {}
+}
+
+onMounted(async () => {
+  await loadTunnels()
+  restoreTunnel()
 })
 
-// Auto-load requests when tunnel is selected
+watch(selectedTunnel, (val) => {
+  persistTunnel(val || '')
+})
+
 const onTunnelChange = () => {
   if (selectedTunnel.value) {
     loadRequests()
@@ -348,40 +371,29 @@ const onTunnelChange = () => {
   }
 }
 
-// Debounced search function
 const debouncedSearch = () => {
   if (searchTimeout) {
     clearTimeout(searchTimeout)
   }
-  searchTimeout = setTimeout(() => {
-    // Client-side filtering is handled by computed property
-    // If we need server-side search, we'd call loadRequests here
-  }, 300)
+  searchTimeout = setTimeout(() => {}, 300)
 }
 
-// Client-side filtering for search
 const filteredRequests = computed(() => {
   if (!filters.value.search) {
     return requests.value
   }
-  
   const searchTerm = filters.value.search.toLowerCase()
   return requests.value.filter(request => {
-    // Search in path
     if (request.path.toLowerCase().includes(searchTerm)) {
       return true
     }
-    
-    // Search in request details if loaded
     const detail = allRequestDetails.value.get(request.id)
     if (detail) {
-      // Search in headers
       const headersStr = formatHeaders(detail.request_headers).toLowerCase()
       if (headersStr.includes(searchTerm)) {
         return true
       }
       
-      // Search in body
       if (detail.request_body && detail.request_body.toLowerCase().includes(searchTerm)) {
         return true
       }
@@ -424,7 +436,6 @@ const loadRequests = async () => {
 const selectRequest = async (request: Request) => {
   if (!selectedTunnel.value) return
 
-  // Check if we already have the details cached
   if (allRequestDetails.value.has(request.id)) {
     selectedRequestDetail.value = allRequestDetails.value.get(request.id)!
     return
@@ -450,7 +461,7 @@ const replayRequest = async (request: Request | RequestDetail) => {
     showToast(`Request replayed successfully (Status: ${data.status_code})`, 'success')
     await loadRequests()
   } catch (error: any) {
-    showToast('Failed to replay request', 'error')
+    showToast(error?.message || 'Failed to replay request', 'error')
   } finally {
     replaying.value = false
   }
