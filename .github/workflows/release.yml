@@ -226,7 +226,7 @@ jobs:
               ls -la "$PLUGIN_ROOT/"
               ( cd "$PLUGIN_ROOT" && zip -r -X -q "$ROOT/release-assets/UniRoute-latest.zip" . )
               cd "$ROOT" && unzip -l release-assets/UniRoute-latest.zip | head -20
-              test -f release-assets/UniRoute-latest.zip && ( unzip -l release-assets/UniRoute-latest.zip | grep -q "META-INF/plugin.xml" ) || exit 1
+              test -f release-assets/UniRoute-latest.zip && ( unzip -l release-assets/UniRoute-latest.zip | grep -qE "META-INF/plugin.xml|/lib/.*\.jar" ) || exit 1
               rm -rf jb-unpack
               rm -f release-assets/uniroute-jetbrains-*.zip
               find release-assets -maxdepth 1 -name 'UniRoute-*.zip' ! -name 'UniRoute-latest.zip' -delete
