@@ -1,7 +1,7 @@
 plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "1.9.0"
-    id("org.jetbrains.intellij.plugin") version "1.16.0"
+    id("org.jetbrains.intellij") version "1.17.4"
 }
 
 group = "co.uniroute"
