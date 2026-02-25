@@ -207,7 +207,25 @@ jobs:
           if [ -d artifacts/extensions ]; then
             find artifacts/extensions -type f \( -name "*.vsix" -o -name "*.zip" \) -exec cp {} release-assets/ \;
             for f in release-assets/*.vsix; do [ -f "$f" ] && cp "$f" release-assets/uniroute-latest.vsix && break; done
-            for f in release-assets/UniRoute-*.zip release-assets/uniroute-jetbrains-*.zip; do [ -f "$f" ] && cp "$f" release-assets/UniRoute-latest.zip && break; done
+            JBZIP=""
+            for f in release-assets/UniRoute-*.zip release-assets/uniroute-jetbrains-*.zip; do [ -f "$f" ] && JBZIP="$f" && break; done
+            if [ -n "$JBZIP" ]; then
+              ROOT=$(pwd)
+              mkdir -p jb-unpack && cd jb-unpack && unzip -q "$ROOT/$JBZIP"
+              if [ -f META-INF/plugin.xml ]; then
+                zip -r -q "$ROOT/release-assets/UniRoute-latest.zip" .
+              else
+                SUBDIR=$(find . -maxdepth 1 -type d ! -name . | head -1)
+                if [ -n "$SUBDIR" ] && [ -f "$SUBDIR/META-INF/plugin.xml" ]; then
+                  cd "$SUBDIR" && zip -r -q "$ROOT/release-assets/UniRoute-latest.zip" . && cd "$ROOT/jb-unpack"
+                else
+                  zip -r -q "$ROOT/release-assets/UniRoute-latest.zip" .
+                fi
+              fi
+              cd "$ROOT" && rm -rf jb-unpack
+              rm -f release-assets/uniroute-jetbrains-*.zip
+              find release-assets -maxdepth 1 -name 'UniRoute-*.zip' ! -name 'UniRoute-latest.zip' -delete
+            fi
           fi
           chmod +x release-assets/uniroute-* 2>/dev/null || true
           chmod +x release-assets/uniroute-*.exe 2>/dev/null || true
