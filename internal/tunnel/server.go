@@ -2804,9 +2804,26 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 }
 
 func (ts *TunnelServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	ts.tunnelsMu.RLock()
+	total := len(ts.tunnels)
+	connected := 0
+	for _, t := range ts.tunnels {
+		t.mu.RLock()
+		if t.WSConn != nil {
+			connected++
+		}
+		t.mu.RUnlock()
+	}
+	ts.tunnelsMu.RUnlock()
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"status":"ok","tunnels":%d}`, len(ts.tunnels))
+	body := fmt.Sprintf(`{"status":"ok","tunnels":%d,"connected":%d}`, total, connected)
+	if total > 0 && connected == 0 {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+	w.Write([]byte(body))
 }
 
 func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.ResponseWriter, r *http.Request) {
