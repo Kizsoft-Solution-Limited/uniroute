@@ -242,7 +242,7 @@ func (ts *TunnelServer) Start() error {
 
 	ts.httpServer = &http.Server{
 		Addr:         fmt.Sprintf(":%d", ts.port),
-		Handler:      mux,
+		Handler:      ts.recoveryMiddleware(mux),
 		ReadTimeout:  120 * time.Second,
 		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -252,7 +252,48 @@ func (ts *TunnelServer) Start() error {
 	if ts.repository != nil {
 		go ts.monitorInactiveTunnels()
 	}
+	go ts.cleanupDisconnectedTunnels()
 	return ts.httpServer.ListenAndServe()
+}
+
+func (ts *TunnelServer) recoveryMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if p := recover(); p != nil {
+				ts.logger.Error().Interface("panic", p).Str("path", r.URL.Path).Msg("HTTP handler panic recovered")
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(`{"error":"internal server error"}`))
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+const disconnectedTunnelCleanupInterval = 2 * time.Minute
+const disconnectedTunnelMaxAge = 5 * time.Minute
+
+func (ts *TunnelServer) cleanupDisconnectedTunnels() {
+	ticker := time.NewTicker(disconnectedTunnelCleanupInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		ts.tunnelsMu.Lock()
+		var toRemove []string
+		now := time.Now()
+		for subdomain, tunnel := range ts.tunnels {
+			tunnel.mu.RLock()
+			wsNil := tunnel.WSConn == nil
+			lastActive := tunnel.LastActive
+			tunnel.mu.RUnlock()
+			if wsNil && now.Sub(lastActive) > disconnectedTunnelMaxAge {
+				toRemove = append(toRemove, subdomain)
+			}
+		}
+		ts.tunnelsMu.Unlock()
+		for _, subdomain := range toRemove {
+			ts.removeTunnel(subdomain)
+			ts.logger.Info().Str("subdomain", subdomain).Msg("Removed stale disconnected tunnel")
+		}
+	}
 }
 
 func (ts *TunnelServer) handleWebInterface(w http.ResponseWriter, r *http.Request) {
@@ -1740,6 +1781,13 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 	tunnelSubdomain := tunnel.Subdomain
 	tunnelID := tunnel.ID
 	tunnel.mu.RUnlock()
+
+	defer func() {
+		if p := recover(); p != nil {
+			ts.logger.Error().Interface("panic", p).Str("subdomain", tunnelSubdomain).Str("tunnel_id", tunnelID).Msg("tunnel handler panic recovered, removing tunnel")
+			ts.removeTunnel(tunnelSubdomain)
+		}
+	}()
 
 	if ourWSConn == nil {
 		ts.logger.Error().

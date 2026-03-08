@@ -99,6 +99,15 @@ If you use a custom config that sets headers, avoid removing `Upgrade` or `Conne
 
 Replace `tunnel_backend:8080` with your tunnel service name and port (e.g. the Coolify-generated host/port for the tunnel app).
 
+### Using the repo Caddyfile with Coolify
+
+This repo includes Caddy configs in **`scripts/caddy/`**:
+
+- **`Caddyfile.example`** – template with placeholders (`BASE_DOMAIN`, `TUNNEL_PORT`, etc.); substitute or use env vars.
+- **`Caddyfile.server`** – example for a server where Caddy runs and proxies to services on the host (e.g. Coolify apps bound to host ports).
+
+In `Caddyfile.server`, `tunnel.uniroute.co` and the `:443` catch-all point at **`host.docker.internal:TUNNEL_PORT`** (e.g. `8081`). For **tunnel.uniroute.co** to keep working after the tunnel container restarts (not only after a full redeploy), the tunnel app in Coolify must use a **fixed host port** (e.g. **8081**) so that Caddy always forwards to the same port. If Coolify assigns a random port per deploy, Caddy’s config would point at the wrong port after a restart until you redeploy (and regenerate the Caddyfile or update the port). In Coolify, set the tunnel application’s **Port** to a fixed value (e.g. **8081**) and keep that port in your Caddyfile.
+
 ### Persisting tunnel state when the tunnel client runs in Coolify
 
 If you run the **tunnel client** (CLI) inside Coolify (e.g. a service that runs `uniroute tunnel` to expose an app), redeploys clear the in-memory connection on the tunnel server. The client cannot “keep” a WebSocket across a restart, but it can **resume the same tunnel** after restart by loading saved state.
