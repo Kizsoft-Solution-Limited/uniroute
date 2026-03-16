@@ -222,6 +222,7 @@ func (ts *TunnelServer) Start() error {
 
 	mux.HandleFunc("/tunnel", ts.handleTunnelConnection)
 	mux.HandleFunc("/health", ts.handleHealth)
+	mux.HandleFunc("/live", ts.handleLive)
 	mux.HandleFunc("/", ts.handleHTTPRequest)
 	mux.HandleFunc("/web", ts.handleWebInterface)
 	mux.HandleFunc("/api/tunnels", ts.handleListTunnels)
@@ -2849,6 +2850,14 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 </html>`, activeTunnels, totalTunnels, ts.websiteURL)
 
 	w.Write([]byte(html))
+}
+
+// handleLive is a minimal liveness probe: no locks, no tunnel state. Use for orchestrator
+// liveness so the server always returns 200 when the process is up, even after long uptime.
+func (ts *TunnelServer) handleLive(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ok"}`))
 }
 
 func (ts *TunnelServer) handleHealth(w http.ResponseWriter, r *http.Request) {
