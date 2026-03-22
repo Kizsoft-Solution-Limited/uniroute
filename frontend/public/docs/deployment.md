@@ -110,6 +110,18 @@ In `Caddyfile.server`, `tunnel.uniroute.co` and the `:443` catch-all point at **
 
 If the tunnel works but shows **“no available server”** (or tunnel connection lost) after about a day, Caddy is likely closing the long-lived WebSocket to the tunnel server due to default transport timeouts. The repo’s **`scripts/caddy/Caddyfile.server`** sets `read_timeout 168h` and `write_timeout 168h` on the tunnel `reverse_proxy` so Caddy does not close the connection. Apply that Caddyfile (or add the same `transport http { read_timeout 168h; write_timeout 168h }` to your tunnel block) and reload Caddy.
 
+**Keeping Caddy when Coolify overwrites the proxy:** Coolify may replace your Caddy proxy with Traefik when you revalidate the server, restart the proxy, or redeploy. **Coolify does not provide an option to disable proxy management or to prevent it from overwriting the proxy config** (see [Coolify docs](https://coolify.io/docs/knowledge-base/server/proxies) and [issue #3018](https://github.com/coollabsio/coolify/issues/3018)). So the only way to keep Caddy in place is to **restore it after Coolify overwrites**—either manually or automatically.
+
+**Automatic restore (recommended):** Run from your machine once per server:
+
+```bash
+PROXY_SERVER=user@your-server ./scripts/caddy/install_persist_remote.sh
+```
+
+This uploads **`Caddyfile.server`** and the Caddy docker-compose to `/data/coolify/proxy/.uniroute-caddy/` on the server and installs a **cron job every 10 minutes**. If the proxy has been reverted to Traefik or the Caddyfile no longer has the tunnel timeouts, the script restores Caddy automatically (site may be unreachable for up to ~10 minutes after Coolify overwrites). Log on the server: `/data/coolify/proxy/.uniroute-caddy/persist.log`.
+
+**Manual restore:** If you don’t use the cron, re-apply Caddy after each overwrite (e.g. SCP `Caddyfile.server` and `docker-compose.static.yml` to the server, replace the proxy compose and Caddyfile, then `docker rm -f coolify-proxy` and `docker compose up -d` in `/data/coolify/proxy`).
+
 ### Persisting tunnel state when the tunnel client runs in Coolify
 
 If you run the **tunnel client** (CLI) inside Coolify (e.g. a service that runs `uniroute tunnel` to expose an app), redeploys clear the in-memory connection on the tunnel server. The client cannot “keep” a WebSocket across a restart, but it can **resume the same tunnel** after restart by loading saved state.
