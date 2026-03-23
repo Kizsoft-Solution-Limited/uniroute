@@ -2851,62 +2851,33 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 
 	w.Write([]byte(html))
 }
-
-// handleLive is a minimal liveness probe: no locks, no tunnel state. Use for orchestrator
-// liveness so the server always returns 200 when the process is up, even after long uptime.
 func (ts *TunnelServer) handleLive(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
-const healthCheckTimeout = 5 * time.Second
-
 func (ts *TunnelServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	ts.tunnelsMu.RLock()
+	tlist := make([]*TunnelConnection, 0, len(ts.tunnels))
+	for _, t := range ts.tunnels {
+		tlist = append(tlist, t)
+	}
+	ts.tunnelsMu.RUnlock()
+
+	total := len(tlist)
+	connected := 0
+	for _, t := range tlist {
+		t.mu.RLock()
+		if t.WSConn != nil {
+			connected++
+		}
+		t.mu.RUnlock()
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-
-	type healthResult struct {
-		total, connected int
-		timedOut         bool
-	}
-
-	ch := make(chan healthResult, 1)
-	go func() {
-		ts.tunnelsMu.RLock()
-		tlist := make([]*TunnelConnection, 0, len(ts.tunnels))
-		for _, t := range ts.tunnels {
-			tlist = append(tlist, t)
-		}
-		ts.tunnelsMu.RUnlock()
-
-		total := len(tlist)
-		connected := 0
-		for _, t := range tlist {
-			t.mu.RLock()
-			if t.WSConn != nil {
-				connected++
-			}
-			t.mu.RUnlock()
-		}
-		ch <- healthResult{total: total, connected: connected}
-	}()
-
-	var res healthResult
-	select {
-	case res = <-ch:
-	case <-time.After(healthCheckTimeout):
-		res = healthResult{timedOut: true}
-		ts.logger.Warn().Msg("handleHealth timed out — tunnel locks may be stuck; use /live for liveness")
-	}
-
-	if res.timedOut {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte(`{"status":"timeout","message":"health check timed out; use GET /live for liveness"}`))
-		return
-	}
-
-	body := fmt.Sprintf(`{"status":"ok","tunnels":%d,"connected":%d}`, res.total, res.connected)
-	if res.total > 0 && res.connected == 0 {
+	body := fmt.Sprintf(`{"status":"ok","tunnels":%d,"connected":%d}`, total, connected)
+	if total > 0 && connected == 0 {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	} else {
 		w.WriteHeader(http.StatusOK)
@@ -4392,6 +4363,11 @@ func extractSubdomain(host string) string {
 
 	parts := strings.Split(hostname, ".")
 	if len(parts) < 2 {
+		return ""
+	}
+
+	baseDomain := getEnv("TUNNEL_BASE_DOMAIN", "uniroute.co")
+	if len(parts) == 3 && parts[0] == "tunnel" && strings.Join(parts[1:], ".") == baseDomain {
 		return ""
 	}
 
