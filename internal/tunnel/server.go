@@ -277,10 +277,27 @@ func (ts *TunnelServer) cleanupDisconnectedTunnels() {
 	ticker := time.NewTicker(disconnectedTunnelCleanupInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		ts.tunnelsMu.Lock()
+		ts.tunnelsMu.RLock()
+		snapshot := make([]struct {
+			subdomain string
+			tunnel    *TunnelConnection
+		}, 0, len(ts.tunnels))
+		for subdomain, tunnel := range ts.tunnels {
+			snapshot = append(snapshot, struct {
+				subdomain string
+				tunnel    *TunnelConnection
+			}{subdomain: subdomain, tunnel: tunnel})
+		}
+		ts.tunnelsMu.RUnlock()
+
 		var toRemove []string
 		now := time.Now()
-		for subdomain, tunnel := range ts.tunnels {
+		for _, entry := range snapshot {
+			subdomain := entry.subdomain
+			tunnel := entry.tunnel
+			if tunnel == nil {
+				continue
+			}
 			tunnel.mu.RLock()
 			wsNil := tunnel.WSConn == nil
 			lastActive := tunnel.LastActive
@@ -289,7 +306,6 @@ func (ts *TunnelServer) cleanupDisconnectedTunnels() {
 				toRemove = append(toRemove, subdomain)
 			}
 		}
-		ts.tunnelsMu.Unlock()
 		for _, subdomain := range toRemove {
 			ts.removeTunnel(subdomain)
 			ts.logger.Info().Str("subdomain", subdomain).Msg("Removed stale disconnected tunnel")
@@ -2841,11 +2857,6 @@ func (ts *TunnelServer) handleRootRequest(w http.ResponseWriter, r *http.Request
 			<a href="/" style="color: #60a5fa; text-decoration: none;">Refresh</a>
 		</div>
 	</div>
-	<script>
-		setTimeout(function() {
-			window.location.reload();
-		}, 5000);
-	</script>
 </body>
 </html>`, activeTunnels, totalTunnels, ts.websiteURL)
 
@@ -3547,38 +3558,24 @@ func (ts *TunnelServer) generateSubdomain() string {
 func (ts *TunnelServer) removeTunnel(subdomain string) {
 	ts.tunnelsMu.Lock()
 	tunnel, exists := ts.tunnels[subdomain]
-	if !exists {
+	if !exists || tunnel == nil {
 		ts.tunnelsMu.Unlock()
 		return // Tunnel already removed
 	}
+	delete(ts.tunnels, subdomain)
+	ts.tunnelsMu.Unlock()
 
 	tunnel.mu.RLock()
 	tunnelID := tunnel.ID
 	currentWSConn := tunnel.WSConn
 	tunnel.mu.RUnlock()
 
-	if ts.tunnels[subdomain] != tunnel {
-		ts.logger.Debug().
-			Str("tunnel_id", tunnelID).
-			Str("subdomain", subdomain).
-			Msg("Tunnel was re-registered - skipping removal (tunnel was resumed)")
-		ts.tunnelsMu.Unlock()
-		return // Tunnel was re-registered, don't remove it
-	}
-
-	tunnel.mu.RLock()
-	wsConnStillActive := tunnel.WSConn != nil && tunnel.WSConn == currentWSConn
-	tunnel.mu.RUnlock()
-
-	if wsConnStillActive {
+	if currentWSConn != nil {
 		ts.logger.Warn().
 			Str("tunnel_id", tunnelID).
 			Str("subdomain", subdomain).
 			Msg("Removing tunnel with active WebSocket connection - connection may be dead")
 	}
-
-	delete(ts.tunnels, subdomain)
-	ts.tunnelsMu.Unlock()
 
 	ts.logger.Debug().
 		Str("tunnel_id", tunnelID).
@@ -3586,69 +3583,67 @@ func (ts *TunnelServer) removeTunnel(subdomain string) {
 		Bool("ws_conn_nil", currentWSConn == nil).
 		Msg("Removed tunnel from memory")
 
-	if exists && tunnel != nil {
-		tunnel.mu.RLock()
-		protocol := tunnel.Protocol
-		tunnelID := tunnel.ID
-		tunnel.mu.RUnlock()
+	tunnel.mu.RLock()
+	protocol := tunnel.Protocol
+	tunnelID = tunnel.ID
+	tunnel.mu.RUnlock()
 
-		if protocol == ProtocolTCP || protocol == ProtocolTLS {
-			ts.portMapMu.Lock()
-			for port, t := range ts.portMap {
-				if t.ID == tunnelID {
-					delete(ts.portMap, port)
-					ts.logger.Info().
-						Int("port", port).
-						Str("tunnel_id", tunnelID).
-						Msg("Released TCP port")
-					break
-				}
+	if protocol == ProtocolTCP || protocol == ProtocolTLS {
+		ts.portMapMu.Lock()
+		for port, t := range ts.portMap {
+			if t.ID == tunnelID {
+				delete(ts.portMap, port)
+				ts.logger.Info().
+					Int("port", port).
+					Str("tunnel_id", tunnelID).
+					Msg("Released TCP port")
+				break
 			}
-			ts.portMapMu.Unlock()
 		}
-
-		if protocol == ProtocolUDP {
-			ts.portMapMu.Lock()
-			for port, t := range ts.portMap {
-				if t.ID == tunnelID {
-					delete(ts.portMap, port)
-					ts.udpListenersMu.Lock()
-					if listener, exists := ts.udpListeners[port]; exists {
-						listener.Close()
-						delete(ts.udpListeners, port)
-					}
-					ts.udpListenersMu.Unlock()
-					ts.logger.Info().
-						Int("port", port).
-						Str("tunnel_id", tunnelID).
-						Msg("Released UDP port")
-					break
-				}
-			}
-			ts.portMapMu.Unlock()
-		}
-
-		if ts.repository != nil && tunnelID != "" {
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if err := ts.repository.UpdateTunnelStatus(ctx, tunnelID, "inactive"); err != nil {
-					ts.logger.Error().
-						Err(err).
-						Str("tunnel_id", tunnelID).
-						Str("subdomain", subdomain).
-						Msg("Failed to update tunnel status to inactive")
-				} else {
-					ts.logger.Info().
-						Str("tunnel_id", tunnelID).
-						Str("subdomain", subdomain).
-						Msg("Updated tunnel status to inactive in database")
-				}
-			}()
-		}
-
-		ts.logger.Info().Str("subdomain", subdomain).Msg("Tunnel removed")
+		ts.portMapMu.Unlock()
 	}
+
+	if protocol == ProtocolUDP {
+		ts.portMapMu.Lock()
+		for port, t := range ts.portMap {
+			if t.ID == tunnelID {
+				delete(ts.portMap, port)
+				ts.udpListenersMu.Lock()
+				if listener, exists := ts.udpListeners[port]; exists {
+					listener.Close()
+					delete(ts.udpListeners, port)
+				}
+				ts.udpListenersMu.Unlock()
+				ts.logger.Info().
+					Int("port", port).
+					Str("tunnel_id", tunnelID).
+					Msg("Released UDP port")
+				break
+			}
+		}
+		ts.portMapMu.Unlock()
+	}
+
+	if ts.repository != nil && tunnelID != "" {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := ts.repository.UpdateTunnelStatus(ctx, tunnelID, "inactive"); err != nil {
+				ts.logger.Error().
+					Err(err).
+					Str("tunnel_id", tunnelID).
+					Str("subdomain", subdomain).
+					Msg("Failed to update tunnel status to inactive")
+			} else {
+				ts.logger.Info().
+					Str("tunnel_id", tunnelID).
+					Str("subdomain", subdomain).
+					Msg("Updated tunnel status to inactive in database")
+			}
+		}()
+	}
+
+	ts.logger.Info().Str("subdomain", subdomain).Msg("Tunnel removed")
 }
 
 func (ts *TunnelServer) GetTunnel(subdomain string) (*TunnelConnection, bool) {

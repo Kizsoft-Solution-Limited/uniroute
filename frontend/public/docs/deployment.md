@@ -92,6 +92,7 @@ If you use a custom config that sets headers, avoid removing `Upgrade` or `Conne
 		transport http {
 			read_timeout 86400s
 			write_timeout 86400s
+			keepalive 86400s
 		}
 	}
 }
@@ -108,7 +109,7 @@ This repo includes Caddy configs in **`scripts/caddy/`**:
 
 In `Caddyfile.server`, `tunnel.uniroute.co` and the `:443` catch-all point at **`host.docker.internal:TUNNEL_PORT`** (e.g. `8081`). For **tunnel.uniroute.co** to keep working after the tunnel container restarts (not only after a full redeploy), the tunnel app in Coolify must use a **fixed host port** (e.g. **8081**) so that Caddy always forwards to the same port. If Coolify assigns a random port per deploy, Caddy’s config would point at the wrong port after a restart until you redeploy (and regenerate the Caddyfile or update the port). In Coolify, set the tunnel application’s **Port** to a fixed value (e.g. **8081**) and keep that port in your Caddyfile.
 
-If the tunnel works but shows **“no available server”** (or tunnel connection lost) after about a day, Caddy is likely closing the long-lived WebSocket to the tunnel server due to default transport timeouts. The repo’s **`scripts/caddy/Caddyfile.server`** sets `read_timeout 168h` and `write_timeout 168h` on the tunnel `reverse_proxy` so Caddy does not close the connection. Apply that Caddyfile (or add the same `transport http { read_timeout 168h; write_timeout 168h }` to your tunnel block) and reload Caddy.
+If the tunnel works but shows **“no available server”** (or tunnel connection lost) after about a day, Caddy is likely closing the long-lived WebSocket to the tunnel server due to default transport timeouts. The repo’s **`scripts/caddy/Caddyfile.server`** sets `read_timeout 168h`, `write_timeout 168h`, and **`keepalive 168h`** on the tunnel `reverse_proxy`. Without the long `keepalive`, Caddy’s default upstream idle keep-alive (**2 minutes**) can disagree with long-lived or bursty traffic and contribute to stale connections or 502s. Apply that Caddyfile (or add the same `transport http { … }` block) and reload Caddy.
 
 **Keeping Caddy when Coolify overwrites the proxy:** Coolify may replace your Caddy proxy with Traefik when you revalidate the server, restart the proxy, or redeploy. **Coolify does not provide an option to disable proxy management or to prevent it from overwriting the proxy config** (see [Coolify docs](https://coolify.io/docs/knowledge-base/server/proxies) and [issue #3018](https://github.com/coollabsio/coolify/issues/3018)). So the only way to keep Caddy in place is to **restore it after Coolify overwrites**—either manually or automatically.
 
