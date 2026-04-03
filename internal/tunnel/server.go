@@ -2068,6 +2068,11 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		http.NotFound(w, r)
 		return
 	}
+	// Lightweight endpoint for the browser monitor script (avoids full-page GETs through the tunnel).
+	if path == "/.well-known/uniroute-ping" && (r.Method == http.MethodHead || r.Method == http.MethodGet) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 
 	ts.security.AddSecurityHeaders(w, r)
 	if r.Method == http.MethodOptions {
@@ -2189,28 +2194,22 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		ts.handleRootRequest(w, r)
 		return
 	}
-	ts.tunnelsMu.RLock()
-	availableSubdomains := make([]string, 0, len(ts.tunnels))
-	tunnelDetails := make(map[string]string)
-	for sub, t := range ts.tunnels {
-		availableSubdomains = append(availableSubdomains, sub)
-		t.mu.RLock()
-		tunnelDetails[sub] = fmt.Sprintf("id=%s,protocol=%s,local=%s", t.ID, t.Protocol, t.LocalURL)
-		t.mu.RUnlock()
+	// Hot path: never walk the full tunnel map here — it was O(n) under tunnelsMu per HTTP request,
+	// amplified lock contention and could make pages appear to hang under load.
+	if e := ts.logger.Debug(); e != nil {
+		ts.tunnelsMu.RLock()
+		n := len(ts.tunnels)
+		ts.tunnelsMu.RUnlock()
+		e.Str("subdomain", lookupSubdomain).
+			Str("host", host).
+			Bool("exists_in_memory", exists).
+			Int("tunnel_registry_size", n).
+			Str("request_path", r.URL.Path).
+			Str("request_method", r.Method).
+			Str("request_host", r.Host).
+			Bool("has_repository", ts.repository != nil).
+			Msg("HTTP request received - checking tunnel in memory")
 	}
-	ts.tunnelsMu.RUnlock()
-
-	ts.logger.Info().
-		Str("subdomain", lookupSubdomain).
-		Str("host", host).
-		Bool("exists_in_memory", exists).
-		Strs("available_tunnels", availableSubdomains).
-		Interface("tunnel_details", tunnelDetails).
-		Str("request_path", r.URL.Path).
-		Str("request_method", r.Method).
-		Str("request_host", r.Host).
-		Bool("has_repository", ts.repository != nil).
-		Msg("HTTP request received - checking tunnel in memory")
 
 	if exists && tunnel != nil {
 		tunnel.mu.RLock()
@@ -3362,19 +3361,17 @@ func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, re
 			if strings.Contains(contentType, "text/html") {
 				tunnelMonitorScript := `<script>
 (function() {
-	var checkInterval = 5000; // Check every 5 seconds (less aggressive)
+	var checkInterval = 30000;
 	var failures = 0;
 	var reloading = false;
 	var lastCheck = Date.now();
-	var consecutiveFailures = 0; // Track consecutive failures
-	var consecutiveSuccesses = 0; // Track consecutive successes (for recovery detection)
-	var maxFailures = 3; // Require 3 consecutive failures before reloading
-	var maxSuccesses = 2; // Require 2 consecutive successes before reloading on recovery
-	var wasOffline = false; // Track if we were showing error page
+	var consecutiveFailures = 0;
+	var consecutiveSuccesses = 0;
+	var maxFailures = 3;
+	var maxSuccesses = 2;
+	var wasOffline = false;
 	
-	// Check if we're currently on an error page (503, 502, etc.)
 	function isOnErrorPage() {
-		// Check if page title or content indicates error page
 		var title = document.title.toLowerCase();
 		var bodyText = document.body ? document.body.innerText.toLowerCase() : '';
 		return title.includes('503') || title.includes('502') || title.includes('bad gateway') || 
@@ -3385,7 +3382,9 @@ func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, re
 	function checkConnection() {
 		if (reloading) return;
 		
-		var url = window.location.href.split('?')[0] + '?_check=' + Date.now();
+		// Ping the tunnel edge only — do not re-fetch the full HTML/app on an interval (that doubled
+		// load and could leave the tab "loading" if each check was slow).
+		var url = window.location.origin + '/.well-known/uniroute-ping?t=' + Date.now();
 		var timeoutId = setTimeout(function() {
 			consecutiveFailures++;
 			consecutiveSuccesses = 0;
@@ -3396,9 +3395,8 @@ func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, re
 			}
 		}, 3000);
 		
-		// Use fetch with redirect: 'manual' so we never follow redirects to another origin (avoids CORS when app redirects e.g. to billspot.co)
 		fetch(url, {
-			method: 'GET',
+			method: 'HEAD',
 			cache: 'no-store',
 			headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'Expires': '0' },
 			redirect: 'manual'
@@ -3515,7 +3513,7 @@ func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, re
 				} else {
 					bodyStr = bodyStr + tunnelMonitorScript
 				}
-				ts.logger.Info().Str("path", r.URL.Path).Msg("Injected tunnel monitoring script into HTML response")
+				ts.logger.Debug().Str("path", r.URL.Path).Msg("Injected tunnel monitoring script into HTML response")
 			}
 
 			finalBody = []byte(bodyStr)
