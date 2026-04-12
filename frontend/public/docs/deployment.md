@@ -130,6 +130,8 @@ This uploads **`Caddyfile.server`** and the Caddy docker-compose to `/data/cooli
 
 Keep the **cron** jobs anyway as a safety net. Watcher log: **`/data/coolify/proxy/.uniroute-caddy/watch.log`**; service log: `journalctl -u uniroute-proxy-watch -f`.
 
+After any server or Coolify proxy redeploy, re-push the edge scripts and ensure the watcher is still enabled from your machine: **`./scripts/caddy/install_tunnel_edge_maintain_remote.sh user@your-server`** (same `PROXY_DIR` default as persist install).
+
 **Manual restore:** If you don’t use the cron, re-apply Caddy after each overwrite (e.g. SCP `Caddyfile.server` and `docker-compose.static.yml` to the server, replace the proxy compose and Caddyfile, then `docker rm -f coolify-proxy` and `docker compose up -d` in `/data/coolify/proxy`).
 
 ### Persisting tunnel state when the tunnel client runs in Coolify
