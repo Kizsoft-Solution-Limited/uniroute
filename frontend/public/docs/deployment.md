@@ -119,7 +119,16 @@ If the tunnel works but shows **“no available server”** (or tunnel connectio
 PROXY_SERVER=user@your-server ./scripts/caddy/install_persist_remote.sh
 ```
 
-This uploads **`Caddyfile.server`** and the Caddy docker-compose to `/data/coolify/proxy/.uniroute-caddy/` on the server and installs a **cron job every 10 minutes**. If the proxy has been reverted to Traefik or the Caddyfile no longer has the tunnel timeouts, the script restores Caddy automatically (site may be unreachable for up to ~10 minutes after Coolify overwrites). Log on the server: `/data/coolify/proxy/.uniroute-caddy/persist.log`.
+This uploads **`Caddyfile.server`** and the Caddy docker-compose to `/data/coolify/proxy/.uniroute-caddy/` on the server and installs a **cron job every 5 minutes** by default (override with `PERSIST_CRON_SCHEDULE='*/2 * * * *'` when running the installer if you want faster recovery). If the proxy has been reverted to Traefik or the Caddyfile no longer has the tunnel timeouts, the script restores Caddy automatically (worst-case downtime is roughly one cron interval). Log on the server: `/data/coolify/proxy/.uniroute-caddy/persist.log`.
+
+**Instant repair (recommended alongside cron):** Cron only limits how long you stay broken after Coolify overwrites files. For **near-immediate** recovery, run a small **inotify** watcher under **systemd** so the server reacts as soon as `/data/coolify/proxy/Caddyfile` or `docker-compose.yml` changes:
+
+1. On the server: `sudo apt install -y inotify-tools util-linux` (`flock` is usually already present).
+2. Copy **`scripts/caddy/watch_uniroute_proxy_config.sh`** to **`/data/coolify/proxy/`** (same directory as `maintain_uniroute_tunnel_edge.sh`), `chmod +x`.
+3. Copy **`scripts/caddy/uniroute-proxy-watch.service`** to `/etc/systemd/system/`, edit **`User=`** / **`Group=`** to a user in the **`docker`** group (or root if that is how you run Docker on the host).
+4. `sudo systemctl daemon-reload && sudo systemctl enable --now uniroute-proxy-watch.service`
+
+Keep the **cron** jobs anyway as a safety net. Watcher log: **`/data/coolify/proxy/.uniroute-caddy/watch.log`**; service log: `journalctl -u uniroute-proxy-watch -f`.
 
 **Manual restore:** If you don’t use the cron, re-apply Caddy after each overwrite (e.g. SCP `Caddyfile.server` and `docker-compose.static.yml` to the server, replace the proxy compose and Caddyfile, then `docker rm -f coolify-proxy` and `docker compose up -d` in `/data/coolify/proxy`).
 

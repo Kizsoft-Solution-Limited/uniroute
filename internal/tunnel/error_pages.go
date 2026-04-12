@@ -312,7 +312,7 @@ func (ts *TunnelServer) writeErrorPage(w http.ResponseWriter, r *http.Request, t
 	</div>
 	<script>
 		(function() {
-			var checkInterval = 2000;
+			var checkInterval = 5000;
 			var statusEl = document.getElementById('statusIndicator');
 			var isChecking = false;
 			var isReloading = false;
@@ -324,17 +324,18 @@ func (ts *TunnelServer) writeErrorPage(w http.ResponseWriter, r *http.Request, t
 				statusEl.textContent = 'Checking connection...';
 				statusEl.className = 'status-indicator checking';
 				
-				var url = window.location.href.split('?')[0] + '?t=' + Date.now();
+				var url = window.location.origin + '/.well-known/uniroute-ping?t=' + Date.now();
 				fetch(url, {
 					method: 'HEAD',
 					cache: 'no-cache',
 					headers: {
 						'Cache-Control': 'no-cache',
 						'Pragma': 'no-cache'
-					}
+					},
+					redirect: 'manual'
 				}).then(function(response) {
 					isChecking = false;
-					if (response.status === 200 || response.status === 304) {
+					if (response.status === 200 || response.status === 204 || response.status === 304) {
 						statusEl.textContent = 'Connection restored! Refreshing...';
 						statusEl.className = 'status-indicator online';
 						isReloading = true;

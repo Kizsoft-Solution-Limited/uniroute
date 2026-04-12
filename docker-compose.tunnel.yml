@@ -14,4 +14,5 @@ services:
       - TUNNEL_TCP_PORT_RANGE=101
       # Optional: TUNNEL_TCP_PORT_BASE=20000 (default)
       # Set TUNNEL_BASE_DOMAIN, DATABASE_URL, JWT_SECRET, etc. as needed
+      # TUNNEL_INJECT_HTML_MONITOR=true — re-enable injected client reload script (off by default; avoids reload loops during edge blips)
     restart: unless-stopped

@@ -177,6 +177,14 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
+// tunnelHTMLMonitorInjectEnabled is off by default: the injected script can reload the tab when
+// edge checks fail (e.g. brief 502s during Caddy restarts), which feels like infinite loading.
+// Set TUNNEL_INJECT_HTML_MONITOR=1 or true to restore the old behavior.
+func tunnelHTMLMonitorInjectEnabled() bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("TUNNEL_INJECT_HTML_MONITOR")))
+	return v == "1" || v == "true" || v == "yes"
+}
+
 func (ts *TunnelServer) SetTCPPortBase(basePort int) {
 	ts.tcpPortBase = basePort
 	ts.nextTCPPort = basePort
@@ -3358,7 +3366,7 @@ func (ts *TunnelServer) writeResponse(w http.ResponseWriter, r *http.Request, re
 				return wsTunnelURL
 			})
 
-			if strings.Contains(contentType, "text/html") {
+			if strings.Contains(contentType, "text/html") && tunnelHTMLMonitorInjectEnabled() {
 				tunnelMonitorScript := `<script>
 (function() {
 	var checkInterval = 30000;
