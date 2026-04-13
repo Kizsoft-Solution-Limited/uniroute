@@ -68,7 +68,12 @@ func (sc *StatsCollector) RecordRequest(tunnelID string, latencyMs int, requestS
 	stats.LastRequestAt = time.Now()
 	stats.mu.Unlock()
 
-	sc.recordRequestRedis(context.Background(), tunnelID, latencyMs, requestSize, responseSize, isError)
+	// Never block the HTTP response path on Redis; stats are best-effort.
+	go func(tid string, lat, reqSz, respSz int, errFlag bool) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		sc.recordRequestRedis(ctx, tid, lat, reqSz, respSz, errFlag)
+	}(tunnelID, latencyMs, requestSize, responseSize, isError)
 }
 
 func (sc *StatsCollector) GetStats(tunnelID string) *TunnelStats {

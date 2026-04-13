@@ -22,6 +22,7 @@ func NewRedisClient(url string, logger zerolog.Logger) (*RedisClient, error) {
 			Addr: url,
 		}
 	}
+	applyDefaultRedisTimeouts(opts)
 
 	client := redis.NewClient(opts)
 
@@ -47,4 +48,24 @@ func (r *RedisClient) Client() *redis.Client {
 
 func (r *RedisClient) Close() error {
 	return r.client.Close()
+}
+
+// applyDefaultRedisTimeouts sets sane network bounds when the URL did not specify them.
+// Without Read/Write timeouts a half-open TCP to Redis can stall tunnel handlers indefinitely.
+func applyDefaultRedisTimeouts(opts *redis.Options) {
+	if opts == nil {
+		return
+	}
+	if opts.DialTimeout <= 0 {
+		opts.DialTimeout = 5 * time.Second
+	}
+	if opts.ReadTimeout <= 0 {
+		opts.ReadTimeout = 5 * time.Second
+	}
+	if opts.WriteTimeout <= 0 {
+		opts.WriteTimeout = 5 * time.Second
+	}
+	if opts.PoolTimeout <= 0 {
+		opts.PoolTimeout = 4 * time.Second
+	}
 }

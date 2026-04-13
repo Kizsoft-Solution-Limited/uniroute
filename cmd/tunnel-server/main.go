@@ -4,7 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
+	_ "net/http/pprof" // register DefaultServeMux handlers for TUNNEL_PPROF_ADDR
 	"os"
+	"strings"
 
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/config"
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/security"
@@ -60,6 +63,14 @@ func main() {
 		Msg("Starting UniRoute Tunnel Server")
 
 	cfg := config.Load()
+	if pprofAddr := strings.TrimSpace(os.Getenv("TUNNEL_PPROF_ADDR")); pprofAddr != "" {
+		go func() {
+			log.Info().Str("addr", pprofAddr).Msg("pprof listening (debugging only; firewall this address in production)")
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				log.Error().Err(err).Str("addr", pprofAddr).Msg("pprof server exited")
+			}
+		}()
+	}
 	server := tunnel.NewTunnelServer(*port, log, cfg.TunnelOrigins)
 
 	baseDomain := getEnv("TUNNEL_BASE_DOMAIN", "")

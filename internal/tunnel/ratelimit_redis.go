@@ -54,7 +54,7 @@ func (rrl *RedisRateLimiter) CheckRateLimit(ctx context.Context, tunnelID string
 	config := rrl.GetRateLimit(tunnelID)
 	now := time.Now()
 
-	rrl.logger.Info().
+	rrl.logger.Debug().
 		Str("tunnel_id", tunnelID).
 		Int("requests_per_minute", config.RequestsPerMinute).
 		Int("requests_per_hour", config.RequestsPerHour).

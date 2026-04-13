@@ -22,6 +22,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// tunnelRepositoryTimeout bounds Postgres calls from HTTP/WS/TCP/UDP handlers so pool
+// stalls or slow queries cannot wedge goroutines without bound.
+const tunnelRepositoryTimeout = 5 * time.Second
+
+// tunnelRepositoryWriteTimeout bounds inserts/updates during tunnel registration.
+const tunnelRepositoryWriteTimeout = 10 * time.Second
+
 type TunnelServer struct {
 	upgrader        websocket.Upgrader
 	tunnels         map[string]*TunnelConnection
@@ -459,7 +466,9 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 
 		userUUID, parseErr := uuid.Parse(authenticatedUserID)
 		if parseErr == nil {
-			userTunnels, err := ts.repository.ListTunnelsByUser(r.Context(), userUUID, initMsg.Protocol)
+			listCtx, listCancel := context.WithTimeout(r.Context(), tunnelRepositoryTimeout)
+			userTunnels, err := ts.repository.ListTunnelsByUser(listCtx, userUUID, initMsg.Protocol)
+			listCancel()
 			if err == nil && len(userTunnels) > 0 {
 				ts.tunnelsMu.RLock()
 				var matchByLocalURL, firstDisconnected *Tunnel
@@ -565,7 +574,9 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			}
 			
 			if existingTunnel == nil && ts.repository != nil {
-				dbTunnel, err := ts.repository.GetTunnelByCustomDomain(context.Background(), initMsg.Host)
+				repoCtx, repoCancel := context.WithTimeout(context.Background(), tunnelRepositoryTimeout)
+				dbTunnel, err := ts.repository.GetTunnelByCustomDomain(repoCtx, initMsg.Host)
+				repoCancel()
 				if err == nil && dbTunnel != nil {
 					if dbTunnel.Protocol != "" && initMsg.Protocol != "" && dbTunnel.Protocol != initMsg.Protocol {
 						ts.logger.Info().
@@ -694,7 +705,9 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 				ts.logger.Debug().
 					Str("subdomain", initMsg.Subdomain).
 					Msg("Looking up tunnel by subdomain in database")
-				dbTunnel, err = ts.repository.GetTunnelBySubdomain(context.Background(), initMsg.Subdomain)
+				repoCtx, repoCancel := context.WithTimeout(context.Background(), tunnelRepositoryTimeout)
+				dbTunnel, err = ts.repository.GetTunnelBySubdomain(repoCtx, initMsg.Subdomain)
+				repoCancel()
 				if err != nil {
 					ts.logger.Debug().
 						Err(err).
@@ -714,7 +727,9 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 					ts.logger.Debug().
 						Str("tunnel_id", initMsg.TunnelID).
 						Msg("Looking up tunnel by ID in database")
-					dbTunnel, err = ts.repository.GetTunnelByID(context.Background(), tunnelUUID)
+					repoCtx, repoCancel := context.WithTimeout(context.Background(), tunnelRepositoryTimeout)
+					dbTunnel, err = ts.repository.GetTunnelByID(repoCtx, tunnelUUID)
+					repoCancel()
 					if err != nil {
 						ts.logger.Debug().
 							Err(err).
@@ -739,7 +754,9 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 							Str("tunnel_id", initMsg.TunnelID).
 							Str("subdomain", initMsg.TunnelID).
 							Msg("Treating hex tunnel ID as subdomain for lookup")
-						dbTunnel, err = ts.repository.GetTunnelBySubdomain(context.Background(), initMsg.TunnelID)
+						repoCtx, repoCancel := context.WithTimeout(context.Background(), tunnelRepositoryTimeout)
+						dbTunnel, err = ts.repository.GetTunnelBySubdomain(repoCtx, initMsg.TunnelID)
+						repoCancel()
 						if err != nil {
 							ts.logger.Debug().
 								Err(err).
@@ -1003,7 +1020,9 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 					if ts.repository != nil {
 						var dbTunnel *Tunnel
 						if subdomain != "" {
-							dbTunnel, err = ts.repository.GetTunnelBySubdomain(context.Background(), subdomain)
+							repoCtx, repoCancel := context.WithTimeout(context.Background(), tunnelRepositoryTimeout)
+							dbTunnel, err = ts.repository.GetTunnelBySubdomain(repoCtx, subdomain)
+							repoCancel()
 						}
 						if err == nil && dbTunnel != nil {
 							tunnelID = dbTunnel.ID
@@ -1199,7 +1218,8 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 
 		if ts.repository != nil {
 			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				// Several sequential DB writes; use one generous deadline for the batch.
+				ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 				defer cancel()
 
 				var existingTunnel *Tunnel
@@ -1584,7 +1604,10 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			Msg("Attempting to save tunnel to database")
 
 		originalTunnelID := tunnelID
-		if err := ts.repository.CreateTunnel(context.Background(), dbTunnel); err != nil {
+		repoCtx, repoCancel := context.WithTimeout(context.Background(), tunnelRepositoryWriteTimeout)
+		err := ts.repository.CreateTunnel(repoCtx, dbTunnel)
+		repoCancel()
+		if err != nil {
 			ts.logger.Error().
 				Err(err).
 				Str("tunnel_id", tunnelID).
@@ -2121,7 +2144,9 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 			if tryHost == "" {
 				continue
 			}
-			dbTunnel, err := ts.repository.GetTunnelByCustomDomain(context.Background(), tryHost)
+			repoCtx, repoCancel := context.WithTimeout(r.Context(), tunnelRepositoryTimeout)
+			dbTunnel, err := ts.repository.GetTunnelByCustomDomain(repoCtx, tryHost)
+			repoCancel()
 			if err == nil && dbTunnel != nil && (dbTunnel.Protocol == "" || dbTunnel.Protocol == ProtocolHTTP) {
 				lookupSubdomain = dbTunnel.Subdomain
 				ts.tunnelsMu.RLock()
@@ -2158,7 +2183,9 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 			tryHosts = append(tryHosts, hostname[4:])
 		}
 		for _, tryHost := range tryHosts {
-			dbTunnel, err := ts.repository.GetTunnelByCustomDomain(context.Background(), tryHost)
+			repoCtx, repoCancel := context.WithTimeout(r.Context(), tunnelRepositoryTimeout)
+			dbTunnel, err := ts.repository.GetTunnelByCustomDomain(repoCtx, tryHost)
+			repoCancel()
 			if err == nil && dbTunnel != nil {
 				if dbTunnel.Protocol != "" && dbTunnel.Protocol != ProtocolHTTP {
 					ts.logger.Warn().
@@ -2228,7 +2255,12 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		if ts.repository != nil && tunnelID != "" {
 			tunnelUUID, parseErr := uuid.Parse(tunnelID)
 			if parseErr == nil {
-				dbTunnel, err := ts.repository.GetTunnelByID(context.Background(), tunnelUUID)
+				dbCtx, dbCancel := context.WithTimeout(r.Context(), tunnelRepositoryTimeout)
+				dbTunnel, err := ts.repository.GetTunnelByID(dbCtx, tunnelUUID)
+				dbCancel()
+				if err != nil {
+					ts.logger.Debug().Err(err).Str("tunnel_id", tunnelID).Msg("Inactive tunnel DB check skipped or failed")
+				}
 				if err == nil && dbTunnel != nil && dbTunnel.Status == "inactive" {
 					ts.logger.Info().
 						Str("tunnel_id", tunnelID).
@@ -2271,7 +2303,9 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 				Str("tunnel_id", tunnelID).
 				Msg("Tunnel exists but WebSocket connection is nil - tunnel is disconnected")
 			if ts.repository != nil {
-				dbTunnel, err := ts.repository.GetTunnelBySubdomain(context.Background(), lookupSubdomain)
+				repoCtx, repoCancel := context.WithTimeout(r.Context(), tunnelRepositoryTimeout)
+				dbTunnel, err := ts.repository.GetTunnelBySubdomain(repoCtx, lookupSubdomain)
+				repoCancel()
 				if err == nil && dbTunnel != nil {
 					ts.writeErrorPage(w, r, nil, http.StatusServiceUnavailable, "The endpoint is offline", "The tunnel exists but is not currently connected.", fmt.Sprintf("The endpoint '%s' is associated with a tunnel, but the tunnel client is not connected. Please start the tunnel client to resume this tunnel.", html.EscapeString(lookupSubdomain)))
 					return
@@ -2354,7 +2388,9 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 			}
 
 			if !exists {
-				dbTunnel, err := ts.repository.GetTunnelBySubdomain(context.Background(), lookupSubdomain)
+				repoCtx, repoCancel := context.WithTimeout(r.Context(), tunnelRepositoryTimeout)
+				dbTunnel, err := ts.repository.GetTunnelBySubdomain(repoCtx, lookupSubdomain)
+				repoCancel()
 				if err == nil && dbTunnel != nil {
 					ts.logger.Info().
 						Str("subdomain", lookupSubdomain).
@@ -2876,22 +2912,27 @@ func (ts *TunnelServer) handleLive(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ts *TunnelServer) handleHealth(w http.ResponseWriter, r *http.Request) {
-	ts.tunnelsMu.RLock()
-	tlist := make([]*TunnelConnection, 0, len(ts.tunnels))
-	for _, t := range ts.tunnels {
-		tlist = append(tlist, t)
+	// Probes: avoid tunnelsMu entirely — under registry lock contention /health used to hang for minutes.
+	if r.Method == http.MethodHead || r.URL.Query().Get("lite") == "1" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if r.Method != http.MethodHead {
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		}
+		return
 	}
-	ts.tunnelsMu.RUnlock()
 
-	total := len(tlist)
+	ts.tunnelsMu.RLock()
+	total := len(ts.tunnels)
 	connected := 0
-	for _, t := range tlist {
+	for _, t := range ts.tunnels {
 		t.mu.RLock()
 		if t.WSConn != nil {
 			connected++
 		}
 		t.mu.RUnlock()
 	}
+	ts.tunnelsMu.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	body := fmt.Sprintf(`{"status":"ok","tunnels":%d,"connected":%d}`, total, connected)
@@ -2907,10 +2948,14 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 	start := time.Now()
 	requestID := generateID()
 
-	allowed, err := ts.rateLimiter.CheckRateLimit(r.Context(), tunnel.ID)
+	rlCtx, rlCancel := context.WithTimeout(r.Context(), 5*time.Second)
+	allowed, err := ts.rateLimiter.CheckRateLimit(rlCtx, tunnel.ID)
+	rlCancel()
 	if err != nil {
-		ts.logger.Error().Err(err).Str("tunnel_id", tunnel.ID).Msg("Rate limit check failed")
-	} else if !allowed {
+		ts.logger.Warn().Err(err).Str("tunnel_id", tunnel.ID).Msg("Rate limit check failed or timed out - allowing request")
+		allowed = true
+	}
+	if !allowed {
 		currentConfig := ts.rateLimiter.GetRateLimit(tunnel.ID)
 		ts.logger.Warn().
 			Str("tunnel_id", tunnel.ID).
@@ -3691,7 +3736,9 @@ func (ts *TunnelServer) monitorInactiveTunnels() {
 				continue
 			}
 
-			dbTunnel, err := ts.repository.GetTunnelByID(context.Background(), tunnelUUID)
+			dbCtx, dbCancel := context.WithTimeout(context.Background(), tunnelRepositoryTimeout)
+			dbTunnel, err := ts.repository.GetTunnelByID(dbCtx, tunnelUUID)
+			dbCancel()
 			if err != nil {
 				continue
 			}
@@ -4017,7 +4064,9 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 	if ts.repository != nil && tunnelID != "" {
 		tunnelUUID, parseErr := uuid.Parse(tunnelID)
 		if parseErr == nil {
-			dbTunnel, err := ts.repository.GetTunnelByID(context.Background(), tunnelUUID)
+			dbCtx, dbCancel := context.WithTimeout(context.Background(), tunnelRepositoryTimeout)
+			dbTunnel, err := ts.repository.GetTunnelByID(dbCtx, tunnelUUID)
+			dbCancel()
 			if err == nil && dbTunnel != nil && dbTunnel.Status == "inactive" {
 				ts.logger.Info().
 					Str("tunnel_id", tunnelID).
@@ -4039,12 +4088,15 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 	}
 
 	if ts.rateLimiter != nil {
-		allowed, err := ts.rateLimiter.CheckRateLimit(context.Background(), tunnelID)
+		rlCtx, rlCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		allowed, err := ts.rateLimiter.CheckRateLimit(rlCtx, tunnelID)
+		rlCancel()
 		if err != nil {
-			ts.logger.Error().
+			ts.logger.Warn().
 				Err(err).
 				Str("tunnel_id", tunnelID).
-				Msg("Rate limit check failed for TCP connection")
+				Msg("Rate limit check failed or timed out for TCP - allowing connection")
+			allowed = true
 		}
 		if !allowed {
 			ts.logger.Warn().
@@ -4256,7 +4308,9 @@ func (ts *TunnelServer) handleUDPPacket(tunnel *TunnelConnection, port int, addr
 	if ts.repository != nil && tunnelID != "" {
 		tunnelUUID, parseErr := uuid.Parse(tunnelID)
 		if parseErr == nil {
-			dbTunnel, err := ts.repository.GetTunnelByID(context.Background(), tunnelUUID)
+			dbCtx, dbCancel := context.WithTimeout(context.Background(), tunnelRepositoryTimeout)
+			dbTunnel, err := ts.repository.GetTunnelByID(dbCtx, tunnelUUID)
+			dbCancel()
 			if err == nil && dbTunnel != nil && dbTunnel.Status == "inactive" {
 				ts.logger.Info().
 					Str("tunnel_id", tunnelID).
@@ -4277,12 +4331,15 @@ func (ts *TunnelServer) handleUDPPacket(tunnel *TunnelConnection, port int, addr
 	}
 
 	if ts.rateLimiter != nil {
-		allowed, err := ts.rateLimiter.CheckRateLimit(context.Background(), tunnelID)
+		rlCtx, rlCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		allowed, err := ts.rateLimiter.CheckRateLimit(rlCtx, tunnelID)
+		rlCancel()
 		if err != nil {
-			ts.logger.Error().
+			ts.logger.Warn().
 				Err(err).
 				Str("tunnel_id", tunnelID).
-				Msg("Rate limit check failed for UDP packet")
+				Msg("Rate limit check failed or timed out for UDP - allowing packet")
+			allowed = true
 		}
 		if !allowed {
 			ts.logger.Warn().

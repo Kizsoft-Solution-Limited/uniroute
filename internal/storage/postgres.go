@@ -24,6 +24,9 @@ func NewPostgresClient(url string, logger zerolog.Logger) (*PostgresClient, erro
 	config.MinConns = 5
 	config.MaxConnLifetime = 5 * time.Minute
 	config.MaxConnIdleTime = 1 * time.Minute
+	if config.ConnConfig.ConnectTimeout <= 0 {
+		config.ConnConfig.ConnectTimeout = 5 * time.Second
+	}
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
