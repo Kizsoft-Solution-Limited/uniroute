@@ -101,6 +101,15 @@ type TunnelConnection struct {
 	wsReadyChansMu sync.RWMutex
 }
 
+// withRLock executes fn while holding a read lock on the tunnel.
+// Using defer guarantees the lock is always released, even if fn panics.
+// This prevents permanently leaked read locks that would block future writers.
+func (t *TunnelConnection) withRLock(fn func()) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	fn()
+}
+
 func NewTunnelServer(port int, logger zerolog.Logger, allowedOrigins []string) *TunnelServer {
 	defaultOrigins := []string{
 		"http://localhost",
@@ -313,10 +322,12 @@ func (ts *TunnelServer) cleanupDisconnectedTunnels() {
 			if tunnel == nil {
 				continue
 			}
-			tunnel.mu.RLock()
-			wsNil := tunnel.WSConn == nil
-			lastActive := tunnel.LastActive
-			tunnel.mu.RUnlock()
+			var wsNil bool
+			var lastActive time.Time
+			tunnel.withRLock(func() {
+				wsNil = tunnel.WSConn == nil
+				lastActive = tunnel.LastActive
+			})
 			if wsNil && now.Sub(lastActive) > disconnectedTunnelMaxAge {
 				toRemove = append(toRemove, subdomain)
 			}
@@ -549,13 +560,15 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.tunnelsMu.RLock()
 		var existingTunnel *TunnelConnection
 
-		if initMsg.Host != "" {
+			if initMsg.Host != "" {
 			tunnel := ts.tunnels[initMsg.Host]
 			if tunnel != nil {
-				tunnel.mu.RLock()
-				tunnelProtocol := tunnel.Protocol
-				tunnelWSConn := tunnel.WSConn
-				tunnel.mu.RUnlock()
+				var tunnelProtocol string
+				var tunnelWSConn *websocket.Conn
+				tunnel.withRLock(func() {
+					tunnelProtocol = tunnel.Protocol
+					tunnelWSConn = tunnel.WSConn
+				})
 				if (initMsg.Protocol == "" || tunnelProtocol == initMsg.Protocol) && tunnelWSConn == nil {
 					existingTunnel = tunnel
 				} else if tunnelWSConn != nil {
@@ -630,9 +643,10 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		} else if initMsg.Subdomain != "" {
 			tunnel := ts.tunnels[initMsg.Subdomain]
 			if tunnel != nil {
-				tunnel.mu.RLock()
-				tunnelProtocol := tunnel.Protocol
-				tunnel.mu.RUnlock()
+				var tunnelProtocol string
+				tunnel.withRLock(func() {
+					tunnelProtocol = tunnel.Protocol
+				})
 				if initMsg.Protocol == "" || tunnelProtocol == initMsg.Protocol {
 					existingTunnel = tunnel
 				} else {
@@ -1440,9 +1454,10 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 	}
 
 	var publicURL string
-	tunnel.mu.RLock()
-	tunnelProtocol := tunnel.Protocol
-	tunnel.mu.RUnlock()
+	var tunnelProtocol string
+	tunnel.withRLock(func() {
+		tunnelProtocol = tunnel.Protocol
+	})
 
 	if tunnelProtocol == ProtocolTCP || tunnelProtocol == ProtocolTLS {
 		ts.portMapMu.RLock()
@@ -1690,9 +1705,10 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.tunnelsMu.Unlock()
 	}
 
-	tunnel.mu.RLock()
-	wsConnCheck := tunnel.WSConn
-	tunnel.mu.RUnlock()
+	var wsConnCheck *websocket.Conn
+	tunnel.withRLock(func() {
+		wsConnCheck = tunnel.WSConn
+	})
 
 	if wsConnCheck == nil {
 		ts.logger.Error().
@@ -1714,19 +1730,22 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 
 	maxWait := 100 // Wait up to 1 second (increased for resume reliability)
 	for i := 0; i < maxWait; i++ {
-		tunnel.mu.RLock()
-		ready := tunnel.handlerReady
-		wsConnStillValid := tunnel.WSConn != nil
-		tunnel.mu.RUnlock()
+		var ready bool
+		var wsConnStillValid bool
+		tunnel.withRLock(func() {
+			ready = tunnel.handlerReady
+			wsConnStillValid = tunnel.WSConn != nil
+		})
 		if ready && wsConnStillValid {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	tunnel.mu.RLock()
-	handlerReady := tunnel.handlerReady
-	tunnel.mu.RUnlock()
+	var handlerReady bool
+	tunnel.withRLock(func() {
+		handlerReady = tunnel.handlerReady
+	})
 
 	if !handlerReady {
 		ts.logger.Warn().
@@ -1824,11 +1843,13 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 }
 
 func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
-	tunnel.mu.RLock()
-	ourWSConn := tunnel.WSConn
-	tunnelSubdomain := tunnel.Subdomain
-	tunnelID := tunnel.ID
-	tunnel.mu.RUnlock()
+	var ourWSConn *websocket.Conn
+	var tunnelSubdomain, tunnelID string
+	tunnel.withRLock(func() {
+		ourWSConn = tunnel.WSConn
+		tunnelSubdomain = tunnel.Subdomain
+		tunnelID = tunnel.ID
+	})
 
 	defer func() {
 		if p := recover(); p != nil {
@@ -1875,9 +1896,10 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 	}
 
 	defer func() {
-		tunnel.mu.RLock()
-		currentWSConn := tunnel.WSConn
-		tunnel.mu.RUnlock()
+		var currentWSConn *websocket.Conn
+		tunnel.withRLock(func() {
+			currentWSConn = tunnel.WSConn
+		})
 
 		if currentWSConn == ourWSConn {
 			ourWSConn.Close()
@@ -1893,9 +1915,10 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 	readDeadline := 3 * heartbeatInterval
 
 	for {
-		tunnel.mu.RLock()
-		currentWSConn := tunnel.WSConn
-		tunnel.mu.RUnlock()
+		var currentWSConn *websocket.Conn
+		tunnel.withRLock(func() {
+			currentWSConn = tunnel.WSConn
+		})
 
 		if currentWSConn == nil || currentWSConn != ourWSConn {
 			ts.logger.Debug().
@@ -1911,9 +1934,9 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 
 		var msg TunnelMessage
 		if err := ourWSConn.ReadJSON(&msg); err != nil {
-			tunnel.mu.RLock()
-			currentWSConn = tunnel.WSConn
-			tunnel.mu.RUnlock()
+			tunnel.withRLock(func() {
+				currentWSConn = tunnel.WSConn
+			})
 
 			if currentWSConn != ourWSConn {
 				ts.logger.Debug().
@@ -1940,7 +1963,7 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 			return
 		}
 
-		tunnel.WSConn.SetReadDeadline(time.Time{})
+		ourWSConn.SetReadDeadline(time.Time{})
 
 		tunnel.mu.Lock()
 		tunnel.LastActive = time.Now()
@@ -1951,14 +1974,15 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 				go func() {
 					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 					defer cancel()
-					tunnel.mu.RLock()
-					tunnelID := tunnel.ID
-					tunnel.mu.RUnlock()
+					var pingTunnelID string
+					tunnel.withRLock(func() {
+						pingTunnelID = tunnel.ID
+					})
 
-					if err := ts.repository.UpdateTunnelActivity(ctx, tunnelID, 0); err != nil {
+					if err := ts.repository.UpdateTunnelActivity(ctx, pingTunnelID, 0); err != nil {
 						ts.logger.Debug().
 							Err(err).
-							Str("tunnel_id", tunnelID).
+							Str("tunnel_id", pingTunnelID).
 							Msg("Failed to update tunnel last_active_at on ping (non-critical)")
 					}
 				}()
@@ -1967,15 +1991,17 @@ func (ts *TunnelServer) handleTunnelMessages(tunnel *TunnelConnection) {
 
 		switch msg.Type {
 		case MsgTypePing:
-			tunnel.mu.RLock()
-			wsConn := tunnel.WSConn
-			tunnel.mu.RUnlock()
+			var wsConn *websocket.Conn
+			tunnel.withRLock(func() {
+				wsConn = tunnel.WSConn
+			})
 			if wsConn != nil {
 				pongMsg := TunnelMessage{Type: MsgTypePong}
 				tunnel.writeMu.Lock()
-				tunnel.mu.RLock()
-				currentWSConn := tunnel.WSConn
-				tunnel.mu.RUnlock()
+				var currentWSConn *websocket.Conn
+				tunnel.withRLock(func() {
+					currentWSConn = tunnel.WSConn
+				})
 				if currentWSConn == wsConn && currentWSConn != nil {
 					if err := currentWSConn.WriteJSON(pongMsg); err != nil {
 						ts.logger.Warn().Err(err).Msg("Failed to send pong response")
@@ -2149,13 +2175,14 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 			repoCancel()
 			if err == nil && dbTunnel != nil && (dbTunnel.Protocol == "" || dbTunnel.Protocol == ProtocolHTTP) {
 				lookupSubdomain = dbTunnel.Subdomain
-				ts.tunnelsMu.RLock()
-				tunnel, exists = ts.tunnels[lookupSubdomain]
-				ts.tunnelsMu.RUnlock()
+			ts.tunnelsMu.RLock()
+			tunnel, exists = ts.tunnels[lookupSubdomain]
+			ts.tunnelsMu.RUnlock()
 				if exists && tunnel != nil {
-					tunnel.mu.RLock()
-					tp := tunnel.Protocol
-					tunnel.mu.RUnlock()
+					var tp string
+					tunnel.withRLock(func() {
+						tp = tunnel.Protocol
+					})
 					if tp != ProtocolHTTP {
 						tunnel, exists = nil, false
 					}
@@ -2198,11 +2225,12 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 					tunnel, exists = ts.tunnels[lookupSubdomain]
 					ts.tunnelsMu.RUnlock()
 
-					if exists && tunnel != nil {
-						tunnel.mu.RLock()
-						tunnelProtocol := tunnel.Protocol
-						tunnel.mu.RUnlock()
-						if tunnelProtocol != ProtocolHTTP {
+				if exists && tunnel != nil {
+					var tunnelProtocol string
+					tunnel.withRLock(func() {
+						tunnelProtocol = tunnel.Protocol
+					})
+					if tunnelProtocol != ProtocolHTTP {
 							ts.logger.Warn().
 								Str("custom_domain", hostname).
 								Str("tunnel_subdomain", lookupSubdomain).
@@ -2247,10 +2275,11 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 	}
 
 	if exists && tunnel != nil {
-		tunnel.mu.RLock()
-		tunnelID := tunnel.ID
-		tunnelProtocol := tunnel.Protocol
-		tunnel.mu.RUnlock()
+		var tunnelID, tunnelProtocol string
+		tunnel.withRLock(func() {
+			tunnelID = tunnel.ID
+			tunnelProtocol = tunnel.Protocol
+		})
 
 		if ts.repository != nil && tunnelID != "" {
 			tunnelUUID, parseErr := uuid.Parse(tunnelID)
@@ -2268,9 +2297,10 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 						Str("status", dbTunnel.Status).
 						Msg("Tunnel is inactive in database (disconnected from dashboard) - closing connection")
 					
-					tunnel.mu.RLock()
-					wsConn := tunnel.WSConn
-					tunnel.mu.RUnlock()
+					var wsConn *websocket.Conn
+					tunnel.withRLock(func() {
+						wsConn = tunnel.WSConn
+					})
 					if wsConn != nil {
 						wsConn.Close()
 					}
@@ -2293,9 +2323,10 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 			return
 		}
 
-		tunnel.mu.RLock()
-		wsConn := tunnel.WSConn
-		tunnel.mu.RUnlock()
+		var wsConn *websocket.Conn
+		tunnel.withRLock(func() {
+			wsConn = tunnel.WSConn
+		})
 
 		if wsConn == nil {
 			ts.logger.Warn().
@@ -2314,9 +2345,10 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 			ts.writeErrorPage(w, r, nil, http.StatusNotFound, "Tunnel Not Found", "The requested tunnel does not exist.", fmt.Sprintf("The subdomain '%s' is not associated with any tunnel.", html.EscapeString(lookupSubdomain)))
 			return
 		} else {
-			tunnel.mu.RLock()
-			handlerReady := tunnel.handlerReady
-			tunnel.mu.RUnlock()
+			var handlerReady bool
+			tunnel.withRLock(func() {
+				handlerReady = tunnel.handlerReady
+			})
 
 			if !handlerReady {
 				ts.logger.Debug().
@@ -2325,9 +2357,9 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 					Msg("Tunnel exists but handler not ready yet - waiting briefly")
 				for i := 0; i < 10; i++ {
 					time.Sleep(10 * time.Millisecond)
-					tunnel.mu.RLock()
-					handlerReady = tunnel.handlerReady
-					tunnel.mu.RUnlock()
+					tunnel.withRLock(func() {
+						handlerReady = tunnel.handlerReady
+					})
 					if handlerReady {
 						break
 					}
@@ -2354,37 +2386,39 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 				ts.tunnelsMu.RLock()
 				tunnel, exists = ts.tunnels[lookupSubdomain]
 				ts.tunnelsMu.RUnlock()
-				if exists && tunnel != nil {
-					ts.logger.Info().
+			if exists && tunnel != nil {
+				ts.logger.Info().
+					Str("subdomain", lookupSubdomain).
+					Int("wait_iterations", i+1).
+					Msg("Tunnel appeared in memory during wait - resume likely in progress")
+
+				var handlerReady bool
+				var wsConn *websocket.Conn
+				tunnel.withRLock(func() {
+					handlerReady = tunnel.handlerReady
+					wsConn = tunnel.WSConn
+				})
+
+				if wsConn != nil && !handlerReady {
+					ts.logger.Debug().
 						Str("subdomain", lookupSubdomain).
-						Int("wait_iterations", i+1).
-						Msg("Tunnel appeared in memory during wait - resume likely in progress")
-
-					tunnel.mu.RLock()
-					handlerReady := tunnel.handlerReady
-					wsConn := tunnel.WSConn
-					tunnel.mu.RUnlock()
-
-					if wsConn != nil && !handlerReady {
-						ts.logger.Debug().
-							Str("subdomain", lookupSubdomain).
-							Msg("Tunnel found but handler not ready - waiting for handler")
-						for j := 0; j < 50; j++ {
-							time.Sleep(10 * time.Millisecond)
-							tunnel.mu.RLock()
+						Msg("Tunnel found but handler not ready - waiting for handler")
+					for j := 0; j < 50; j++ {
+						time.Sleep(10 * time.Millisecond)
+						tunnel.withRLock(func() {
 							handlerReady = tunnel.handlerReady
-							tunnel.mu.RUnlock()
-							if handlerReady {
-								ts.logger.Info().
-									Str("subdomain", lookupSubdomain).
-									Int("handler_wait_iterations", j+1).
-									Msg("Handler is now ready after wait")
-								break
-							}
+						})
+						if handlerReady {
+							ts.logger.Info().
+								Str("subdomain", lookupSubdomain).
+								Int("handler_wait_iterations", j+1).
+								Msg("Handler is now ready after wait")
+							break
 						}
 					}
-					break
 				}
+				break
+			}
 			}
 
 			if !exists {
@@ -2433,11 +2467,14 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	tunnel.mu.RLock()
-	protocol := tunnel.Protocol
-	wsConn := tunnel.WSConn
-	handlerReady := tunnel.handlerReady
-	tunnel.mu.RUnlock()
+	var protocol string
+	var wsConn *websocket.Conn
+	var handlerReady bool
+	tunnel.withRLock(func() {
+		protocol = tunnel.Protocol
+		wsConn = tunnel.WSConn
+		handlerReady = tunnel.handlerReady
+	})
 
 	if protocol != ProtocolHTTP {
 		ts.logger.Warn().
@@ -2456,9 +2493,9 @@ func (ts *TunnelServer) handleHTTPRequest(w http.ResponseWriter, r *http.Request
 
 		for i := 0; i < 10; i++ {
 			time.Sleep(100 * time.Millisecond)
-			tunnel.mu.RLock()
-			wsConn = tunnel.WSConn
-			tunnel.mu.RUnlock()
+			tunnel.withRLock(func() {
+				wsConn = tunnel.WSConn
+			})
 			if wsConn != nil {
 				ts.logger.Info().
 					Str("subdomain", subdomain).
@@ -2542,18 +2579,20 @@ func (ts *TunnelServer) proxyWebSocket(tunnel *TunnelConnection, w http.Response
 	}()
 
 	for i := 0; i < 30; i++ {
-		tunnel.mu.RLock()
-		ready := tunnel.handlerReady
-		tunnel.mu.RUnlock()
+		var ready bool
+		tunnel.withRLock(func() {
+			ready = tunnel.handlerReady
+		})
 		if ready {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	tunnel.mu.RLock()
-	wsConn := tunnel.WSConn
-	tunnel.mu.RUnlock()
+	var wsConn *websocket.Conn
+	tunnel.withRLock(func() {
+		wsConn = tunnel.WSConn
+	})
 	if wsConn == nil {
 		clientConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "Tunnel not ready"))
 		return
@@ -2616,9 +2655,10 @@ func (ts *TunnelServer) proxyWebSocket(tunnel *TunnelConnection, w http.Response
 			frameType = 2
 		}
 		msg := TunnelMessage{Type: MsgTypeWSData, RequestID: connID, Data: data, WSFrameType: frameType}
-		tunnel.mu.RLock()
-		wsConn := tunnel.WSConn
-		tunnel.mu.RUnlock()
+		var wsConn *websocket.Conn
+		tunnel.withRLock(func() {
+			wsConn = tunnel.WSConn
+		})
 		if wsConn == nil {
 			break
 		}
@@ -3002,10 +3042,12 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 		Request:   reqData,
 	}
 
-	tunnel.mu.RLock()
-	wsConn := tunnel.WSConn
-	handlerReady := tunnel.handlerReady
-	tunnel.mu.RUnlock()
+	var wsConn *websocket.Conn
+	var handlerReady bool
+	tunnel.withRLock(func() {
+		wsConn = tunnel.WSConn
+		handlerReady = tunnel.handlerReady
+	})
 
 	if wsConn == nil {
 		ts.requestTracker.FailRequest(requestID, fmt.Errorf("tunnel connection lost"))
@@ -3020,10 +3062,10 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 			Msg("Tunnel handler not ready yet - waiting briefly")
 		for i := 0; i < 20; i++ {
 			time.Sleep(10 * time.Millisecond)
-			tunnel.mu.RLock()
-			handlerReady = tunnel.handlerReady
-			wsConn = tunnel.WSConn // Re-check connection
-			tunnel.mu.RUnlock()
+			tunnel.withRLock(func() {
+				handlerReady = tunnel.handlerReady
+				wsConn = tunnel.WSConn
+			})
 			if handlerReady && wsConn != nil {
 				break
 			}
@@ -3043,9 +3085,10 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 
 	tunnel.writeMu.Lock()
 
-	tunnel.mu.RLock()
-	finalWSConn := tunnel.WSConn
-	tunnel.mu.RUnlock()
+	var finalWSConn *websocket.Conn
+	tunnel.withRLock(func() {
+		finalWSConn = tunnel.WSConn
+	})
 
 	if finalWSConn == nil {
 		tunnel.writeMu.Unlock()
@@ -3616,10 +3659,12 @@ func (ts *TunnelServer) removeTunnel(subdomain string) {
 	delete(ts.tunnels, subdomain)
 	ts.tunnelsMu.Unlock()
 
-	tunnel.mu.RLock()
-	tunnelID := tunnel.ID
-	currentWSConn := tunnel.WSConn
-	tunnel.mu.RUnlock()
+	var tunnelID string
+	var currentWSConn *websocket.Conn
+	tunnel.withRLock(func() {
+		tunnelID = tunnel.ID
+		currentWSConn = tunnel.WSConn
+	})
 
 	if currentWSConn != nil {
 		ts.logger.Warn().
@@ -3634,10 +3679,11 @@ func (ts *TunnelServer) removeTunnel(subdomain string) {
 		Bool("ws_conn_nil", currentWSConn == nil).
 		Msg("Removed tunnel from memory")
 
-	tunnel.mu.RLock()
-	protocol := tunnel.Protocol
-	tunnelID = tunnel.ID
-	tunnel.mu.RUnlock()
+	var protocol string
+	tunnel.withRLock(func() {
+		protocol = tunnel.Protocol
+		tunnelID = tunnel.ID
+	})
 
 	if protocol == ProtocolTCP || protocol == ProtocolTLS {
 		ts.portMapMu.Lock()
@@ -3721,11 +3767,13 @@ func (ts *TunnelServer) monitorInactiveTunnels() {
 		ts.tunnelsMu.RUnlock()
 
 		for _, tunnel := range activeTunnels {
-			tunnel.mu.RLock()
-			tunnelID := tunnel.ID
-			subdomain := tunnel.Subdomain
-			wsConn := tunnel.WSConn
-			tunnel.mu.RUnlock()
+			var tunnelID, subdomain string
+			var wsConn *websocket.Conn
+			tunnel.withRLock(func() {
+				tunnelID = tunnel.ID
+				subdomain = tunnel.Subdomain
+				wsConn = tunnel.WSConn
+			})
 
 			if tunnelID == "" {
 				continue
@@ -3791,9 +3839,10 @@ func (ts *TunnelServer) monitorInactiveTunnels() {
 				}
 				ts.tunnelsMu.Unlock()
 
-				tunnel.mu.RLock()
-				protocol := tunnel.Protocol
-				tunnel.mu.RUnlock()
+				var protocol string
+				tunnel.withRLock(func() {
+					protocol = tunnel.Protocol
+				})
 				
 				if protocol == ProtocolTCP || protocol == ProtocolTLS {
 					ts.portMapMu.Lock()
@@ -3920,9 +3969,10 @@ func (ts *TunnelServer) forwardUDPData(tunnel *TunnelConnection, connectionID st
 		return
 	}
 
-	tunnel.mu.RLock()
-	tunnelID := tunnel.ID
-	tunnel.mu.RUnlock()
+	var tunnelID string
+	tunnel.withRLock(func() {
+		tunnelID = tunnel.ID
+	})
 
 	ts.portMapMu.RLock()
 	var port int
@@ -4056,10 +4106,11 @@ func (ts *TunnelServer) startPortListener(port int, tunnel *TunnelConnection) {
 }
 
 func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.Conn) {
-	tunnel.mu.RLock()
-	tunnelID := tunnel.ID
-	subdomain := tunnel.Subdomain
-	tunnel.mu.RUnlock()
+	var tunnelID, subdomain string
+	tunnel.withRLock(func() {
+		tunnelID = tunnel.ID
+		subdomain = tunnel.Subdomain
+	})
 
 	if ts.repository != nil && tunnelID != "" {
 		tunnelUUID, parseErr := uuid.Parse(tunnelID)
@@ -4072,11 +4123,12 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 					Str("tunnel_id", tunnelID).
 					Str("subdomain", subdomain).
 					Str("status", dbTunnel.Status).
-					Msg("TCP tunnel is inactive in database (disconnected from dashboard) - rejecting connection")
+				Msg("TCP tunnel is inactive in database (disconnected from dashboard) - rejecting connection")
 
-				tunnel.mu.RLock()
-				wsConn := tunnel.WSConn
-				tunnel.mu.RUnlock()
+			var wsConn *websocket.Conn
+				tunnel.withRLock(func() {
+					wsConn = tunnel.WSConn
+				})
 				if wsConn != nil {
 					wsConn.Close()
 				}
@@ -4119,10 +4171,12 @@ func (ts *TunnelServer) handleTCPConnection(tunnel *TunnelConnection, conn net.C
 	}
 	ts.tcpConnMu.Unlock()
 
-	tunnel.mu.RLock()
-	protocol := tunnel.Protocol
-	wsConn := tunnel.WSConn
-	tunnel.mu.RUnlock()
+	var protocol string
+	var wsConn *websocket.Conn
+	tunnel.withRLock(func() {
+		protocol = tunnel.Protocol
+		wsConn = tunnel.WSConn
+	})
 
 	msgType := MsgTypeTCPData
 	if protocol == ProtocolTLS {
@@ -4301,9 +4355,10 @@ func (ts *TunnelServer) startUDPListener(port int, tunnel *TunnelConnection) {
 }
 
 func (ts *TunnelServer) handleUDPPacket(tunnel *TunnelConnection, port int, addr net.Addr, data []byte) {
-	tunnel.mu.RLock()
-	tunnelID := tunnel.ID
-	tunnel.mu.RUnlock()
+	var tunnelID string
+	tunnel.withRLock(func() {
+		tunnelID = tunnel.ID
+	})
 
 	if ts.repository != nil && tunnelID != "" {
 		tunnelUUID, parseErr := uuid.Parse(tunnelID)
@@ -4315,12 +4370,14 @@ func (ts *TunnelServer) handleUDPPacket(tunnel *TunnelConnection, port int, addr
 				ts.logger.Info().
 					Str("tunnel_id", tunnelID).
 					Str("status", dbTunnel.Status).
-					Msg("UDP tunnel is inactive in database (disconnected from dashboard) - rejecting packet")
+				Msg("UDP tunnel is inactive in database (disconnected from dashboard) - rejecting packet")
 
-				tunnel.mu.RLock()
-				wsConn := tunnel.WSConn
-				subdomain := tunnel.Subdomain
-				tunnel.mu.RUnlock()
+			var wsConn *websocket.Conn
+				var subdomain string
+				tunnel.withRLock(func() {
+					wsConn = tunnel.WSConn
+					subdomain = tunnel.Subdomain
+				})
 				if wsConn != nil {
 					wsConn.Close()
 				}
@@ -4361,9 +4418,10 @@ func (ts *TunnelServer) handleUDPPacket(tunnel *TunnelConnection, port int, addr
 	}
 	ts.udpConnMu.Unlock()
 
-	tunnel.mu.RLock()
-	wsConn := tunnel.WSConn
-	tunnel.mu.RUnlock()
+	var wsConn *websocket.Conn
+	tunnel.withRLock(func() {
+		wsConn = tunnel.WSConn
+	})
 
 	if wsConn == nil {
 		ts.logger.Error().
@@ -4461,10 +4519,11 @@ func isTunnelSubdomainHost(hostname, baseDomain string) bool {
 }
 
 func (ts *TunnelServer) getPublicURLForTunnel(tunnel *TunnelConnection) string {
-	tunnel.mu.RLock()
-	subdomain := tunnel.Subdomain
-	protocol := tunnel.Protocol
-	tunnel.mu.RUnlock()
+	var subdomain, protocol string
+	tunnel.withRLock(func() {
+		subdomain = tunnel.Subdomain
+		protocol = tunnel.Protocol
+	})
 
 	localhostDomain := getEnv("TUNNEL_LOCALHOST_DOMAIN", "localhost")
 	if protocol == ProtocolTCP || protocol == ProtocolTLS {
