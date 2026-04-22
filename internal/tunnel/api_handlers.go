@@ -33,17 +33,22 @@ func (ts *TunnelServer) handleListTunnels(w http.ResponseWriter, r *http.Request
 
 	infos := make([]TunnelInfo, 0, len(tunnels))
 	for _, tunnel := range tunnels {
-		tunnel.mu.RLock()
-		infos = append(infos, TunnelInfo{
-			ID:           tunnel.ID,
-			Subdomain:    tunnel.Subdomain,
-			LocalURL:     tunnel.LocalURL,
-			PublicURL:    ts.getPublicURLForTunnel(tunnel),
-			RequestCount: tunnel.RequestCount,
-			CreatedAt:    tunnel.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-			LastActive:   tunnel.LastActive.Format("2006-01-02T15:04:05Z07:00"),
+		var info TunnelInfo
+		tunnel.withRLock(func() {
+			info = TunnelInfo{
+				ID:           tunnel.ID,
+				Subdomain:    tunnel.Subdomain,
+				LocalURL:     tunnel.LocalURL,
+				RequestCount: tunnel.RequestCount,
+				CreatedAt:    tunnel.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+				LastActive:   tunnel.LastActive.Format("2006-01-02T15:04:05Z07:00"),
+			}
 		})
-		tunnel.mu.RUnlock()
+		// Compute public URL outside the lock - getPublicURLForTunnel acquires
+		// its own withRLock internally; calling it inside another lock causes
+		// a nested-lock self-deadlock when a writer is pending.
+		info.PublicURL = ts.getPublicURLForTunnel(tunnel)
+		infos = append(infos, info)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -151,17 +156,21 @@ func (ts *TunnelServer) handleTunnelStats(w http.ResponseWriter, r *http.Request
 
 	stats := ts.statsCollector.GetStats(tunnelID)
 
-	tunnel.mu.RLock()
-	tunnelInfo := map[string]interface{}{
-		"id":            tunnel.ID,
-		"subdomain":     tunnel.Subdomain,
-		"local_url":     tunnel.LocalURL,
-		"public_url":    ts.getPublicURLForTunnel(tunnel),
-		"request_count": tunnel.RequestCount,
-		"created_at":    tunnel.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		"last_active":   tunnel.LastActive.Format("2006-01-02T15:04:05Z07:00"),
-	}
-	tunnel.mu.RUnlock()
+	var tunnelInfo map[string]interface{}
+	tunnel.withRLock(func() {
+		tunnelInfo = map[string]interface{}{
+			"id":            tunnel.ID,
+			"subdomain":     tunnel.Subdomain,
+			"local_url":     tunnel.LocalURL,
+			"request_count": tunnel.RequestCount,
+			"created_at":    tunnel.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			"last_active":   tunnel.LastActive.Format("2006-01-02T15:04:05Z07:00"),
+		}
+	})
+	// Compute public URL outside the lock - getPublicURLForTunnel acquires
+	// its own withRLock internally; calling it inside another lock causes
+	// a nested-lock self-deadlock when a writer is pending.
+	tunnelInfo["public_url"] = ts.getPublicURLForTunnel(tunnel)
 
 	ts.tcpConnMu.RLock()
 	openConnections := int64(0)

@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Kizsoft-Solution-Limited/uniroute/internal/storage"
@@ -488,13 +489,15 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 						continue
 					}
 					tunnelIDStr := dbTunnel.ID
-					existingTunnel, isConnected := ts.tunnels[dbTunnel.Subdomain]
-					if isConnected && existingTunnel != nil {
-						existingTunnel.mu.RLock()
-						existingTunnelID := existingTunnel.ID
-						existingWSConn := existingTunnel.WSConn
-						existingTunnel.mu.RUnlock()
-						if existingTunnelID == tunnelIDStr && existingWSConn != nil {
+				existingTunnel, isConnected := ts.tunnels[dbTunnel.Subdomain]
+				if isConnected && existingTunnel != nil {
+					var existingTunnelID string
+					var existingWSConn *websocket.Conn
+					existingTunnel.withRLock(func() {
+						existingTunnelID = existingTunnel.ID
+						existingWSConn = existingTunnel.WSConn
+					})
+					if existingTunnelID == tunnelIDStr && existingWSConn != nil {
 							ts.logger.Info().
 								Str("tunnel_id", tunnelIDStr).
 								Str("subdomain", dbTunnel.Subdomain).
@@ -602,19 +605,21 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 						connectedTunnel, isConnected := ts.tunnels[dbTunnel.Subdomain]
 						ts.tunnelsMu.RUnlock()
 						
-						if isConnected && connectedTunnel != nil {
-							connectedTunnel.mu.RLock()
-							connectedTunnelID := connectedTunnel.ID
-							connectedWSConn := connectedTunnel.WSConn
-							connectedTunnel.mu.RUnlock()
-							
-							if connectedTunnelID == dbTunnel.ID && connectedWSConn != nil {
-								ts.logger.Info().
-									Str("host", initMsg.Host).
-									Str("tunnel_id", dbTunnel.ID).
-									Str("subdomain", dbTunnel.Subdomain).
-									Str("protocol", dbTunnel.Protocol).
-									Msg("Tunnel found by custom domain but already connected - will create new tunnel")
+					if isConnected && connectedTunnel != nil {
+						var connectedTunnelID string
+						var connectedWSConn *websocket.Conn
+						connectedTunnel.withRLock(func() {
+							connectedTunnelID = connectedTunnel.ID
+							connectedWSConn = connectedTunnel.WSConn
+						})
+						
+						if connectedTunnelID == dbTunnel.ID && connectedWSConn != nil {
+							ts.logger.Info().
+								Str("host", initMsg.Host).
+								Str("tunnel_id", dbTunnel.ID).
+								Str("subdomain", dbTunnel.Subdomain).
+								Str("protocol", dbTunnel.Protocol).
+								Msg("Tunnel found by custom domain but already connected - will create new tunnel")
 							} else {
 								subdomain = dbTunnel.Subdomain
 								tunnelID = dbTunnel.ID
@@ -660,9 +665,10 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		} else if initMsg.TunnelID != "" {
 			for _, t := range ts.tunnels {
 				if t.ID == initMsg.TunnelID {
-					t.mu.RLock()
-					tunnelProtocol := t.Protocol
-					t.mu.RUnlock()
+					var tunnelProtocol string
+					t.withRLock(func() {
+						tunnelProtocol = t.Protocol
+					})
 					if initMsg.Protocol == "" || tunnelProtocol == initMsg.Protocol {
 						existingTunnel = t
 						break
@@ -679,11 +685,13 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.tunnelsMu.RUnlock()
 
 		if existingTunnel != nil {
-			existingTunnel.mu.RLock()
-			existingProtocol := existingTunnel.Protocol
-			existingWSConn := existingTunnel.WSConn
-			existingSubdomain := existingTunnel.Subdomain
-			existingTunnel.mu.RUnlock()
+			var existingProtocol, existingSubdomain string
+			var existingWSConn *websocket.Conn
+			existingTunnel.withRLock(func() {
+				existingProtocol = existingTunnel.Protocol
+				existingWSConn = existingTunnel.WSConn
+				existingSubdomain = existingTunnel.Subdomain
+			})
 
 			if existingWSConn != nil {
 				ts.logger.Info().
@@ -829,19 +837,21 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 							connectedTunnel, isConnected := ts.tunnels[dbTunnel.Subdomain]
 							ts.tunnelsMu.RUnlock()
 							
-							if isConnected && connectedTunnel != nil {
-								connectedTunnel.mu.RLock()
-								connectedTunnelID := connectedTunnel.ID
-								connectedWSConn := connectedTunnel.WSConn
-								connectedTunnel.mu.RUnlock()
-								
-								if connectedTunnelID == dbTunnel.ID && connectedWSConn != nil {
-									ts.logger.Info().
-										Str("tunnel_id", dbTunnel.ID).
-										Str("subdomain", dbTunnel.Subdomain).
-										Str("custom_domain", dbTunnel.CustomDomain).
-										Str("protocol", dbTunnel.Protocol).
-										Msg("Tunnel from database is already connected - rejecting resume")
+						if isConnected && connectedTunnel != nil {
+							var connectedTunnelID string
+							var connectedWSConn *websocket.Conn
+							connectedTunnel.withRLock(func() {
+								connectedTunnelID = connectedTunnel.ID
+								connectedWSConn = connectedTunnel.WSConn
+							})
+							
+							if connectedTunnelID == dbTunnel.ID && connectedWSConn != nil {
+								ts.logger.Info().
+									Str("tunnel_id", dbTunnel.ID).
+									Str("subdomain", dbTunnel.Subdomain).
+									Str("custom_domain", dbTunnel.CustomDomain).
+									Str("protocol", dbTunnel.Protocol).
+									Msg("Tunnel from database is already connected - rejecting resume")
 									ws.WriteJSON(map[string]interface{}{
 										"error":   "tunnel_already_active",
 										"message": fmt.Sprintf("Tunnel %s is already connected by another client. Stop the other session or use --new to create a new tunnel.", dbTunnel.Subdomain),
@@ -973,10 +983,11 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 				existingTunnelByHost, existsInMemory := ts.tunnels[initMsg.Host]
 				ts.tunnelsMu.RUnlock()
 
-				if existsInMemory && existingTunnelByHost != nil {
-					existingTunnelByHost.mu.RLock()
-					existingWSConn := existingTunnelByHost.WSConn
-					existingTunnelByHost.mu.RUnlock()
+			if existsInMemory && existingTunnelByHost != nil {
+				var existingWSConn *websocket.Conn
+				existingTunnelByHost.withRLock(func() {
+					existingWSConn = existingTunnelByHost.WSConn
+				})
 					
 					if existingWSConn != nil {
 						ts.logger.Warn().
@@ -1121,9 +1132,10 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		ts.tunnelsMu.Unlock()
 
 		if existingTunnel != nil && existingTunnel != tunnel {
-			existingTunnel.mu.RLock()
-			oldWSConn := existingTunnel.WSConn
-			existingTunnel.mu.RUnlock()
+			var oldWSConn *websocket.Conn
+			existingTunnel.withRLock(func() {
+				oldWSConn = existingTunnel.WSConn
+			})
 
 			existingTunnel.mu.Lock()
 			existingTunnel.WSConn = nil
@@ -2966,11 +2978,11 @@ func (ts *TunnelServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	total := len(ts.tunnels)
 	connected := 0
 	for _, t := range ts.tunnels {
-		t.mu.RLock()
-		if t.WSConn != nil {
-			connected++
-		}
-		t.mu.RUnlock()
+		t.withRLock(func() {
+			if t.WSConn != nil {
+				connected++
+			}
+		})
 	}
 	ts.tunnelsMu.RUnlock()
 
@@ -3206,9 +3218,7 @@ func (ts *TunnelServer) forwardHTTPRequest(tunnel *TunnelConnection, w http.Resp
 	ts.writeResponse(w, r, response)
 
 	latency := time.Since(start)
-	tunnel.mu.Lock()
-	tunnel.RequestCount++
-	tunnel.mu.Unlock()
+	atomic.AddInt64(&tunnel.RequestCount, 1)
 
 	if ts.requestLogger != nil {
 		reqLog := &TunnelRequestLog{

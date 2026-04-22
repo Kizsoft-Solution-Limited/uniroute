@@ -58,10 +58,10 @@ func (ts *TunnelServer) writeErrorPage(w http.ResponseWriter, r *http.Request, t
 
 	var publicURL, localURL string
 	if tunnel != nil {
-		tunnel.mu.RLock()
-		localURL = tunnel.LocalURL
-		publicURL = fmt.Sprintf("http://%s%s", r.Host, r.URL.Path)
-		tunnel.mu.RUnlock()
+		tunnel.withRLock(func() {
+			localURL = tunnel.LocalURL
+			publicURL = fmt.Sprintf("http://%s%s", r.Host, r.URL.Path)
+		})
 	} else {
 		publicURL = fmt.Sprintf("http://%s%s", r.Host, r.URL.Path)
 		localURL = "N/A"
@@ -364,10 +364,11 @@ func (ts *TunnelServer) writeErrorPage(w http.ResponseWriter, r *http.Request, t
 }
 
 func (ts *TunnelServer) writeConnectionRefusedError(w http.ResponseWriter, r *http.Request, tunnel *TunnelConnection, errorMsg string) {
-	tunnel.mu.RLock()
-	localURL := tunnel.LocalURL
+	var localURL string
+	tunnel.withRLock(func() {
+		localURL = tunnel.LocalURL
+	})
 	publicURL := fmt.Sprintf("http://%s%s", r.Host, r.URL.Path)
-	tunnel.mu.RUnlock()
 
 	publicURL = html.EscapeString(publicURL)
 	localURL = html.EscapeString(localURL)
