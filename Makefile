@@ -1,4 +1,4 @@
-.PHONY: dev build test clean fmt lint vet migrate
+.PHONY: dev build test clean fmt lint vet migrate dev-tunnel-local
 
 # Development
 dev:
@@ -84,6 +84,10 @@ migrate:
 build-cli:
 	@echo "Building CLI..."
 	@CGO_ENABLED=0 go build -o bin/uniroute cmd/cli/main.go
+
+# Run tunnel server locally on :8055 without DB/auth (development only)
+dev-tunnel-local:
+	@./scripts/dev_tunnel_local.sh
 
 # Test Ollama at OLLAMA_BASE_URL (default http://localhost:11434)
 test-ollama:

@@ -168,7 +168,7 @@ func NewTunnelServer(port int, logger zerolog.Logger, allowedOrigins []string) *
 		rateLimiter:     NewTunnelRateLimiter(logger),
 		statsCollector:  NewStatsCollector(logger),
 		security:        NewSecurityMiddleware(logger),
-		requireAuth:     false,
+		requireAuth:     true,
 		baseDomain:      baseDomain,
 		websiteURL:      websiteURL,
 	}
@@ -361,16 +361,22 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 	}
 
 	if initMsg.Token == "" {
+		if ts.requireAuth {
+			ts.logger.Warn().
+				Str("protocol", initMsg.Protocol).
+				Str("local_url", initMsg.LocalURL).
+				Msg("Tunnel connection rejected - authentication required")
+			ws.WriteJSON(map[string]string{
+				"error":   "authentication required",
+				"message": "Please run 'uniroute auth login' to authenticate before creating tunnels",
+			})
+			ws.Close()
+			return
+		}
 		ts.logger.Warn().
 			Str("protocol", initMsg.Protocol).
 			Str("local_url", initMsg.LocalURL).
-			Msg("Tunnel connection rejected - authentication required")
-		ws.WriteJSON(map[string]string{
-			"error":   "authentication required",
-			"message": "Please run 'uniroute auth login' to authenticate before creating tunnels",
-		})
-		ws.Close()
-		return
+			Msg("Tunnel WebSocket accepted without auth (requireAuth=false; use only for local development)")
 	}
 
 	var authenticatedUserID string
@@ -378,7 +384,7 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 	var apiKeyRateLimitPerMinute, apiKeyRateLimitPerDay int
 	var isAPIKey bool // Track if this is an API key for rate limit application
 
-	if strings.HasPrefix(initMsg.Token, "ur_") {
+	if initMsg.Token != "" && strings.HasPrefix(initMsg.Token, "ur_") {
 		isAPIKey = true
 		if ts.apiKeyValidatorWithLimits != nil {
 			authenticatedUserID, apiKeyRateLimitPerMinute, apiKeyRateLimitPerDay, authErr = ts.apiKeyValidatorWithLimits(r.Context(), initMsg.Token)
@@ -405,7 +411,7 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 			ws.Close()
 			return
 		}
-	} else {
+	} else if initMsg.Token != "" {
 		if ts.jwtValidator == nil {
 			ts.logger.Warn().Msg("JWT validator not configured")
 			ws.WriteJSON(map[string]string{
@@ -418,7 +424,7 @@ func (ts *TunnelServer) handleTunnelConnection(w http.ResponseWriter, r *http.Re
 		authenticatedUserID, authErr = ts.jwtValidator(initMsg.Token)
 	}
 
-	if authErr != nil || authenticatedUserID == "" {
+	if initMsg.Token != "" && (authErr != nil || authenticatedUserID == "") {
 		ts.logger.Warn().
 			Err(authErr).
 			Msg("Tunnel connection rejected - invalid or expired token")

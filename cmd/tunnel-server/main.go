@@ -151,6 +151,16 @@ func main() {
 		}
 	}
 
+	devSkipAuth := strings.TrimSpace(os.Getenv("TUNNEL_DEV_SKIP_AUTH")) == "1"
+	if cfg.Environment == "production" && devSkipAuth {
+		log.Warn().Msg("TUNNEL_DEV_SKIP_AUTH ignored in production - tunnel authentication remains required")
+		devSkipAuth = false
+	}
+	if devSkipAuth {
+		server.SetRequireAuth(false)
+		log.Warn().Msg("TUNNEL_DEV_SKIP_AUTH=1: tunnel WebSocket accepts connections without JWT/API key (local development only; never enable on public hosts)")
+	}
+
 	if err := server.Start(); err != nil {
 		log.Fatal().Err(err).Msg("Failed to start tunnel server")
 		os.Exit(1)
