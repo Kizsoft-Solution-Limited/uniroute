@@ -603,7 +603,26 @@ func (tc *TunnelClient) handleWSOpen(req *HTTPRequest) {
 		wsURL += "?" + req.Query
 	}
 	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
-	localConn, _, err := dialer.Dial(wsURL, nil)
+
+	hdr := http.Header{}
+	skipDial := map[string]struct{}{
+		"connection":               {},
+		"upgrade":                  {},
+		"sec-websocket-key":        {},
+		"sec-websocket-version":    {},
+		"sec-websocket-extensions": {},
+		"sec-websocket-accept":     {},
+		"host":                     {},
+	}
+	for k, v := range req.Headers {
+		if _, ok := skipDial[strings.ToLower(k)]; ok {
+			continue
+		}
+		hdr.Set(k, v)
+	}
+	hdr.Set("Host", baseURL.Host)
+
+	localConn, _, err := dialer.Dial(wsURL, hdr)
 	if err != nil {
 		tc.logger.Warn().Err(err).Str("conn_id", connID).Str("ws_url", wsURL).Msg("WS open: failed to dial local WebSocket")
 		tc.sendWSClose(connID)
