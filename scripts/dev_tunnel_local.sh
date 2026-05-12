@@ -6,6 +6,7 @@
 #
 # Terminal 2 (pick a free subdomain label; serve something on the port):
 #   cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+#   export UNIROUTE_TUNNEL_URL=localhost:8055   # if needed (CLI auto-probes :8055 when healthy)
 #   ./bin/uniroute tunnel --port 3000 --new --host mydev
 #
 # Then open: http://mydev.localhost:8055/
@@ -36,6 +37,7 @@ echo "Starting tunnel server on http://0.0.0.0:${PORT}/ (WebSocket: ws://localho
 echo "Public URLs look like: http://<subdomain>.localhost:${PORT}/"
 echo ""
 echo "Example (terminal 2):"
+echo "  export UNIROUTE_TUNNEL_URL=localhost:${PORT}"
 echo "  ./bin/uniroute tunnel --port 3000 --new --host mydev"
 echo "Then: curl -sS -o /dev/null -w '%{http_code}\\n' http://mydev.localhost:${PORT}/"
 echo ""

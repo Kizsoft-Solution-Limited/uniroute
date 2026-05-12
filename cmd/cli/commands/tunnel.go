@@ -178,6 +178,48 @@ func normalizeLocalURLForCompare(s string) string {
 	return s
 }
 
+func isLocalTunnelServerURL(serverURL string) bool {
+	host := strings.ToLower(serverHostForCompare(serverURL))
+	return strings.Contains(host, "localhost") || strings.Contains(host, "127.0.0.1")
+}
+
+// authTokenForTunnelConnect returns the token to send when opening the tunnel WebSocket.
+// Saved hosted JWTs are not sent to local tunnel servers unless UNIROUTE_TUNNEL_WITH_AUTH=1,
+// so stale credentials do not break dev servers using TUNNEL_DEV_SKIP_AUTH.
+func authTokenForTunnelConnect(serverURL string) string {
+	token := getAuthToken()
+	if token == "" {
+		return ""
+	}
+	if isLocalTunnelServerURL(serverURL) && os.Getenv("UNIROUTE_TUNNEL_WITH_AUTH") != "1" {
+		return ""
+	}
+	return token
+}
+
+func tunnelAuthConnectError(serverURL string, err error) error {
+	clearExpiredToken()
+	if isLocalTunnelServerURL(serverURL) {
+		return fmt.Errorf(
+			"authentication failed: %w\n\n"+
+				"This tunnel server looks local. Run `uniroute auth login` if it requires auth,\n"+
+				"or leave UNIROUTE_TUNNEL_WITH_AUTH unset so a stale hosted token is not sent.",
+			err,
+		)
+	}
+	return fmt.Errorf(
+		"authentication failed: %w\n\n"+
+			"Hosted tunnel: run `uniroute auth login` (or log in with your API key).\n\n"+
+			"Local dev without login: in another terminal run:\n"+
+			"  ./scripts/dev_tunnel_local.sh\n"+
+			"then:\n"+
+			"  ./bin/uniroute tunnel --port 3000 --new --host mydev\n\n"+
+			"If the dev server listens on another port, run:\n"+
+			"  export UNIROUTE_TUNNEL_URL=localhost:<port>",
+		err,
+	)
+}
+
 func runAllTunnels(cmd *cobra.Command, args []string) error {
 	log := logger.New()
 	configManager := tunnel.NewConfigManager(log)
@@ -300,6 +342,10 @@ func startTunnelFromConfig(tc tunnel.TunnelConfig) error {
 
 	client := tunnel.NewTunnelClientWithOptions(serverURL, localURL, tc.Protocol, tc.Host, log)
 	client.SetOnAuthInvalid(clearExpiredToken)
+	if connectToken := authTokenForTunnelConnect(serverURL); connectToken != "" {
+		client.SetToken(connectToken)
+		log.Debug().Msg("Auth token set for tunnel from config")
+	}
 
 	if err := client.Connect(); err != nil {
 		errStr := err.Error()
@@ -307,8 +353,7 @@ func startTunnelFromConfig(tc tunnel.TunnelConfig) error {
 		   strings.Contains(strings.ToLower(errStr), "authentication") ||
 		   strings.Contains(strings.ToLower(errStr), "expired") ||
 		   strings.Contains(strings.ToLower(errStr), "invalid") {
-			clearExpiredToken()
-			return fmt.Errorf("authentication failed: %w\n\nPlease run 'uniroute auth login' to authenticate again", err)
+			return tunnelAuthConnectError(serverURL, err)
 		}
 		return fmt.Errorf("failed to connect: %w", err)
 	}
@@ -330,12 +375,7 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 		tunnelServerURL = getTunnelServerURL()
 	}
 
-	isLocalTunnel := tunnelServerURL == "localhost:8055" ||
-		tunnelServerURL == "http://localhost:8055" ||
-		tunnelServerURL == "localhost:8080" ||
-		tunnelServerURL == "http://localhost:8080" ||
-		strings.Contains(tunnelServerURL, "localhost") ||
-		strings.Contains(tunnelServerURL, "127.0.0.1")
+	isLocalTunnel := isLocalTunnelServerURL(tunnelServerURL)
 	
 	if !isLocalTunnel &&
 		(tunnelServerURL == "tunnel.uniroute.co" ||
@@ -363,9 +403,10 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 	client := tunnel.NewTunnelClientWithOptions(tunnelServerURL, localURL, tunnelProtocol, tunnelHost, log)
 	client.SetOnAuthInvalid(clearExpiredToken)
 
-	token := getAuthToken()
-	if token != "" {
-		client.SetToken(token)
+	authToken := getAuthToken()
+	connectToken := authTokenForTunnelConnect(tunnelServerURL)
+	if connectToken != "" {
+		client.SetToken(connectToken)
 		log.Debug().Msg("Auth token set - tunnel will be automatically associated with your account")
 	}
 
@@ -380,8 +421,8 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 		if state, err := persistence.Load(); err == nil && state != nil && state.Subdomain == resumeSubdomain {
 			tunnelID = state.TunnelID
 		}
-		if tunnelID == "" && token != "" {
-			tunnelID = lookupTunnelIDBySubdomain(resumeSubdomain, token)
+		if tunnelID == "" && connectToken != "" {
+			tunnelID = lookupTunnelIDBySubdomain(resumeSubdomain, connectToken)
 		}
 		client.SetResumeInfo(resumeSubdomain, tunnelID)
 	} else if !forceNew {
@@ -410,8 +451,7 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 		   strings.Contains(strings.ToLower(errStr), "authentication") ||
 		   strings.Contains(strings.ToLower(errStr), "expired") ||
 		   strings.Contains(strings.ToLower(errStr), "invalid") {
-			clearExpiredToken()
-			return fmt.Errorf("authentication failed: %w\n\nPlease run 'uniroute auth login' to authenticate again", err)
+			return tunnelAuthConnectError(tunnelServerURL, err)
 		}
 		if strings.Contains(errStr, "tunnel_already_active") || strings.Contains(errStr, "already connected by another client") {
 			return err
@@ -425,7 +465,7 @@ func runBuiltInTunnel(cmd *cobra.Command, args []string) error {
 	}
 
 	if customDomain != "" {
-		if err := setCustomDomain(info.ID, customDomain, token); err != nil {
+		if err := setCustomDomain(info.ID, customDomain, authToken); err != nil {
 			log.Warn().Err(err).Str("domain", customDomain).Msg("Failed to set custom domain (tunnel will still work with subdomain)")
 		}
 	}
