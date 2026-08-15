@@ -72,3 +72,4 @@ docs/
 # Scripts (sensitive / local-only)
 scripts/update_user_to_admin.sql
 
+scripts/caddy/backups/
